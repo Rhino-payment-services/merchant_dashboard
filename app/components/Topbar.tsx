@@ -1,5 +1,5 @@
 "use client";
-import React from "react";
+import React, { useState } from "react";
 import { Button } from "../../components/ui/button";
 import Link from "next/link";
 import {
@@ -11,7 +11,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { removeCustomerId } from "@/app/lib/mockBackend";
 import { useRouter } from "next/navigation";
-import { useSession } from "next-auth/react";
+import { useSession, signOut } from "next-auth/react";
 import { useUserProfile } from "../(dashboard)/UserProfileProvider";
 import { Menu, X } from "lucide-react";
 
@@ -43,38 +43,67 @@ interface TopbarProps {
 
 export default function Topbar({ onMenuToggle, isMenuOpen }: TopbarProps) {
   const router = useRouter();
-  const handleLogout = () => {
-    removeCustomerId();
-    router.replace("/auth/login");
+  
+  const handleLogout = async () => {
+    try {
+      // Clear any local storage/session storage
+      removeCustomerId();
+      
+      // Sign out from NextAuth
+      await signOut({ 
+        redirect: false, // We'll handle the redirect manually
+        callbackUrl: '/auth/login' 
+      });
+      
+      // Force redirect to login page
+      window.location.href = '/auth/login';
+    } catch (error) {
+      console.error('Logout error:', error);
+      // Fallback: force redirect even if signOut fails
+      window.location.href = '/auth/login';
+    }
   };
 
   const { data: userData, status } = useSession();
   const { profile, loading } = useUserProfile();
+
+  // Set default date range to current year (January 1st to December 31st)
+  const [from, setFrom] = useState<string>(() => {
+    const currentYear = new Date().getFullYear();
+    return `${currentYear}-01-01`;
+  });
+
+  const [to, setTo] = useState<string>(() => {
+    const currentYear = new Date().getFullYear();
+    return `${currentYear}-12-31`;
+  });
 
   return (
     <header className="flex items-center justify-between px-4 py-4 bg-white">
       {/* Mobile Menu Button */}
       <div className="md:hidden">
         <Button
+          variant="ghost"
+          size="icon"
           onClick={onMenuToggle}
-            className="text-gray-600 cursor-pointer hover:text-gray-900 w-10 h-10" 
+          className="text-gray-600 hover:text-gray-900"
         >
           {isMenuOpen ? (
-            <X className="w-10 h-10" color="white" />
+            <X className="w-6 h-6" />
           ) : (
-            <Menu className="w-10 h-10" color="white" />
+            <Menu className="w-6 h-6" />
           )}
         </Button>
       </div>
 
       {/* Search Bar - Hidden on mobile when menu is open */}
-      {/* <div className={`flex-1 ${isMenuOpen ? 'hidden md:block' : 'block'}`}>
+      <div className={`flex-1 ${isMenuOpen ? 'hidden md:block' : 'block'}`}>
         <input
           type="text"
           placeholder="Search anything ..."
           className="w-full max-w-xs px-4 py-2 rounded-lg border bg-gray-50 focus:outline-none focus:ring-2 focus:ring-main-200"
         />
-      </div> */}
+      </div>
 
       <div className="flex items-center gap-4">
         {/* Notification icon */}

@@ -9,14 +9,16 @@ export default function StatsOverviewChart() {
   const { profile, loading, isRefetching } = useUserProfile();
 
   const [period, setPeriod] = useState<'Monthly' | 'Weekly'>('Monthly');
+  
+  // Set default date range to current year (January 1st to December 31st)
   const [from, setFrom] = useState<string>(() => {
-    const d = new Date();
-    d.setDate(d.getDate() - 30);
-    return d.toISOString().slice(0, 10);
+    const currentYear = new Date().getFullYear();
+    return `${currentYear}-01-01`;
   });
+  
   const [to, setTo] = useState<string>(() => {
-    const d = new Date();
-    return d.toISOString().slice(0, 10);
+    const currentYear = new Date().getFullYear();
+    return `${currentYear}-12-31`;
   });
 
   // Filter transactions by date range
@@ -86,9 +88,17 @@ export default function StatsOverviewChart() {
     expense: `UGX ${totalExpense.toLocaleString()}`,
   };
 
-    useEffect(()=>{
+  // Calculate net profit/loss
+  const netAmount = totalIncome - totalExpense;
+  const netSummary = {
+    amount: `UGX ${Math.abs(netAmount).toLocaleString()}`,
+    isProfit: netAmount >= 0,
+    label: netAmount >= 0 ? 'Net Profit' : 'Net Loss'
+  };
+
+  useEffect(()=>{
       
-    },[])
+  },[])
 
   return (
     <div>
@@ -109,12 +119,22 @@ export default function StatsOverviewChart() {
               value={period}
               onChange={e => setPeriod(e.target.value as 'Monthly' | 'Weekly')}
             >
-              <option value="Weekly">Weekly</option>
               <option value="Monthly">Monthly</option>
+              <option value="Weekly">Weekly</option>
             </select>
-            <input type="date" value={from} onChange={e => setFrom(e.target.value)} className="text-xs border rounded px-2 py-1 bg-gray-50" />
+            <input 
+              type="date" 
+              value={from} 
+              onChange={e => setFrom(e.target.value)} 
+              className="text-xs border rounded px-2 py-1 bg-gray-50" 
+            />
             <span className="text-xs">to</span>
-            <input type="date" value={to} onChange={e => setTo(e.target.value)} className="text-xs border rounded px-2 py-1 bg-gray-50" />
+            <input 
+              type="date" 
+              value={to} 
+              onChange={e => setTo(e.target.value)} 
+              className="text-xs border rounded px-2 py-1 bg-gray-50" 
+            />
           </div>
         </CardHeader>
         <CardContent className="flex gap-8 pt-0">
@@ -126,6 +146,12 @@ export default function StatsOverviewChart() {
             <div className="text-xs text-gray-500">Expense</div>
             <div className="text-xl font-bold text-red-500">{summary.expense}</div>
           </div>
+          <div>
+            <div className="text-xs text-gray-500">{netSummary.label}</div>
+            <div className={`text-xl font-bold ${netSummary.isProfit ? 'text-green-600' : 'text-red-600'}`}>
+              {netSummary.amount}
+            </div>
+          </div>
         </CardContent>
       </Card>
       {/* Placeholder for chart */}
@@ -134,9 +160,16 @@ export default function StatsOverviewChart() {
       </div>
       <div className="flex gap-6 mt-4 text-xs">
         <div className="flex items-center gap-1">
-          <span className="w-3 h-3 bg-main-600 rounded-full inline-block" /> Total Income
+          <span className="w-3 h-3 bg-[#08163d] rounded-full inline-block" /> Total Income
+        </div>
+        <div className="flex items-center gap-1">
+          <span className="w-3 h-3 bg-red-700 rounded-full inline-block" /> Total Expense
+        </div>
+        <div className="flex items-center gap-1">
+          <span className={`w-3 h-3 rounded-full inline-block ${netSummary.isProfit ? 'bg-green-500' : 'bg-red-500'}`} /> 
+          {netSummary.label}
         </div>
       </div>
     </div>
   );
-} 
+}

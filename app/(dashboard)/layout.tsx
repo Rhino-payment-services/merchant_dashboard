@@ -31,6 +31,31 @@ export default function RootLayout({
     setIsMobileMenuOpen(false);
   };
 
+  // Show loading spinner while checking authentication
+  if (status === 'loading') {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="flex flex-col items-center gap-4">
+          <div className="w-8 h-8 border-4 border-main-600 border-t-transparent rounded-full animate-spin"></div>
+          <p className="text-gray-600">Loading...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Redirect to login if not authenticated
+  if (status === 'unauthenticated') {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="flex flex-col items-center gap-4">
+          <div className="w-8 h-8 border-4 border-main-600 border-t-transparent rounded-full animate-spin"></div>
+          <p className="text-gray-600">Redirecting to login...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Show dashboard if authenticated
   if (status === 'authenticated') {
     return (
       <UserProfileProvider>
@@ -58,9 +83,8 @@ export default function RootLayout({
         </div>
       </UserProfileProvider>
     );
-  } else if (status === 'loading') {
-    return <div></div>;
   }
-  // Optionally, handle other cases (shouldn't be needed)
+
+  // Fallback
   return null;
 }
