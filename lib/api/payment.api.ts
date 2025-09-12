@@ -55,33 +55,6 @@ const validateBankAccount = async(data: any)=>{
     }
 }
 
-const validateRukaPayAccount = async(data: any)=>{
-    try {
-        const response = await axios.post(`${process.env.NEXT_PUBLIC_RUKAPAY_URL}/subscriber/verify-customer-phone`, data)
-        console.log("Response data validate ruka pay account========>", response.data)
-        
-        // Check if the response indicates an error (res: 0 or no customerDetails)
-        if (response.data.res === 0 || !response.data.customerDetails) {
-            throw new Error(response.data.message || "RukaPay account validation failed");
-        }
-        
-        return response.data
-        
-    } catch (error: any) {
-        console.log("error validate ruka pay==>", error)
-        // Extract error message from response
-        if (error.response?.data?.message) {
-            throw new Error(error.response.data.message);
-        } else if (error.response?.data?.error) {
-            throw new Error(error.response.data.error);
-        } else if (error.message) {
-            throw new Error(error.message);
-        } else {
-            throw new Error("Failed to validate RukaPay account");
-        }
-    }
-}
-
 export const useValidatePhoneNumber = ()=>{
     return useMutation({
         mutationKey: ['validate-phone-number'],
@@ -95,14 +68,6 @@ export const useValidateBankAccount = ()=>{
         mutationFn: validateBankAccount
     })
 }
-
-export const useValidateRukaPayAccount = ()=>{
-    return useMutation({
-        mutationKey: ['validate-rukapay-account'],
-        mutationFn: validateRukaPayAccount
-    })
-} 
-
 
 export const SendToMobileMoney = async (data: any) => {
     try {
@@ -124,7 +89,6 @@ export const SendToMobileMoney = async (data: any) => {
     }
   };
 
-
 export const useSendFormMobileMoney = () => {
     return useMutation({
       mutationKey: ["send-form-mobile-money"],
@@ -132,7 +96,7 @@ export const useSendFormMobileMoney = () => {
     });
   };
 
-  export const bankCashDeposit = async (data: any) => {
+export const bankCashDeposit = async (data: any) => {
     try {
       const endpoint = process.env.NEXT_PUBLIC_SANDBOX_URL || 'https://sandbox.rukapay.net';
       const fullUrl = `${endpoint}/abc/secure/merchant/bank/cash-deposit`;
@@ -150,37 +114,36 @@ export const useSendFormMobileMoney = () => {
       throw error;
     }
   };
-  
 
-  export const useBankCashDeposit = () => {
+export const useBankCashDeposit = () => {
     return useMutation({
       mutationKey: ["bank-cash-deposit"],
       mutationFn: bankCashDeposit,
     });
   };
 
-  export const transferMoney = async (data: any) => {
+export const mobileMoneyCollection = async (data: any) => {
     try {
-      const endpoint = process.env.NEXT_PUBLIC_RUKAPAY_URL || 'https://sandbox.rukapay.net';
-      const fullUrl = `${endpoint}/hapi/secure/customer-sending-money`;
+      const endpoint = process.env.NEXT_PUBLIC_SANDBOX_URL || 'https://sandbox.rukapay.net';
+      const fullUrl = `${endpoint}/abc/secure/merchant/mobile-money/post-collection-transaction`;
       
-      console.log("=== RUKAPAY TRANSFER DEBUG ===");
+      console.log("=== MOBILE MONEY COLLECTION DEBUG ===");
       console.log("Endpoint:", endpoint);
       console.log("Full URL:", fullUrl);
       console.log("Request Data:", data);
       
       const response = await axios.post(fullUrl, data);
-      console.log("RukaPay Transfer Response:", response.data);
+      console.log("Mobile Money Collection Response:", response.data);
       return response.data;
     } catch (error) {
-      console.error("RukaPay Transfer Error:", error);
+      console.error("Mobile Money Collection Error:", error);
       throw error;
     }
   };
 
-  export const useTransferMoney = () => {
+export const useMobileMoneyCollection = () => {
     return useMutation({
-      mutationKey: ["transfer-money"],
-      mutationFn: transferMoney,
+      mutationKey: ["mobile-money-collection"],
+      mutationFn: mobileMoneyCollection,
     });
   };

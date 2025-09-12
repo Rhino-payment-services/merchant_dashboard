@@ -13,6 +13,7 @@ import { removeCustomerId } from "@/app/lib/mockBackend";
 import { useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { useUserProfile } from "../(dashboard)/UserProfileProvider";
+import { Menu, X } from "lucide-react";
 
 const mockNotifications = [
   {
@@ -35,7 +36,12 @@ const mockNotifications = [
   },
 ];
 
-export default function Topbar() {
+interface TopbarProps {
+  onMenuToggle?: () => void;
+  isMenuOpen?: boolean;
+}
+
+export default function Topbar({ onMenuToggle, isMenuOpen }: TopbarProps) {
   const router = useRouter();
   const handleLogout = () => {
     removeCustomerId();
@@ -47,13 +53,29 @@ export default function Topbar() {
 
   return (
     <header className="flex items-center justify-between px-4 py-4 bg-white">
-      <div className="flex-1">
+      {/* Mobile Menu Button */}
+      <div className="md:hidden">
+        <Button
+          onClick={onMenuToggle}
+            className="text-gray-600 cursor-pointer hover:text-gray-900 w-10 h-10" 
+        >
+          {isMenuOpen ? (
+            <X className="w-10 h-10" color="white" />
+          ) : (
+            <Menu className="w-10 h-10" color="white" />
+          )}
+        </Button>
+      </div>
+
+      {/* Search Bar - Hidden on mobile when menu is open */}
+      {/* <div className={`flex-1 ${isMenuOpen ? 'hidden md:block' : 'block'}`}>
         <input
           type="text"
           placeholder="Search anything ..."
           className="w-full max-w-xs px-4 py-2 rounded-lg border bg-gray-50 focus:outline-none focus:ring-2 focus:ring-main-200"
         />
-      </div>
+      </div> */}
+
       <div className="flex items-center gap-4">
         {/* Notification icon */}
         <Link href="/notification">

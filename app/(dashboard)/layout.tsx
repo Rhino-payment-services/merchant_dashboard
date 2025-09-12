@@ -2,7 +2,7 @@
 import type { Metadata } from "next";
 import Sidebar from "../components/Sidebar";
 import Topbar from "../components/Topbar";
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useSession } from 'next-auth/react';
 import { UserProfileProvider } from "./UserProfileProvider";
@@ -15,6 +15,7 @@ export default function RootLayout({
 }>) {
   const router = useRouter();
   const { data: session, status } = useSession();
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
   useEffect(() => {
     if (status === 'unauthenticated') {
@@ -22,19 +23,32 @@ export default function RootLayout({
     }
   }, [router, status]);
 
+  const toggleMobileMenu = () => {
+    setIsMobileMenuOpen(!isMobileMenuOpen);
+  };
+
+  const closeMobileMenu = () => {
+    setIsMobileMenuOpen(false);
+  };
+
   if (status === 'authenticated') {
     return (
       <UserProfileProvider>
         <div className="w-full h-screen flex bg-gray-50 overflow-hidden">
-          {/* Fixed Sidebar */}
-          <div className="hidden md:block fixed left-0 top-0 h-screen z-30">
-            <Sidebar />
-          </div>
+          {/* Sidebar */}
+          <Sidebar 
+            isOpen={isMobileMenuOpen} 
+            onClose={closeMobileMenu}
+          />
+          
           {/* Main Content Area */}
-          <div className="flex-1 flex flex-col md:ml-64 min-h-0">
+          <div className="flex-1 flex flex-col md:ml-56 min-h-0">
             {/* Fixed Topbar */}
-            <div className="fixed top-0 left-0 md:left-64 right-0 z-20">
-              <Topbar />
+            <div className="fixed top-0 left-0 md:left-56 right-0 z-20">
+              <Topbar 
+                onMenuToggle={toggleMobileMenu}
+                isMenuOpen={isMobileMenuOpen}
+              />
             </div>
             {/* Scrollable Content */}
             <main className="flex-1 overflow-y-auto pt-[72px] px-0 md:px-0 bg-gray-50 min-h-0">
