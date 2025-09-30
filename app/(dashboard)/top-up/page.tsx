@@ -83,7 +83,11 @@ export default function TopUpPage() {
         toast.success(`Top up completed successfully! Reference: ${result.txnReference}`);
         setSuccess("Top up completed successfully!");
         setTopUpForm({ phone: "", amount: "", narration: "" });
-      } else {
+      } else if(result?.status === 2){
+        toast.success(result?.message || "Transaction is being processed please confirm the transaction by put pin")
+        setSuccess(result?.message)
+        setTopUpForm({ phone: "", amount: "", narration: "" });
+      }else {
         throw new Error(result?.message || "Top up failed. Please try again.");
       }
       
@@ -91,12 +95,12 @@ export default function TopUpPage() {
       console.error("Top Up Error:", error);
       let errorMessage = "Failed to process top up. Please try again.";
       
-      if (error.message) {
-        errorMessage = error.message;
-      } else if (error.response?.data?.message) {
+      if (error.response?.data?.message) {
         errorMessage = error.response.data.message;
       } else if (error.response?.data?.error) {
         errorMessage = error.response.data.error;
+      }else if (error.message) {
+        errorMessage = error.message;
       }
       
       setError(errorMessage);
@@ -108,7 +112,7 @@ export default function TopUpPage() {
 
   return (
     <div className="min-h-screen bg-gray-50 p-0">
-      <div className="w-full mx-auto py-8 px-4">
+      <div className="w-full py-8 px-4">
         {/* Wallet Balance */}
         <div className="mb-8 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
           <div className="flex items-center gap-4 bg-white rounded-xl shadow px-6 py-4">
@@ -130,7 +134,7 @@ export default function TopUpPage() {
               <ArrowDown className="w-6 h-6 text-green-600" />
             </div>
             <div>
-              <h1 className="text-3xl font-bold text-gray-900">Mobile Money Top Up</h1>
+              <h1 className="text-3xl font-bold text-gray-900">Request mobile money</h1>
               <p className="text-gray-600">Receive money from customers via mobile money</p>
             </div>
           </div>
@@ -194,7 +198,7 @@ export default function TopUpPage() {
             
             <Button 
               type="submit" 
-              className="w-full bg-green-600 hover:bg-green-700 text-white py-3 text-lg font-medium" 
+              className="w-full bg-[#032a3b] hover:bg-[#032a3b] text-white py-3 text-lg font-medium" 
               disabled={loading}
             >
               {loading ? (
@@ -205,14 +209,14 @@ export default function TopUpPage() {
               ) : (
                 <>
                   <ArrowDown className="w-5 h-5 mr-2" />
-                  Request Top Up
+                  Request Mobile Money
                 </>
               )}
             </Button>
             
             {/* Success/Error Messages */}
             {success && (
-              <div className="text-green-600 text-center font-medium mt-4 p-3 bg-green-50 rounded-lg">
+              <div className="text-[#032a3b] text-center font-medium mt-4 p-3 bg-green-50 rounded-lg">
                 {success}
               </div>
             )}

@@ -67,7 +67,7 @@ export default function RootLayout({
           />
           
           {/* Main Content Area */}
-          <div className="flex-1 flex flex-col md:ml-56 min-h-0">
+          <div className="flex-1 flex flex-col min-h-0">
             {/* Fixed Topbar */}
             <div className="fixed top-0 left-0 md:left-56 right-0 z-20">
               <Topbar 

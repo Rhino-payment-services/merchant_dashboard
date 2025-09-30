@@ -62,6 +62,8 @@ export default function RecentTransactions({ transactions }: transactionType) {
     router.push("/transactions");
   };
 
+  console.log("transactions", transactions);
+
   return (
     <div className="relative">
       {isRefetching && (
@@ -101,8 +103,8 @@ export default function RecentTransactions({ transactions }: transactionType) {
                 <TableHead>Date</TableHead>
                 <TableHead>Time</TableHead>
                 <TableHead>Customer</TableHead>
-                <TableHead>Type</TableHead>
                 <TableHead>Amount</TableHead>
+                <TableHead>Description</TableHead>
                 <TableHead>Status</TableHead>
               </TableRow>
             </TableHeader>
@@ -116,19 +118,9 @@ export default function RecentTransactions({ transactions }: transactionType) {
               <TableCell>
                 {new Date(txn.rdbs_approval_date).toLocaleTimeString()}
               </TableCell>
-              <TableCell>{txn.rdbs_sender_name}</TableCell>
-              <TableCell className="text-left font-semibold">
-              <span className={
-                txn.rdbs_type === 'credit'
-                  ? 'text-green-600 bg-green-50 px-2 py-1 rounded text-xs font-medium'
-                  : txn.rdbs_type === 'debit'
-                  ? 'text-red-600 bg-red-50 px-2 py-1 rounded text-xs font-medium'
-                  : ''
-              }>
-                {txn.rdbs_type}
-              </span>
-            </TableCell>
+              <TableCell>{txn.rdbs_sender_name === "Unknown" ? txn.rdbs_obj_uri_receiver : txn.rdbs_sender_name}</TableCell>
               <TableCell>{Number(txn.rdbs_amount).toLocaleString()} UGX</TableCell>
+              <TableCell>{txn.rdbs_description}</TableCell>
               <TableCell>
                   <span className={`px-2 py-1 rounded text-xs font-medium ${statusColor[txn.rdbs_approval_status as StatusType]}`}>{txn.rdbs_approval_status}</span>
               </TableCell>
