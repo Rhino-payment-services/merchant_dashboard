@@ -6,14 +6,17 @@ declare module "next-auth" {
     accessToken?: string
     refreshToken?: string
     user: {
-      id: string
-      email?: string
-      name?: string
+      id?: string
+      email?: string | null
+      name?: string | null
+      image?: string | null
       phone?: string
       role?: string
       userType?: string
       subscriberType?: string
       merchantCode?: string
+      merchantId?: string
+      phoneNumber?: string
       accessToken?: string
       refreshToken?: string
       userData?: any
