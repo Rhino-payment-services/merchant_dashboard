@@ -1,8 +1,7 @@
 import { NextAuthOptions } from "next-auth"
 import CredentialsProvider from "next-auth/providers/credentials"
 import axios from "axios"
-
-const API_URL = process.env.NEXT_PUBLIC_API_URL
+import { API_URL } from "./config"
 
 export const authOptions: NextAuthOptions = {
   providers: [
