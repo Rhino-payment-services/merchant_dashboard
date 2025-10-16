@@ -44,6 +44,12 @@ export interface Transaction {
     name: string
     phone?: string
   }
+  metadata?: {
+    revenue?: {
+      amount: number
+    }
+    [key: string]: any
+  }
 }
 
 export interface TransactionsResponse {
