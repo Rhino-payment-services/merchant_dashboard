@@ -75,16 +75,15 @@ export const authOptions: NextAuthOptions = {
     },
     async session({ session, token }) {
       // Pass token data to session
-      session.user = {
-        ...session.user,
-        id: token.id as string,
-        role: token.role as string,
-        userType: token.userType as string,
-        subscriberType: token.subscriberType as string,
-        merchantCode: token.merchantCode as string,
-        accessToken: token.accessToken as string,
-        refreshToken: token.refreshToken as string,
-        userData: token.user as any
+      if (session.user) {
+        (session.user as any).id = token.id as string;
+        (session.user as any).role = token.role as string;
+        (session.user as any).userType = token.userType as string;
+        (session.user as any).subscriberType = token.subscriberType as string;
+        (session.user as any).merchantCode = token.merchantCode as string;
+        (session.user as any).accessToken = token.accessToken as string;
+        (session.user as any).refreshToken = token.refreshToken as string;
+        (session.user as any).userData = token.user as any;
       }
       session.accessToken = token.accessToken as string
       session.refreshToken = token.refreshToken as string
