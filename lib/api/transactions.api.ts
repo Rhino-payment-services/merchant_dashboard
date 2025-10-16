@@ -5,10 +5,10 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL
 
 // Types for transaction filtering
 export interface TransactionFilter {
-  type?: 'CREDIT' | 'DEBIT'
-  status?: 'PENDING' | 'PROCESSING' | 'COMPLETED' | 'FAILED' | 'CANCELLED' | 'REFUNDED'
-  direction?: 'INBOUND' | 'OUTBOUND'
-  currency?: 'UGX' | 'KES' | 'USD' | 'EUR'
+  type?: string
+  status?: string
+  direction?: string
+  currency?: string
   startDate?: string
   endDate?: string
   month?: string // YYYY-MM format
@@ -16,6 +16,7 @@ export interface TransactionFilter {
   maxAmount?: number
   page?: number
   limit?: number
+  metadata?: any
 }
 
 // Transaction response types
@@ -25,9 +26,9 @@ export interface Transaction {
   userId: string
   amount: number
   currency: string
-  type: 'CREDIT' | 'DEBIT'
-  status: 'PENDING' | 'PROCESSING' | 'COMPLETED' | 'FAILED' | 'CANCELLED' | 'REFUNDED'
-  direction: 'INBOUND' | 'OUTBOUND'
+  type: string
+  status: string
+  direction: string
   description?: string
   reference?: string
   channel?: string
