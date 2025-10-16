@@ -47,6 +47,7 @@ export interface Transaction {
   metadata?: {
     revenue?: {
       amount: number
+      currency?: string
     }
     [key: string]: any
   }
