@@ -11,12 +11,33 @@ import { useUserProfile } from "../UserProfileProvider";
 import { RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
+import { getMyTransactions, Transaction } from "@/lib/api/wallet.api";
 
 export default function Home() {
   const router = useRouter();
   const { profile, loading, error, refetch, isRefetching } = useUserProfile();
+  const [recentTransactions, setRecentTransactions] = useState<Transaction[]>([]);
+  const [transactionsLoading, setTransactionsLoading] = useState(true);
+
   // Log the profile for debugging
   console.log("Dashboard Home profile:", profile);
+
+  // Fetch recent transactions
+  useEffect(() => {
+    const fetchRecentTransactions = async () => {
+      try {
+        setTransactionsLoading(true);
+        const data = await getMyTransactions({ limit: 5 });
+        setRecentTransactions(data.transactions);
+      } catch (error) {
+        console.error('Error fetching recent transactions:', error);
+      } finally {
+        setTransactionsLoading(false);
+      }
+    };
+
+    fetchRecentTransactions();
+  }, [isRefetching]);
 
   const handleRefresh = async () => {
     try {
@@ -85,13 +106,17 @@ export default function Home() {
         <div className="grid grid-cols-1 gap-6">
           {/* Recent Transactions */}
           <div className="lg:col-span-2 bg-white rounded-xl shadow p-4">
-            <RecentTransactions 
-              transactions={
-                profile?.profile?.merchant_transactions
-                  ?.sort((a, b) => new Date(b.rdbs_approval_date).getTime() - new Date(a.rdbs_approval_date).getTime())
-                  .slice(0, 5) || []
-              } 
-            />
+            {transactionsLoading ? (
+              <div className="flex items-center justify-center p-8">
+                <RefreshCw className="h-6 w-6 animate-spin text-blue-600" />
+                <span className="ml-2 text-gray-600">Loading transactions...</span>
+              </div>
+            ) : (
+              <RecentTransactions 
+                transactions={recentTransactions as any} 
+                isNewFormat={true}
+              />
+            )}
           </div>
         </div>
       </main>

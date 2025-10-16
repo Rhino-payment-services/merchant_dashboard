@@ -2,25 +2,23 @@
 
 import React, { useState, useRef, useEffect, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
+import { signIn } from 'next-auth/react';
 import { Button } from '../../../components/ui/button';
 import { Card } from '../../../components/ui/card';
 import { ArrowLeft, ArrowRight, Building2 } from 'lucide-react';
 import Image from 'next/image';
-import { verifyOtpApi } from '@/app/lib/mockBackend';
 import { toast } from 'sonner';
-import { useVerifyOtp } from '@/lib/api/auth.api';
-import { signIn } from 'next-auth/react';
 
 function OTPContent() {
   const router = useRouter();
   const searchParams:any = useSearchParams();
   const phoneNumber = searchParams.get('phoneNumber') || '';
+  const expiresIn = parseInt(searchParams.get('expiresIn') || '300'); // Default 5 minutes
   
   const [isLoading, setIsLoading] = useState(false);
   const [otp, setOtp] = useState(['', '', '', '', '', '']); // 6-digit OTP
-  const [countdown, setCountdown] = useState(30);
+  const [countdown, setCountdown] = useState(60); // Start countdown with 60 seconds
   const [canResend, setCanResend] = useState(false);
-  const verifyOtp = useVerifyOtp()
 
   // Refs for OTP input boxes
   const otpRefs = useRef<(HTMLInputElement | null)[]>([]);
@@ -58,30 +56,56 @@ function OTPContent() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    
     // Validate OTP is complete
     if (otp.some(digit => digit === '')) {
       toast.error('Please enter complete 6-digit OTP');
       return;
     }
+    
     setIsLoading(true);
+    
     try {
-      // Use NextAuth signIn with credentials provider
-      const res = await signIn("credentials", {
+      const otpCode = otp.join('');
+      
+      console.log('🔐 Signing in with NextAuth...', { phoneNumber, otp: otpCode });
+      
+      // Use NextAuth signIn
+      const result = await signIn('merchant-otp', {
+        phoneNumber,
+        otp: otpCode,
         redirect: false,
-        phoneNumber: phoneNumber,
-        otp: otp.join(''),
       });
-      if (res?.ok) {
-        toast.success("Login successfully");
-        router.push("/");
+      
+      console.log('📥 NextAuth Result:', result);
+      
+      if (result?.error) {
+        console.error('❌ Sign in failed:', result.error);
+        toast.error(result.error || 'Invalid OTP. Please try again.');
         setIsLoading(false);
-      } else {
-        setIsLoading(false);
-        toast.error("Something went wrong, please try again later");
+        return;
       }
-    } catch (err: any) {
+      
+      if (result?.ok) {
+        console.log('✅ Sign in successful!');
+        toast.success('OTP verified successfully!');
+        
+        // Small delay before redirect
+        await new Promise(resolve => setTimeout(resolve, 100));
+        
+        // Redirect to dashboard
+        console.log('🔄 Redirecting to dashboard...');
+        router.push('/');
+        router.refresh(); // Refresh to load session
+      } else {
+        console.error('❌ Unexpected sign in result:', result);
+        toast.error('Authentication failed. Please try again.');
+        setIsLoading(false);
+      }
+    } catch (error: any) {
+      console.error('❌ Sign in error:', error);
+      toast.error(error?.message || 'Invalid OTP, please try again');
       setIsLoading(false);
-      toast.error(err.message || 'Invalid OTP');
     }
   };
 

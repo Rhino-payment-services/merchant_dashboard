@@ -2,26 +2,27 @@
 import type { Metadata } from "next";
 import Sidebar from "../components/Sidebar";
 import Topbar from "../components/Topbar";
-import { useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
-import { useSession } from 'next-auth/react';
+import { useState, useEffect } from 'react';
+import MerchantAuthGuard from "@/components/auth/MerchantAuthGuard";
 import { UserProfileProvider } from "./UserProfileProvider";
-
+import { startTokenRefresh, stopTokenRefresh } from "@/lib/utils/token-refresh";
 
 export default function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  const router = useRouter();
-  const { data: session, status } = useSession();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
+  // Start token refresh when layout mounts
   useEffect(() => {
-    if (status === 'unauthenticated') {
-      router.replace('/auth/login');
-    }
-  }, [router, status]);
+    startTokenRefresh();
+    
+    // Cleanup on unmount
+    return () => {
+      stopTokenRefresh();
+    };
+  }, []);
 
   const toggleMobileMenu = () => {
     setIsMobileMenuOpen(!isMobileMenuOpen);
@@ -31,33 +32,8 @@ export default function RootLayout({
     setIsMobileMenuOpen(false);
   };
 
-  // Show loading spinner while checking authentication
-  if (status === 'loading') {
-    return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="flex flex-col items-center gap-4">
-          <div className="w-8 h-8 border-4 border-main-600 border-t-transparent rounded-full animate-spin"></div>
-          <p className="text-gray-600">Loading...</p>
-        </div>
-      </div>
-    );
-  }
-
-  // Redirect to login if not authenticated
-  if (status === 'unauthenticated') {
-    return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="flex flex-col items-center gap-4">
-          <div className="w-8 h-8 border-4 border-main-600 border-t-transparent rounded-full animate-spin"></div>
-          <p className="text-gray-600">Redirecting to login...</p>
-        </div>
-      </div>
-    );
-  }
-
-  // Show dashboard if authenticated
-  if (status === 'authenticated') {
-    return (
+  return (
+    <MerchantAuthGuard>
       <UserProfileProvider>
         <div className="w-full h-screen flex bg-gray-50 overflow-hidden">
           {/* Sidebar */}
@@ -82,9 +58,6 @@ export default function RootLayout({
           </div>
         </div>
       </UserProfileProvider>
-    );
-  }
-
-  // Fallback
-  return null;
+    </MerchantAuthGuard>
+  );
 }

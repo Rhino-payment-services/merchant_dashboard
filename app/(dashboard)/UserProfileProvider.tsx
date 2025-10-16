@@ -1,6 +1,6 @@
 "use client";
 import React, { createContext, useContext } from "react";
-import { useSession } from "next-auth/react";
+import { useMerchantAuth } from "@/lib/context/MerchantAuthContext";
 import { useQuery } from "@tanstack/react-query";
 import axios from "axios";
 
@@ -42,7 +42,7 @@ export function UserProfileProvider({
 }: {
   children: React.ReactNode;
 }) {
-  const { data: session, status } = useSession();
+  const { user, isAuthenticated } = useMerchantAuth();
 
   const {
     data: profile,
@@ -51,18 +51,25 @@ export function UserProfileProvider({
     refetch,
     isRefetching
   } = useQuery({
-    queryKey: ['userProfile', session?.user?.merchantId],
+    queryKey: ['userProfile', user?.id],
     queryFn: async () => {
-      if (!session?.user?.merchantId) {
-        throw new Error('No merchant ID');
-      }
-      const response = await axios.post(
-        `${process.env.NEXT_PUBLIC_MERCHANT_URL}/merchant-profile`,
-        { merchantId: session.user.merchantId }
-      );
-      return response.data;
+      // For now, return the user data from the auth context as profile
+      // You can later enhance this to fetch additional profile data if needed
+      return {
+        profile: {
+          merchantId: user?.id || '',
+          merchant_names: `${user?.profile?.firstName || ''} ${user?.profile?.lastName || ''}`.trim(),
+          merchant_phone: user?.phone || '',
+          merchant_balance: 0,
+          merchant_card: '',
+          merchant_card_exp: '',
+          merchant_card_number: '',
+          merchant_status: user?.status || 'ACTIVE',
+          merchant_transactions: []
+        }
+      };
     },
-    enabled: status === "authenticated" && !!session?.user?.merchantId,
+    enabled: isAuthenticated && !!user?.id,
     refetchInterval: 30000, // Refetch every 30 seconds
     refetchIntervalInBackground: true, // Continue polling even when tab is not active
     staleTime: 10000, // Consider data stale after 10 seconds

@@ -1,53 +1,83 @@
 import { useMutation, useQuery } from "@tanstack/react-query"
 import axios from "axios"
 
-const merchantUrl = process.env.NEXT_PUBLIC_MERCHANT_URL
+const API_URL = process.env.NEXT_PUBLIC_API_URL
 
-interface validate {
+interface MerchantLoginRequest {
     phoneNumber: string
 }
-const verifyPhoneNumber = async (data: validate)=>{
-    try {
-        const response = await axios.post(`${merchantUrl}/merchant/verify-phone-number`, data)
-        console.log("response=====>", response)
-        return response.data
-        
-    } catch (error) {
-        console.log(error)
-        throw error
-        
-    }
+
+interface MerchantOTPRequest {
+    phoneNumber: string
+    otp: string
 }
 
-export const useVerifyPhoneNumber =()=>{
-    return useMutation({
-        mutationKey: ['verify-phone-number'],
-        mutationFn:  verifyPhoneNumber
-    })
-}
-
-const verifyOtp = async()=>{
-    const response = await  axios.post(`${merchantUrl}/merchant/verify-otp-and-phonenumber`)
+// Merchant login (send OTP)
+const merchantLogin = async (data: MerchantLoginRequest) => {
+    const response = await axios.post(`${API_URL}/auth/merchant/login`, data)
     return response.data
 }
 
-export const useVerifyOtp = ()=>{
-    useMutation({
-        mutationKey: ['verify-otp'],
-        mutationFn: verifyOtp
-    })
+// Merchant OTP verification
+const merchantVerifyOtp = async (data: MerchantOTPRequest) => {
+    const response = await axios.post(`${API_URL}/auth/merchant/verify-otp`, data)
+    return response.data
 }
 
+export const useMerchantLogin = () => useMutation({
+    mutationKey: ['merchant-login'],
+    mutationFn: merchantLogin
+})
 
-export const useGetProfile = (id:string)=>{
-    useQuery({
-        queryKey: ['get-profile',id],
-        queryFn: async()=>{
-            const response = await axios.post(`${merchantUrl}/merchant-profile`, {
+export const useMerchantVerifyOtp = () => useMutation({
+    mutationKey: ['merchant-verify-otp'],
+    mutationFn: merchantVerifyOtp
+})
+
+// Legacy functions for backward compatibility
+interface validate {
+    phoneNumber: string
+}
+
+const verifyPhoneNumber = async (data: validate) => {
+    try {
+        const response = await axios.post(`${API_URL}/merchant/verify-phone-number`, data)
+        console.log("response=====>", response)
+        return response.data
+    } catch (error) {
+        console.log("error=====>", error)
+        throw error
+    }
+}
+
+const verifyOtp = async (data: any) => {
+    try {
+        const response = await axios.post(`${API_URL}/merchant/verify-otp-and-phonenumber`, data)
+        return response.data
+    } catch (error) {
+        console.log("error=====>", error)
+        throw error
+    }
+}
+
+export const useVerifyPhoneNumber = () => useMutation({
+    mutationKey: ['verify-phone-number'],
+    mutationFn: verifyPhoneNumber
+})
+
+export const useVerifyOtp = () => useMutation({
+    mutationKey: ['verify-otp'],
+    mutationFn: verifyOtp
+})
+
+export const useGetProfile = (id: string) => {
+    return useQuery({
+        queryKey: ['get-profile', id],
+        queryFn: async () => {
+            const response = await axios.post(`${API_URL}/merchant-profile`, {
                 merchantId: id,
-              });
-              return response.data
+            });
+            return response.data
         }
     })
 }
-

@@ -7,7 +7,7 @@ import { Card } from '../../../components/ui/card';
 import { Phone, Lock, Building2, ArrowRight, ChevronDown } from 'lucide-react';
 import Image from 'next/image';
 import { toast } from 'sonner';
-import { useVerifyPhoneNumber } from '@/lib/api/auth.api';
+import { useMerchantLogin } from '@/lib/api/auth.api';
 
 // Country codes data
 const countryCodes = [
@@ -32,7 +32,7 @@ export default function LoginPage() {
     pin: ['', '', '', '', '', ''], // 6-digit PIN
     rememberMe: false
   });
- const verifyPhoneNumber = useVerifyPhoneNumber()
+ const merchantLogin = useMerchantLogin()
 
 
   // Refs for PIN input boxes
@@ -107,11 +107,16 @@ export default function LoginPage() {
       phoneNumber
     };
 
-    const response = await verifyPhoneNumber.mutateAsync(data);
-    if (response.status == 1) {
-      router.push(`/auth/otp?phoneNumber=${phoneNumber}`);
-    } else {
-      toast.error(response?.message || 'Something went wrong please try again later ');
+    try {
+      const response = await merchantLogin.mutateAsync(data);
+      if (response.success) {
+        toast.success(response.message || 'OTP sent successfully to your phone number');
+        router.push(`/auth/otp?phoneNumber=${phoneNumber}&expiresIn=${response.expiresIn}`);
+      } else {
+        toast.error(response?.message || 'Something went wrong please try again later');
+      }
+    } catch (error: any) {
+      toast.error(error?.response?.data?.message || 'Something went wrong please try again later');
     }
   };
 
@@ -232,21 +237,21 @@ export default function LoginPage() {
 
             <Button
               type="submit"
-              disabled={verifyPhoneNumber.isPending}
-              className={`w-full py-3 font-medium rounded-lg transition-all duration-200 flex items-center justify-center gap-2 ${
-                verifyPhoneNumber.isPending
-                  ? 'bg-main-600 hover:bg-main-700 text-white'
-                  : 'bg-gray-300 text-gray-500 cursor-not-allowed'
+              disabled={merchantLogin.isPending || !formData.phoneNumber || formData.phoneNumber.length < 8}
+              className={` cursor-pointer w-full py-3 font-medium rounded-lg transition-all duration-200 flex items-center justify-center gap-2 ${
+                (merchantLogin.isPending || !formData.phoneNumber || formData.phoneNumber.length < 8)
+                  ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                  : 'bg-main-600 hover:bg-main-700 text-white'
               }`}
             >
-              {verifyPhoneNumber.isPending ? (
+              {merchantLogin.isPending ? (
                 <>
-                  <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                  Signing in...
+                  <div className="w-5 h-5  border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                  Sending OTP...
                 </>
               ) : (
                 <>
-                  Sign in to Dashboard
+                  Send OTP
                   <ArrowRight className="w-4 h-4" />
                 </>
               )}

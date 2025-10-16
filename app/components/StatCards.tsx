@@ -1,31 +1,73 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { Card, CardContent, CardHeader } from '../../components/ui/card';
 import { useUserProfile } from '../(dashboard)/UserProfileProvider';
 import { RefreshCw } from 'lucide-react';
+import { getWalletBalance, getMyTransactions } from '@/lib/api/wallet.api';
 
 export default function StatCards() {
   const {profile, loading, isRefetching} = useUserProfile()
+  const [walletBalance, setWalletBalance] = useState<number>(0);
+  const [walletLoading, setWalletLoading] = useState(true);
+  const [totalTransactions, setTotalTransactions] = useState<number>(0);
+  const [totalCredit, setTotalCredit] = useState<number>(0);
+  const [totalDebit, setTotalDebit] = useState<number>(0);
 
   console.log("profile", profile)
 
+  // Fetch wallet balance and transactions
+  useEffect(() => {
+    const fetchWalletData = async () => {
+      try {
+        setWalletLoading(true);
+        
+        // Fetch wallet balance
+        const balanceData = await getWalletBalance();
+        setWalletBalance(balanceData.balance);
+
+        // Fetch transactions to calculate totals
+        const transactionsData = await getMyTransactions({ limit: 1000 });
+        setTotalTransactions(transactionsData.total);
+
+        // Calculate total credit (incoming money)
+        const credit = transactionsData.transactions
+          .filter(t => t.direction === 'CREDIT' && t.status === 'SUCCESS')
+          .reduce((sum, t) => sum + t.amount, 0);
+        setTotalCredit(credit);
+
+        // Calculate total debit (outgoing money)
+        const debit = transactionsData.transactions
+          .filter(t => t.direction === 'DEBIT' && t.status === 'SUCCESS')
+          .reduce((sum, t) => sum + (t.amount + t.fee), 0);
+        setTotalDebit(debit);
+
+      } catch (error) {
+        console.error('Error fetching wallet data:', error);
+      } finally {
+        setWalletLoading(false);
+      }
+    };
+
+    fetchWalletData();
+  }, [isRefetching]); // Refetch when dashboard is refreshed
+
   const stats = [
     {
-      label: 'Current balance ',
-      value: `${!loading ? `${Number(profile?.profile?.merchant_balance).toLocaleString()} UGX` : "..."}`,
+      label: 'Current balance',
+      value: walletLoading ? '...' : `${walletBalance.toLocaleString()} UGX`,
       change: '+15,7%',
       changeType: 'up',
       icon: '💰',
     },
     {
       label: 'Total transactions',
-      value: `${!loading ? profile?.profile?.merchant_transactions.length : '....'}`,
+      value: walletLoading ? '....' : `${totalTransactions}`,
       change: '+1,5%',
       changeType: 'up',
       icon: '🛒',
     },
     {
       label: 'Total Credit',
-      value: `${!loading ? `${Number(profile?.profile.merchant_balance).toLocaleString()} UGX` : "....."}`,
+      value: walletLoading ? '.....' : `${totalCredit.toLocaleString()} UGX`,
       change: '-2,5%',
       changeType: 'down',
       icon: '📦',
@@ -33,7 +75,7 @@ export default function StatCards() {
   
     {
       label: 'Total Debit',
-      value: `${!loading ? '0.00 UGX' : '....'}`,
+      value: walletLoading ? '....' : `${totalDebit.toLocaleString()} UGX`,
       change: '+32,6%',
       changeType: 'up',
       icon: '👥',

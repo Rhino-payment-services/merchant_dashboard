@@ -40,19 +40,23 @@ type Transaction = {
 
 interface transactionType {
   transactions?: any[];
+  isNewFormat?: boolean;
 }
 
-export default function RecentTransactions({ transactions }: transactionType) {
+export default function RecentTransactions({ transactions, isNewFormat = false }: transactionType) {
   const router = useRouter();
   const { isRefetching } = useUserProfile();
 
-  // Sort transactions by rdbs_approval_date in descending order (newest first)
+  // Sort transactions - handle both old and new formats
   const sortedTransactions = useMemo(() => {
     if (!transactions) return [];
-    return [...transactions].sort((a, b) => 
-      new Date(b.rdbs_approval_date).getTime() - new Date(a.rdbs_approval_date).getTime()
-    );
-  }, [transactions]);
+    return [...transactions].sort((a, b) => {
+      if (isNewFormat) {
+        return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+      }
+      return new Date(b.rdbs_approval_date).getTime() - new Date(a.rdbs_approval_date).getTime();
+    });
+  }, [transactions, isNewFormat]);
 
   const handleViewAll = () => {
     router.push("/transactions");
@@ -109,23 +113,62 @@ export default function RecentTransactions({ transactions }: transactionType) {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {sortedTransactions?.map((txn:any, idx: number) => (
-              <TableRow key={txn.rdbs_transaction_id || idx} className="hover:bg-gray-100 transition">
-              <TableCell className="font-mono text-xs">{txn.rdbs_transaction_id}</TableCell>
-              <TableCell>
-                {new Date(txn.rdbs_approval_date).toDateString()}
-              </TableCell>
-              <TableCell>
-                {new Date(txn.rdbs_approval_date).toLocaleTimeString()}
-              </TableCell>
-              <TableCell>{txn.rdbs_sender_name === "Unknown" ? txn.rdbs_obj_uri_receiver : txn.rdbs_sender_name}</TableCell>
-              <TableCell>{Number(txn.rdbs_amount).toLocaleString()} UGX</TableCell>
-              <TableCell>{txn.rdbs_description}</TableCell>
-              <TableCell>
-                  <span className={`px-2 py-1 rounded text-xs font-medium ${statusColor[txn.rdbs_approval_status as StatusType]}`}>{txn.rdbs_approval_status}</span>
-              </TableCell>
-            </TableRow> 
-              ))}
+              {sortedTransactions?.map((txn:any, idx: number) => {
+                // Map new format status to old format
+                const getStatusDisplay = () => {
+                  if (isNewFormat) {
+                    const statusMap: Record<string, StatusType> = {
+                      'SUCCESS': 'approved',
+                      'PENDING': 'pending',
+                      'PROCESSING': 'pending',
+                      'FAILED': 'failed',
+                      'CANCELLED': 'failed'
+                    };
+                    return statusMap[txn.status] || 'pending';
+                  }
+                  return txn.rdbs_approval_status as StatusType;
+                };
+
+                return (
+                  <TableRow key={isNewFormat ? txn.id : txn.rdbs_transaction_id || idx} className="hover:bg-gray-100 transition">
+                    <TableCell className="font-mono text-xs">
+                      {isNewFormat ? txn.reference : txn.rdbs_transaction_id}
+                    </TableCell>
+                    <TableCell>
+                      {isNewFormat 
+                        ? new Date(txn.createdAt).toDateString()
+                        : new Date(txn.rdbs_approval_date).toDateString()
+                      }
+                    </TableCell>
+                    <TableCell>
+                      {isNewFormat 
+                        ? new Date(txn.createdAt).toLocaleTimeString()
+                        : new Date(txn.rdbs_approval_date).toLocaleTimeString()
+                      }
+                    </TableCell>
+                    <TableCell>
+                      {isNewFormat 
+                        ? (txn.metadata?.recipientName || txn.metadata?.senderName || 'N/A')
+                        : (txn.rdbs_sender_name === "Unknown" ? txn.rdbs_obj_uri_receiver : txn.rdbs_sender_name)
+                      }
+                    </TableCell>
+                    <TableCell>
+                      {isNewFormat 
+                        ? `${Number(txn.amount).toLocaleString()} ${txn.currency}`
+                        : `${Number(txn.rdbs_amount).toLocaleString()} UGX`
+                      }
+                    </TableCell>
+                    <TableCell>
+                      {isNewFormat ? txn.description : txn.rdbs_description}
+                    </TableCell>
+                    <TableCell>
+                      <span className={`px-2 py-1 rounded text-xs font-medium ${statusColor[getStatusDisplay()]}`}>
+                        {isNewFormat ? txn.status.toLowerCase() : txn.rdbs_approval_status}
+                      </span>
+                    </TableCell>
+                  </TableRow> 
+                );
+              })}
             </TableBody>
           </Table>
         </>

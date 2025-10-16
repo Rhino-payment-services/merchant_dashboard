@@ -5,7 +5,8 @@ import "./globals.css";
 import ReactQueryProvider from './components/ReactQueryProvider';
 import React from 'react';
 import { Toaster } from 'sonner';
-import { SessionProvider } from 'next-auth/react';
+import { SessionProvider } from "next-auth/react";
+import { usePathname } from 'next/navigation';
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
