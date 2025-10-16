@@ -8,7 +8,7 @@ import { useMyTransactions, TransactionFilter } from '@/lib/api/transactions.api
 import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, RefreshCw } from 'lucide-react';
 import { toast } from 'sonner';
 
-type StatusType = 'COMPLETED' | 'PENDING' | 'PROCESSING' | 'FAILED' | 'CANCELLED' | 'REFUNDED';
+type StatusType = 'COMPLETED' | 'PENDING' | 'PROCESSING' | 'FAILED' | 'CANCELLED' | 'REFUNDED' | "SUCCESS";
 const statusColor: Record<StatusType, string> = {
   COMPLETED: 'text-green-600 bg-green-50',
   PENDING: 'text-yellow-700 bg-yellow-50',
@@ -16,6 +16,7 @@ const statusColor: Record<StatusType, string> = {
   FAILED: 'text-red-600 bg-red-50',
   CANCELLED: 'text-gray-600 bg-gray-50',
   REFUNDED: 'text-orange-600 bg-orange-50',
+  SUCCESS: 'text-green-600 bg-green-50',
 };
 
 export default function TransactionsPage() {
@@ -194,6 +195,7 @@ export default function TransactionsPage() {
                 <TableRow>
                   <TableHead>Transaction ID</TableHead>
                   <TableHead>Amount</TableHead>
+                  <TableHead>Charges</TableHead>
                   <TableHead>Type</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead>Description</TableHead>
@@ -223,23 +225,28 @@ export default function TransactionsPage() {
                         {transaction.reference}
                       </TableCell>
                       <TableCell>
-                        <div className="font-medium">
-                          {new Intl.NumberFormat('en-UG', { 
-                            style: 'currency', 
-                            currency: transaction.currency 
-                          }).format(transaction.amount)}
+                        <div className="font-[25px]">
+                          <span className='text-[12px]'>
+                            UGX &nbsp;
+                          </span>
+                         {Number(transaction.amount).toLocaleString()}
                         </div>
-                        <div className="text-sm text-gray-500">
-                          {transaction.type === 'CREDIT' ? '+' : '-'}
+                      </TableCell>
+                      <TableCell>
+                        <div className="font-[25px]">
+                          <span className='text-[12px]'>
+                           {transaction.metadata?.revenue?.currency ?? ""} &nbsp;
+                          </span>
+                         {transaction.metadata?.revenue?.amount?.toLocaleString() ?? "N/A"}
                         </div>
                       </TableCell>
                       <TableCell>
                         <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
-                          transaction.type === 'CREDIT' 
+                          transaction.direction === 'CREDIT' 
                             ? 'bg-green-100 text-green-800' 
                             : 'bg-red-100 text-red-800'
                         }`}>
-                          {transaction.direction === 'INBOUND' ? 'Inbound' : 'Outbound'}
+                          {transaction.direction}
                         </span>
                       </TableCell>
                       <TableCell>
