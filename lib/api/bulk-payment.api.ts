@@ -59,6 +59,7 @@ export interface BulkTransactionItemResult {
   currency: string
   externalReference?: string
   error?: string
+  errorMessage?: string  // Backend uses this field
   processedAt: string
 }
 
