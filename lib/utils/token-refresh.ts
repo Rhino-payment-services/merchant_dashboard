@@ -1,6 +1,19 @@
 import axios from 'axios'
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL
+// Get API URL based on app environment (not NODE_ENV)
+const getApiUrl = () => {
+  const appEnv = process.env.NEXT_PUBLIC_APP_ENV || 'development';
+  
+  if (appEnv === 'production') {
+    return process.env.NEXT_PUBLIC_PRODUCTION_API_URL || process.env.NEXT_PUBLIC_API_URL;
+  } else if (appEnv === 'staging') {
+    return process.env.NEXT_PUBLIC_STAGING_API_URL || process.env.NEXT_PUBLIC_API_URL;
+  } else {
+    return process.env.NEXT_PUBLIC_DEV_API_URL || process.env.NEXT_PUBLIC_API_URL;
+  }
+};
+
+const API_URL = getApiUrl();
 const REFRESH_INTERVAL = 3.5 * 60 * 60 * 1000 // 3.5 hours (refresh before 4-hour expiry)
 
 let refreshTimer: NodeJS.Timeout | null = null

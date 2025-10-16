@@ -1,7 +1,8 @@
 import { useQuery, useMutation, useInfiniteQuery } from "@tanstack/react-query"
 import apiClient from './client'
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL
+// API_URL is already set in apiClient, no need to redefine
+// Uses environment-specific URLs from client.ts
 
 // Types for transaction filtering
 export interface TransactionFilter {

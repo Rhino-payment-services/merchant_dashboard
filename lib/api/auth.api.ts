@@ -1,7 +1,6 @@
 import { useMutation, useQuery } from "@tanstack/react-query"
 import axios from "axios"
-
-const API_URL = process.env.NEXT_PUBLIC_API_URL
+import { API_URL } from '../config'
 
 interface MerchantLoginRequest {
     phoneNumber: string
