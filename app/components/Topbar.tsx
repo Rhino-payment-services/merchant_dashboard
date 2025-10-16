@@ -11,7 +11,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { removeCustomerId } from "@/app/lib/mockBackend";
 import { useRouter } from "next/navigation";
-import { useSession, signOut } from "next-auth/react";
+import { useMerchantAuth } from "@/lib/context/MerchantAuthContext";
 import { useUserProfile } from "../(dashboard)/UserProfileProvider";
 import { Menu, X } from "lucide-react";
 
@@ -43,28 +43,25 @@ interface TopbarProps {
 
 export default function Topbar({ onMenuToggle, isMenuOpen }: TopbarProps) {
   const router = useRouter();
+  const { user, logout } = useMerchantAuth();
   
   const handleLogout = async () => {
     try {
       // Clear any local storage/session storage
       removeCustomerId();
       
-      // Sign out from NextAuth
-      await signOut({ 
-        redirect: false, // We'll handle the redirect manually
-        callbackUrl: '/auth/login' 
-      });
+      // Sign out using merchant auth
+      logout();
       
       // Force redirect to login page
       window.location.href = '/auth/login';
     } catch (error) {
       console.error('Logout error:', error);
-      // Fallback: force redirect even if signOut fails
+      // Fallback: force redirect even if logout fails
       window.location.href = '/auth/login';
     }
   };
 
-  const { data: userData, status } = useSession();
   const { profile, loading } = useUserProfile();
 
   // Set default date range to current year (January 1st to December 31st)
@@ -129,11 +126,12 @@ export default function Topbar({ onMenuToggle, isMenuOpen }: TopbarProps) {
             <button className="flex items-center gap-2 focus:outline-none cursor-pointer">
               <span className="w-10 h-10 rounded-full flex items-center justify-center bg-gray-300">
                 <span className="font-medium text-gray-700 uppercase">
-                  {`${
-                    profile?.profile?.merchant_names?.split(" ")[0]?.[0] || ""
-                  }${
-                    profile?.profile?.merchant_names?.split(" ")[1]?.[0] || ""
-                  }`}
+                  {loading 
+                    ? '...' 
+                    : `${profile?.profile?.merchant_names?.split(" ")[0]?.[0] || user?.profile?.firstName?.[0] || "M"}${
+                        profile?.profile?.merchant_names?.split(" ")[1]?.[0] || user?.profile?.lastName?.[0] || "M"
+                      }`
+                  }
                 </span>
               </span>
             </button>

@@ -3,7 +3,7 @@
 import React, { useRef, useState } from 'react';
 import QRCode from 'qrcode';
 import html2canvas from 'html2canvas';
-import { useSession } from 'next-auth/react';
+import { useMerchantAuth } from "@/lib/context/MerchantAuthContext";
 import { useUserProfile } from '../(dashboard)/UserProfileProvider';
 import { 
   Dialog, 
@@ -41,13 +41,15 @@ export default function QRCodeButton({ merchantCode, merchantName, variant = "de
   const [qrCodeUrl, setQrCodeUrl] = useState<string>('');
   const [isLoading, setIsLoading] = useState(false);
   const qrCodeRef = useRef<HTMLDivElement>(null);
-  const { data: session } = useSession();
+  const { user } = useMerchantAuth();
+  const merchantCodeValue2 = user?.merchantCode || "";
 
   // Generate QR code when component mounts
   React.useEffect(() => {
     const generateQR = async () => {
       try {
-        const qrData = session?.user?.merchantId || merchantCode || "";
+        const merchantCodeValue = user?.merchantCode || "";
+        const qrData = `http://10.10.10.26:7220/receive_payment/${merchantCodeValue}`;
         const qrUrl = await QRCode.toDataURL(qrData, {
           width: 200,
           margin: 2,
@@ -63,7 +65,7 @@ export default function QRCodeButton({ merchantCode, merchantName, variant = "de
     };
 
     generateQR();
-  }, [session?.user?.merchantId, merchantCode]);
+  }, [user?.merchantCode]);
 
   const handlePrint = async () => {
     if (!qrCodeRef.current) return;
@@ -122,7 +124,7 @@ export default function QRCodeButton({ merchantCode, merchantName, variant = "de
               <div class="qr-container">
                 <div class="merchant-info">
                   <div class="merchant-name">${merchantName}</div>
-                  <div class="merchant-code">Merchant Code: ${merchantCode}</div>
+                  <div class="merchant-code">Merchant Code: ${merchantCodeValue2}</div>
                 </div>
                 <img src="${canvas.toDataURL()}" alt="QR Code" class="qr-code" />
               </div>
@@ -162,7 +164,7 @@ export default function QRCodeButton({ merchantCode, merchantName, variant = "de
           ${merchantName}
         </div>
         <div style="margin-bottom: 16px; font-size: 14px; color: #6b7280;">
-          Merchant Code: ${merchantCode}
+          Merchant Code: ${merchantCodeValue2}
         </div>
         <div style="display: flex; justify-content: center;">
           <img src="${qrCodeUrl}" alt="QR Code" style="width: 192px; height: 192px; border: 1px solid #d1d5db; border-radius: 8px;" />
@@ -196,10 +198,12 @@ export default function QRCodeButton({ merchantCode, merchantName, variant = "de
   const handleShare = async () => {
     if (navigator.share) {
       try {
+        const merchantId = user?.merchantCode || "";
+        const merchantLink = `http://10.10.10.26:7220/receive_payment/${merchantId}`;
         await navigator.share({
           title: `${merchantName} - QR Code`,
-          text: `Scan this QR code to pay ${merchantName}`,
-          url: `rukapay://merchant/${merchantCode}`
+          text: ` Scan this QR code to pay ${merchantName}`,
+          url: merchantLink
         });
       } catch (error) {
         console.error('Error sharing:', error);
@@ -212,21 +216,23 @@ export default function QRCodeButton({ merchantCode, merchantName, variant = "de
 
   const handleCopyToClipboard = async () => {
     try {
-      await navigator.clipboard.writeText(`rukapay://merchant/${merchantCode}`);
+      const merchantId = user?.merchantCode || "";
+      const merchantLink = `http://10.10.10.26:7220/receive_payment/${merchantId}`;
+      await navigator.clipboard.writeText(merchantLink);
       // You could add a toast notification here
-      alert('Merchant code copied to clipboard!');
+      alert('Merchant link copied to clipboard!');
     } catch (error) {
       console.error('Error copying to clipboard:', error);
     }
   };
 
   const handleShareViaWhatsApp = () => {
-    const text = encodeURIComponent(`Scan this QR code to pay ${merchantName}: rukapay://merchant/${merchantCode}`);
+    const text = encodeURIComponent(`Scan this QR code to pay ${merchantName}: http://10.10.10.26:7220/receive_payment/?merchant_code=${user?.merchantCode || ""}`);
     window.open(`https://wa.me/?text=${text}`, '_blank');
   };
 
   const handleShareViaSMS = () => {
-    const text = encodeURIComponent(`Scan this QR code to pay ${merchantName}: rukapay://merchant/${merchantCode}`);
+    const text = encodeURIComponent(`Scan this QR code to pay ${merchantName}: http://10.10.10.26:7220/receive_payment/?merchant_code=${user?.merchantCode || merchantCode || ""}`);
     window.open(`sms:?body=${text}`, '_blank');
   };
 
@@ -255,7 +261,7 @@ export default function QRCodeButton({ merchantCode, merchantName, variant = "de
           <Card ref={qrCodeRef} className="p-6 bg-white">
             <div className="text-center space-y-3">
               <div className="font-semibold text-lg">{merchantName}</div>
-              <div className="text-sm text-gray-600">Merchant Code: {merchantCode}</div>
+              <div className="text-sm text-gray-600">Merchant Code: {merchantCodeValue2}</div>
               {qrCodeUrl && (
                 <div className="flex justify-center">
                   <img 

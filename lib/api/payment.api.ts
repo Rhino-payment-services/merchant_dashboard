@@ -1,5 +1,6 @@
 import { useMutation } from "@tanstack/react-query"
 import axios from "axios"
+import apiClient from './client'
 
 const validatePhoneNumber = async(data: any)=>{
     try {
@@ -147,3 +148,43 @@ export const useMobileMoneyCollection = () => {
       mutationFn: mobileMoneyCollection,
     });
   };
+
+// ===== NEW RDBS_CORE API INTEGRATION =====
+
+/**
+ * Process transaction using rdbs_core unified API
+ * @param data Transaction data with mode, amount, userId, etc.
+ */
+export const processTransaction = async (data: any) => {
+  try {
+    console.log("=== PROCESS TRANSACTION (RDBS_CORE) DEBUG ===");
+    console.log("Request Data:", data);
+    
+    const response = await apiClient.post('/transactions/process', data);
+    console.log("Process Transaction Response:", response.data);
+    return response.data;
+  } catch (error: any) {
+    console.error("Process Transaction Error:", error);
+    
+    // Extract error message from response
+    if (error.response?.data?.message) {
+      throw new Error(error.response.data.message);
+    } else if (error.response?.data?.error) {
+      throw new Error(error.response.data.error);
+    } else if (error.message) {
+      throw new Error(error.message);
+    } else {
+      throw new Error("Failed to process transaction");
+    }
+  }
+};
+
+/**
+ * React Query hook for processing transactions
+ */
+export const useProcessTransaction = () => {
+  return useMutation({
+    mutationKey: ["process-transaction"],
+    mutationFn: processTransaction,
+  });
+};

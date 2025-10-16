@@ -17,11 +17,18 @@ import { useUserProfile } from "../(dashboard)/UserProfileProvider";
 import { RefreshCw } from "lucide-react";
 
 
-type  StatusType = 'approved' | 'pending' | 'failed';
+type  StatusType = 'approved' | 'pending' | 'failed' | 'COMPLETED' | 'PENDING' | 'PROCESSING' | 'FAILED' | 'CANCELLED' | 'REFUNDED' | 'SUCCESS';
 const statusColor: Record<StatusType, string> = {
   approved: 'text-green-600 bg-green-50',
   pending: 'text-yellow-700 bg-yellow-50',
   failed: 'text-red-600 bg-red-50',
+  COMPLETED: 'text-green-600 bg-green-50',
+  PENDING: 'text-yellow-700 bg-yellow-50',
+  PROCESSING: 'text-blue-600 bg-blue-50',
+  FAILED: 'text-red-600 bg-red-50',
+  CANCELLED: 'text-gray-600 bg-gray-50',
+  REFUNDED: 'text-orange-600 bg-orange-50',
+  SUCCESS: 'text-green-600 bg-green-50',
 };
 
 
@@ -40,19 +47,23 @@ type Transaction = {
 
 interface transactionType {
   transactions?: any[];
+  isNewFormat?: boolean;
 }
 
-export default function RecentTransactions({ transactions }: transactionType) {
+export default function RecentTransactions({ transactions, isNewFormat = false }: transactionType) {
   const router = useRouter();
   const { isRefetching } = useUserProfile();
 
-  // Sort transactions by rdbs_approval_date in descending order (newest first)
+  // Sort transactions - handle both old and new formats
   const sortedTransactions = useMemo(() => {
     if (!transactions) return [];
-    return [...transactions].sort((a, b) => 
-      new Date(b.rdbs_approval_date).getTime() - new Date(a.rdbs_approval_date).getTime()
-    );
-  }, [transactions]);
+    return [...transactions].sort((a, b) => {
+      if (isNewFormat) {
+        return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+      }
+      return new Date(b.rdbs_approval_date).getTime() - new Date(a.rdbs_approval_date).getTime();
+    });
+  }, [transactions, isNewFormat]);
 
   const handleViewAll = () => {
     router.push("/transactions");
@@ -100,32 +111,81 @@ export default function RecentTransactions({ transactions }: transactionType) {
           <TableHeader>
               <TableRow>
                 <TableHead>Transaction ID</TableHead>
-                <TableHead>Date</TableHead>
-                <TableHead>Time</TableHead>
-                <TableHead>Customer</TableHead>
                 <TableHead>Amount</TableHead>
-                <TableHead>Description</TableHead>
+                <TableHead>Charges</TableHead>
+                <TableHead>Type</TableHead>
                 <TableHead>Status</TableHead>
+                <TableHead>Description</TableHead>
+                <TableHead>Created At</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {sortedTransactions?.map((txn:any, idx: number) => (
-              <TableRow key={txn.rdbs_transaction_id || idx} className="hover:bg-gray-100 transition">
-              <TableCell className="font-mono text-xs">{txn.rdbs_transaction_id}</TableCell>
-              <TableCell>
-                {new Date(txn.rdbs_approval_date).toDateString()}
-              </TableCell>
-              <TableCell>
-                {new Date(txn.rdbs_approval_date).toLocaleTimeString()}
-              </TableCell>
-              <TableCell>{txn.rdbs_sender_name === "Unknown" ? txn.rdbs_obj_uri_receiver : txn.rdbs_sender_name}</TableCell>
-              <TableCell>{Number(txn.rdbs_amount).toLocaleString()} UGX</TableCell>
-              <TableCell>{txn.rdbs_description}</TableCell>
-              <TableCell>
-                  <span className={`px-2 py-1 rounded text-xs font-medium ${statusColor[txn.rdbs_approval_status as StatusType]}`}>{txn.rdbs_approval_status}</span>
-              </TableCell>
-            </TableRow> 
-              ))}
+              {sortedTransactions?.map((txn:any, idx: number) => {
+                return (
+                  <TableRow key={isNewFormat ? txn.id : txn.rdbs_transaction_id || idx} className="hover:bg-gray-50 transition">
+                    <TableCell className="font-mono text-sm">
+                      {isNewFormat ? txn.reference : txn.rdbs_transaction_id}
+                    </TableCell>
+                    <TableCell>
+                      <div className="font-[25px]">
+                        <span className='text-[12px]'>
+                          {isNewFormat ? txn.currency : 'UGX'} &nbsp;
+                        </span>
+                        {isNewFormat 
+                          ? Number(txn.amount).toLocaleString()
+                          : Number(txn.rdbs_amount).toLocaleString()
+                        }
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <div className="font-[25px]">
+                        <span className='text-[12px]'>
+                          {txn.metadata?.revenue?.currency ?? ""} &nbsp;
+                        </span>
+                        {txn.metadata?.revenue?.amount?.toLocaleString() ?? "N/A"}
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
+                        txn.direction === 'CREDIT' 
+                          ? 'bg-green-100 text-green-800' 
+                          : 'bg-red-100 text-red-800'
+                      }`}>
+                        {txn.direction || (txn.rdbs_approval_status ? 'DEBIT' : 'N/A')}
+                      </span>
+                    </TableCell>
+                    <TableCell>
+                      <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${statusColor[txn.status as StatusType]}`}>
+                        {isNewFormat ? txn.status : txn.rdbs_approval_status}
+                      </span>
+                    </TableCell>
+                    <TableCell className="max-w-xs truncate">
+                      {isNewFormat 
+                        ? (txn.description || txn.reference || '-')
+                        : (txn.rdbs_description || '-')
+                      }
+                    </TableCell>
+                    <TableCell className="text-sm">
+                      {isNewFormat 
+                        ? new Date(txn.createdAt).toLocaleString('en-UG', {
+                            year: 'numeric',
+                            month: 'short',
+                            day: 'numeric',
+                            hour: '2-digit',
+                            minute: '2-digit'
+                          })
+                        : new Date(txn.rdbs_approval_date).toLocaleString('en-UG', {
+                            year: 'numeric',
+                            month: 'short',
+                            day: 'numeric',
+                            hour: '2-digit',
+                            minute: '2-digit'
+                          })
+                      }
+                    </TableCell>
+                  </TableRow> 
+                );
+              })}
             </TableBody>
           </Table>
         </>
