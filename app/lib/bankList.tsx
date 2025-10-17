@@ -25,3 +25,4 @@ export const UGANDAN_BANKS = [
     { "bankName": "NC Bank", "bankSortCode": "350147" },
     { "bankName": "Post Bank Uganda", "bankSortCode": "560147" }
   ];
+  
