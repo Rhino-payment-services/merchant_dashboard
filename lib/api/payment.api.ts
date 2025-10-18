@@ -4,7 +4,14 @@ import apiClient from './client'
 
 const validatePhoneNumber = async(data: any)=>{
     try {
-        const response = await axios.post(`${process.env.NEXT_PUBLIC_SANDBOX_URL}/abc/secure/mobile-money/validate-phone-number`, data)
+        // Use rdbs_core validation endpoint with transaction type
+        const validationData = {
+            transactionType: 'WALLET_TO_MNO', // Specify this is for withdrawal/disbursement
+            phoneNumber: data.phoneNumber,
+            amount: data.amount
+        };
+        
+        const response = await apiClient.post('/transactions/validate', validationData)
         console.log("Response data validate phone number========>", response.data)
         
         // Check if the response indicates an error (status: 0)
@@ -31,7 +38,15 @@ const validatePhoneNumber = async(data: any)=>{
 
 const validateBankAccount = async(data: any)=>{
     try {
-        const response = await axios.post(`${process.env.NEXT_PUBLIC_SANDBOX_URL}/abc/secure/bank/validate-account`, data)
+        // Use rdbs_core validation endpoint with transaction type
+        const validationData = {
+            transactionType: 'WALLET_TO_BANK', // Specify this is for bank transfer
+            accountNumber: data.accountNumber,
+            bankSortCode: data.bankSortCode,
+            amount: data.amount
+        };
+        
+        const response = await apiClient.post('/transactions/validate', validationData)
         console.log("Response data validate bank account========>", response.data)
         
         // Check if the response indicates an error (status: 0)
