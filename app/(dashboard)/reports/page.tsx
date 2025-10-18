@@ -284,12 +284,13 @@ export default function ReportsPage() {
   return (
     <div className="min-h-screen bg-gray-50 py-6 px-4 md:px-8">
       <div className="max-w-7xl mx-auto" id="report-content">
-        {/* Header */}
-        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-8">
-          <div>
-            <h1 className="text-3xl font-bold text-gray-900">Reports & Analytics</h1>
-            <p className="text-gray-600 mt-1">Comprehensive transaction analysis and insights</p>
-          </div>
+        {/* Page Header */}
+        <div className="mb-8">
+          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+            <div>
+              <h1 className="text-3xl font-bold text-[#08163d] mb-2">Reports & Analytics</h1>
+              <p className="text-gray-600">Comprehensive transaction analysis and insights</p>
+            </div>
           <div className="flex gap-2">
             <Button 
               onClick={exportToPDF} 

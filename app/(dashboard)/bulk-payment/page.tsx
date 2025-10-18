@@ -526,12 +526,13 @@ export default function BulkPaymentPage() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 p-6">
       <div className="max-w-7xl mx-auto space-y-6">
-        {/* Header */}
-        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-          <div>
-            <h1 className="text-3xl font-bold text-gray-900 mb-2">Bulk Payments</h1>
-            <p className="text-gray-600">Process multiple payments at once with mixed payment methods</p>
-          </div>
+        {/* Page Header */}
+        <div className="mb-8">
+          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+            <div>
+              <h1 className="text-3xl font-bold text-[#08163d] mb-2">Bulk Payments</h1>
+              <p className="text-gray-600">Process multiple payments at once with mixed payment methods</p>
+            </div>
           
           <Card className="md:w-80 bg-gradient-to-br from-purple-600 to-purple-700 text-white border-0">
             <CardContent className="pt-6">

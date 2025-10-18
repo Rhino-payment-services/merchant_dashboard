@@ -98,8 +98,8 @@ export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
         </div>
 
         {/* Logo */}
-        <div className="mb-8 flex items-center gap-2">
-          <Image src="/images/merchantIcon.png" alt="RukaPay" width={60} height={60} className='rounded-xl' />
+        <div className="mb-8 flex items-center gap-3">
+          <Image src="/images/logo.jpg" alt="RukaPay" width={48} height={48} className='rounded-lg shadow-sm' />
           <span className="text-2xl font-bold text-[#08163d]">RukaPay</span>
         </div>
 

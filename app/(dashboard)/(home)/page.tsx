@@ -53,18 +53,22 @@ export default function Home() {
   return (
     <div className="flex-1 flex flex-col">
       <main className="flex-1 p-4 md:p-8 space-y-6">
-        {/* QR Code Button - Prominent placement */}
-        <div className="flex flex-row justify-between">
-          <div className="flex flex-row gap-[10px] items-center">
-            <span className="font-[800] text-[18px] text-[#08163d]">Welcome to </span>
-            <span>{profile?.profile.merchant_names}</span>
-            {isRefetching && (
-              <span className="text-xs text-blue-600 bg-blue-50 px-2 py-1 rounded-full flex items-center gap-1">
-                <RefreshCw className="h-3 w-3 animate-spin" />
-                Updating...
-              </span>
-            )}
-          </div>
+        {/* Page Header */}
+        <div className="mb-8">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+            <div>
+              <h1 className="text-3xl font-bold text-[#08163d] mb-2">Dashboard</h1>
+              <div className="flex flex-row gap-[10px] items-center">
+                <span className="font-[600] text-[16px] text-gray-600">Welcome back, </span>
+                <span className="font-[600] text-[16px] text-[#08163d]">{profile?.profile.merchant_names}</span>
+                {isRefetching && (
+                  <span className="text-xs text-blue-600 bg-blue-50 px-2 py-1 rounded-full flex items-center gap-1">
+                    <RefreshCw className="h-3 w-3 animate-spin" />
+                    Updating...
+                  </span>
+                )}
+              </div>
+            </div>
           <div className="flex items-center gap-2">
             <Button
               variant="outline"

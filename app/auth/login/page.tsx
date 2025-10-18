@@ -127,8 +127,8 @@ export default function LoginPage() {
       <div className="w-full max-w-md">
         <div className="text-center mb-8">
           <div className="flex items-center justify-center mb-4">
-            <div className="w-12 h-12  rounded-xl flex items-center justify-center mr-3">
-              <Image src="/images/merchantIcon.png" alt="RukaPay" width={48} height={48} className='rounded-xl' />
+            <div className="w-12 h-12 rounded-xl flex items-center justify-center mr-3">
+              <Image src="/images/logo.jpg" alt="RukaPay" width={48} height={48} className='rounded-xl shadow-sm' />
             </div>
             <span className="text-3xl font-bold text-gray-900">RukaPay</span>
           </div>

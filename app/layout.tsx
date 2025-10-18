@@ -1,4 +1,4 @@
-"use client"
+"use client";
 import type { Metadata } from "next";
 import { Geist, Geist_Mono,Outfit } from "next/font/google";
 import "./globals.css";
@@ -6,7 +6,7 @@ import ReactQueryProvider from './components/ReactQueryProvider';
 import React from 'react';
 import { Toaster } from 'sonner';
 import { SessionProvider } from "next-auth/react";
-import { usePathname } from 'next/navigation';
+import Head from 'next/head';
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -32,6 +32,15 @@ export default function RootLayout({
   const available = true
   return (
     <html lang="en">
+      <Head>
+        <title>RukaPay Merchant Dashboard</title>
+        <meta name="description" content="RukaPay Merchant Dashboard - Manage your payments, transactions, and business operations" />
+        <link rel="icon" href="/favicon.ico" />
+        <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png" />
+        <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png" />
+        <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
+        <meta name="theme-color" content="#08163d" />
+      </Head>
       <body
         className={`${outfit.className}`}
       >

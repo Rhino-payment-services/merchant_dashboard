@@ -93,20 +93,25 @@ export default function TransactionsPage() {
   }
 
   return (
-    <div className="min-h-screen bg-white p-6">
+    <div className="min-h-screen bg-gray-50 p-6">
       <div className="max-w-screen-2xl">
-        {/* Header */}
-        <div className="flex justify-between items-center mb-6">
-          <h1 className="text-2xl font-bold text-gray-900">Transactions</h1>
-          <Button 
-            onClick={handleRefresh} 
-            variant="outline" 
-            disabled={isRefetching}
-            className="flex items-center gap-2"
-          >
-            <RefreshCw className={`w-4 h-4 ${isRefetching ? 'animate-spin' : ''}`} />
-            Refresh
-          </Button>
+        {/* Page Header */}
+        <div className="mb-8">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+            <div>
+              <h1 className="text-3xl font-bold text-[#08163d] mb-2">Transactions</h1>
+              <p className="text-gray-600">View and manage all your transaction history</p>
+            </div>
+            <Button 
+              onClick={handleRefresh} 
+              variant="outline" 
+              disabled={isRefetching}
+              className="flex items-center gap-2"
+            >
+              <RefreshCw className={`w-4 h-4 ${isRefetching ? 'animate-spin' : ''}`} />
+              Refresh
+            </Button>
+          </div>
         </div>
 
         {/* Summary Cards */}

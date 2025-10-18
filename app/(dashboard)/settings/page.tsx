@@ -22,7 +22,11 @@ export default function SettingsPage() {
   return (
     <div className="min-h-screen bg-gray-50 p-8">
       <div className="max-w-2xl mx-auto">
-        <h2 className="text-2xl font-bold mb-6">Settings</h2>
+        {/* Page Header */}
+        <div className="mb-8">
+          <h1 className="text-3xl font-bold text-[#08163d] mb-2">Settings</h1>
+          <p className="text-gray-600">Manage your account settings and preferences</p>
+        </div>
         <Card className="p-8 mb-8">
           <h3 className="text-lg font-semibold mb-4">Profile Information</h3>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

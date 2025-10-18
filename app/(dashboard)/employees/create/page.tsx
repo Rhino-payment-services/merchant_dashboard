@@ -219,11 +219,17 @@ export default function CreateEmployeePage() {
   return (
     <div className="min-h-screen bg-gray-50 p-8">
       <div className="max-w-6xl mx-auto">
-        <div className="flex items-center justify-between mb-8">
-          <h2 className="text-2xl font-bold">Create New Employee</h2>
-          <Button variant="outline" onClick={() => router.back()}>
-            Back to Employees
-          </Button>
+        {/* Page Header */}
+        <div className="mb-8">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+            <div>
+              <h1 className="text-3xl font-bold text-[#08163d] mb-2">Create New Employee</h1>
+              <p className="text-gray-600">Add a new team member to your organization</p>
+            </div>
+            <Button variant="outline" onClick={() => router.back()}>
+              Back to Employees
+            </Button>
+          </div>
         </div>
 
         {/* Step Indicator */}

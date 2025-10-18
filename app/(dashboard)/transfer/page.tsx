@@ -585,7 +585,11 @@ export default function TransferPage() {
             </div>
           </div>
         </div>
-        <h1 className="text-3xl font-bold mb-8">Initiate Withdrawal</h1>
+        {/* Page Header */}
+        <div className="mb-8">
+          <h1 className="text-3xl font-bold text-[#08163d] mb-2">Transfer & Withdrawal</h1>
+          <p className="text-gray-600">Send money to mobile money, bank accounts, or other merchants</p>
+        </div>
         
         {/* Main Tabs */}
         <div className="flex gap-2 mb-6">
