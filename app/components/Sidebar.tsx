@@ -25,7 +25,7 @@ const navLinks = [
   { section: 'GENERAL', links: [
     { name: 'Dashboard', path: '/', icon: LayoutDashboard },
     { name: 'Transaction', path: '/transactions', icon: CreditCard },
-    { name: 'Withdraw', path: '/transfer', icon: ArrowRightLeft },
+    // { name: 'Withdraw', path: '/transfer', icon: ArrowRightLeft },
     { name: 'Top Up', path: '/top-up', icon: ArrowDown },
     // { name: 'Save', path: '/save', icon: BarChart3 },
     // { name: 'Employees', path: '/employees', icon: Package },
