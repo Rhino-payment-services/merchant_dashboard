@@ -466,19 +466,25 @@ export default function PayrollPage() {
   return (
     <div className="min-h-screen bg-gray-50 p-8">
       <div className="max-w-6xl mx-auto">
-        <div className="flex items-center justify-between mb-6">
-          <h2 className="text-2xl font-bold">Payrolls</h2>
-          <div className="flex gap-3">
-            <Link href="/payroll/payslip">
-              <Button variant="outline" className="border-green-600 text-green-600 hover:bg-green-50">
-                View Paid Payslips
-              </Button>
-            </Link>
-            <Link href="/payroll/generate">
-              <Button className="bg-blue-600 hover:bg-blue-700">
-                Generate Payroll
-              </Button>
-            </Link>
+        {/* Page Header */}
+        <div className="mb-8">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+            <div>
+              <h1 className="text-3xl font-bold text-[#08163d] mb-2">Payroll Management</h1>
+              <p className="text-gray-600">Generate and manage employee payrolls</p>
+            </div>
+            <div className="flex gap-3">
+              <Link href="/payroll/payslip">
+                <Button variant="outline" className="border-green-600 text-green-600 hover:bg-green-50">
+                  View Paid Payslips
+                </Button>
+              </Link>
+              <Link href="/payroll/generate">
+                <Button className="bg-blue-600 hover:bg-blue-700">
+                  Generate Payroll
+                </Button>
+              </Link>
+            </div>
           </div>
         </div>
         

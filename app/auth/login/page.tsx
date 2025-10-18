@@ -2,6 +2,7 @@
 
 import React, { useState, useRef } from 'react';
 import { useRouter } from 'next/navigation';
+import Head from 'next/head';
 import { Button } from '../../../components/ui/button';
 import { Card } from '../../../components/ui/card';
 import { Phone, Lock, Building2, ArrowRight, ChevronDown } from 'lucide-react';
@@ -123,17 +124,24 @@ export default function LoginPage() {
   // Check if form is valid for button enable/disable
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-main-50 via-white to-main-50 flex items-center justify-center p-4">
+    <>
+      <Head>
+        <title>Merchant Login - RukaPay</title>
+        <meta name="description" content="Sign in to your RukaPay merchant account to access your dashboard" />
+        <link rel="icon" href="/favicon.ico" />
+      </Head>
+      <div className="min-h-screen bg-gradient-to-br from-main-50 via-white to-main-50 flex items-center justify-center p-4">
       <div className="w-full max-w-md">
+        {/* Page Header */}
         <div className="text-center mb-8">
-          <div className="flex items-center justify-center mb-4">
-            <div className="w-12 h-12  rounded-xl flex items-center justify-center mr-3">
-              <Image src="/images/merchantIcon.png" alt="RukaPay" width={48} height={48} className='rounded-xl' />
+          <div className="flex items-center justify-center mb-6">
+            <div className="w-16 h-16 rounded-xl flex items-center justify-center mr-3 bg-white shadow-md">
+              <Image src="/images/logo.jpg" alt="RukaPay" width={56} height={56} className='rounded-lg' />
             </div>
-            <span className="text-3xl font-bold text-gray-900">RukaPay</span>
+            <span className="text-4xl font-bold text-[#08163d]">RukaPay</span>
           </div>
-          <h1 className="text-2xl font-bold text-gray-900 mb-2">Welcome back</h1>
-          <p className="text-gray-600">Sign in to your merchant account</p>
+          <h1 className="text-3xl font-bold text-[#08163d] mb-3">Merchant Login</h1>
+          <p className="text-gray-600 text-lg">Sign in to access your merchant dashboard</p>
         </div>
 
         <Card className="p-8 shadow-xl border-0 bg-white/80 backdrop-blur-sm">
@@ -260,5 +268,6 @@ export default function LoginPage() {
         </Card>
       </div>
     </div>
+    </>
   );
 }

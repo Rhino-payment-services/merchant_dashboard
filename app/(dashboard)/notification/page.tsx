@@ -10,7 +10,11 @@ export default function NotificationPage() {
   return (
     <div className="min-h-screen bg-gray-50 py-10 px-4 md:px-8">
       <div className="max-w-2xl mx-auto">
-        <h1 className="text-2xl md:text-3xl font-bold text-main-600 mb-6">Notifications</h1>
+        {/* Page Header */}
+        <div className="mb-8">
+          <h1 className="text-3xl font-bold text-[#08163d] mb-2">Notifications</h1>
+          <p className="text-gray-600">Stay updated with your latest activities and alerts</p>
+        </div>
         <div className="space-y-4">
           {mockNotifications.length === 0 ? (
             <div className="text-gray-400 text-center py-20">No notifications</div>

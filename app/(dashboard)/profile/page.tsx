@@ -84,6 +84,12 @@ export default function ProfilePage() {
   return (
     <div className="min-h-screen bg-gray-50 py-10 px-4 md:px-8">
       <div className="max-w-4xl mx-auto">
+        {/* Page Header */}
+        <div className="mb-8">
+          <h1 className="text-3xl font-bold text-[#08163d] mb-2">Profile</h1>
+          <p className="text-gray-600">Manage your merchant account information and settings</p>
+        </div>
+
         {/* Profile Header */}
         <div className="bg-white rounded-2xl shadow-md p-8 mb-6">
           <div className="flex flex-col md:flex-row items-center md:items-start gap-6">
@@ -93,7 +99,7 @@ export default function ProfilePage() {
               </span>
             </div>
             <div className="flex-1 text-center md:text-left">
-              <h1 className="text-3xl font-bold text-gray-900 mb-2">{merchantName}</h1>
+              <h2 className="text-2xl font-bold text-gray-900 mb-2">{merchantName}</h2>
               <div className="text-lg text-gray-600 mb-4">Merchant Account</div>
               <div className="flex items-center justify-center md:justify-start gap-2">
                 <div className={`px-3 py-1 rounded-full text-sm font-medium ${
