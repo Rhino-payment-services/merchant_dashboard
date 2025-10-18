@@ -291,15 +291,16 @@ export default function ReportsPage() {
               <h1 className="text-3xl font-bold text-[#08163d] mb-2">Reports & Analytics</h1>
               <p className="text-gray-600">Comprehensive transaction analysis and insights</p>
             </div>
-          <div className="flex gap-2">
-            <Button 
-              onClick={exportToPDF} 
-              disabled={isExporting}
-              className="bg-[#08163d] hover:bg-[#131824]"
-            >
-              <FileText className="w-4 h-4 mr-2" />
-              {isExporting ? 'Exporting...' : 'Export PDF'}
-            </Button>
+            <div className="flex gap-2">
+              <Button 
+                onClick={exportToPDF} 
+                disabled={isExporting}
+                className="bg-[#08163d] hover:bg-[#131824]"
+              >
+                <FileText className="w-4 h-4 mr-2" />
+                {isExporting ? 'Exporting...' : 'Export PDF'}
+              </Button>
+            </div>
           </div>
         </div>
 

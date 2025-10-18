@@ -69,23 +69,24 @@ export default function Home() {
                 )}
               </div>
             </div>
-          <div className="flex items-center gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleRefresh}
-              disabled={loading || isRefetching}
-              className="flex items-center gap-2"
-            >
-              <RefreshCw className={`h-4 w-4 ${isRefetching ? 'animate-spin' : ''}`} />
-              {loading ? 'Loading...' : isRefetching ? 'Refreshing...' : 'Refresh'}
-            </Button>
-            {!loading && profile?.profile?.merchant_names && (
-              <QRCodeButton
-                merchantCode={profile.profile.merchantId}
-                merchantName={profile.profile.merchant_names}
-              />
-            )}
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleRefresh}
+                disabled={loading || isRefetching}
+                className="flex items-center gap-2"
+              >
+                <RefreshCw className={`h-4 w-4 ${isRefetching ? 'animate-spin' : ''}`} />
+                {loading ? 'Loading...' : isRefetching ? 'Refreshing...' : 'Refresh'}
+              </Button>
+              {!loading && profile?.profile?.merchant_names && (
+                <QRCodeButton
+                  merchantCode={profile.profile.merchantId}
+                  merchantName={profile.profile.merchant_names}
+                />
+              )}
+            </div>
           </div>
         </div>
 

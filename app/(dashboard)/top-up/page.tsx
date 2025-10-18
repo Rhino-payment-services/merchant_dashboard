@@ -169,9 +169,9 @@ export default function TopUpPage() {
               <h1 className="text-3xl font-bold text-[#08163d] mb-2">Mobile Money Collection</h1>
               <p className="text-gray-600">Request payments from your customers via mobile money</p>
             </div>
-          
-          {/* Wallet Balance Card */}
-          <Card className="md:w-80 bg-gradient-to-br from-green-600 to-green-700 text-white border-0">
+            
+            {/* Wallet Balance Card */}
+            <Card className="md:w-80 bg-gradient-to-br from-green-600 to-green-700 text-white border-0">
             <CardHeader className="pb-3">
               <CardTitle className="text-sm font-medium text-green-100 flex items-center gap-2">
                 <Wallet className="w-4 h-4" />
@@ -195,6 +195,7 @@ export default function TopUpPage() {
               </div>
             </CardContent>
           </Card>
+          </div>
         </div>
 
         {/* Main Form Card */}

@@ -533,8 +533,8 @@ export default function BulkPaymentPage() {
               <h1 className="text-3xl font-bold text-[#08163d] mb-2">Bulk Payments</h1>
               <p className="text-gray-600">Process multiple payments at once with mixed payment methods</p>
             </div>
-          
-          <Card className="md:w-80 bg-gradient-to-br from-purple-600 to-purple-700 text-white border-0">
+            
+            <Card className="md:w-80 bg-gradient-to-br from-purple-600 to-purple-700 text-white border-0">
             <CardContent className="pt-6">
               <div className="flex items-center justify-between">
                 <div>
@@ -549,6 +549,7 @@ export default function BulkPaymentPage() {
               </div>
             </CardContent>
           </Card>
+          </div>
         </div>
 
         {/* Bulk Info */}

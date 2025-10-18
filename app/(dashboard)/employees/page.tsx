@@ -100,16 +100,17 @@ export default function EmployeesPage() {
               <h1 className="text-3xl font-bold text-[#08163d] mb-2">Employees</h1>
               <p className="text-gray-600">Manage your team and employee information</p>
             </div>
-          <div className="flex gap-2 w-full md:w-auto">
-            <Input
-              placeholder="Search by name, email, role, or department..."
-              value={search}
-              onChange={(e: React.ChangeEvent<HTMLInputElement>) => setSearch(e.target.value)}
-              className="w-full md:w-72"
-            />
-            <Link href="/employees/create">
-              <Button>Add Employee</Button>
-            </Link>
+            <div className="flex gap-2 w-full md:w-auto">
+              <Input
+                placeholder="Search by name, email, role, or department..."
+                value={search}
+                onChange={(e: React.ChangeEvent<HTMLInputElement>) => setSearch(e.target.value)}
+                className="w-full md:w-72"
+              />
+              <Link href="/employees/create">
+                <Button>Add Employee</Button>
+              </Link>
+            </div>
           </div>
         </div>
         <Card className="overflow-x-auto">
