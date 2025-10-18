@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import Head from "next/head";
 import { getCustomerId } from "@/app/lib/mockBackend";
 import StatCards from "@/app/components/StatCards";
 import StatsOverviewChart from "@/app/components/StatsOverviewChart";
@@ -51,7 +52,13 @@ export default function Home() {
   // Mock merchant data - in real app this would come from API/context
 
   return (
-    <div className="flex-1 flex flex-col">
+    <>
+      <Head>
+        <title>Dashboard - RukaPay Merchant</title>
+        <meta name="description" content="RukaPay Merchant Dashboard - Manage your payments, transactions, and business operations" />
+        <link rel="icon" href="/favicon.ico" />
+      </Head>
+      <div className="flex-1 flex flex-col">
       <main className="flex-1 p-4 md:p-8 space-y-6">
         {/* Page Header */}
         <div className="mb-8">
@@ -126,5 +133,6 @@ export default function Home() {
         </div>
       </main>
     </div>
+    </>
   );
 }

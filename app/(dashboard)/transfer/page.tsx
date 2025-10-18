@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
+import Head from "next/head";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -570,7 +571,13 @@ export default function TransferPage() {
   ];
 
   return (
-    <div className="min-h-screen">
+    <>
+      <Head>
+        <title>Transfer & Withdrawal - RukaPay Merchant</title>
+        <meta name="description" content="Send money to mobile money, bank accounts, or other merchants with RukaPay" />
+        <link rel="icon" href="/favicon.ico" />
+      </Head>
+      <div className="min-h-screen">
       <div className="w-full  py-8 px-4">
         {/* Wallet Balance */}
         <div className="mb-8 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
@@ -580,7 +587,7 @@ export default function TransferPage() {
                 Wallet Balance
               </div>
               <div className="text-2xl font-bold text-gray-900">
-                UGX {Number(profile?.profile?.merchant_balance).toLocaleString()}
+                UGX {profile?.profile?.merchant_balance ? Number(profile.profile.merchant_balance).toLocaleString() : '0'}
               </div>
             </div>
           </div>
@@ -800,5 +807,6 @@ export default function TransferPage() {
         </DialogContent>
       </Dialog>
     </div>
+    </>
   );
 }

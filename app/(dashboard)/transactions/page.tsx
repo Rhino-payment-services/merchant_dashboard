@@ -1,5 +1,6 @@
 "use client"
 import React, { useState, useMemo } from 'react';
+import Head from 'next/head';
 import { Card } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Button } from '@/components/ui/button';
@@ -93,7 +94,13 @@ export default function TransactionsPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 p-6">
+    <>
+      <Head>
+        <title>Transactions - RukaPay Merchant</title>
+        <meta name="description" content="View and manage all your transaction history on RukaPay" />
+        <link rel="icon" href="/favicon.ico" />
+      </Head>
+      <div className="min-h-screen bg-gray-50 p-6">
       <div className="max-w-screen-2xl">
         {/* Page Header */}
         <div className="mb-8">
@@ -324,5 +331,6 @@ export default function TransactionsPage() {
         </Card>
       </div>
     </div>
+    </>
   );
 }

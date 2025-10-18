@@ -2,6 +2,7 @@
 
 import React, { useState, useRef, useEffect, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
+import Head from 'next/head';
 import { signIn } from 'next-auth/react';
 import { Button } from '../../../components/ui/button';
 import { Card } from '../../../components/ui/card';
@@ -125,19 +126,26 @@ function OTPContent() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-main-50 via-white to-main-50 flex items-center justify-center p-4">
+    <>
+      <Head>
+        <title>Verify OTP - RukaPay</title>
+        <meta name="description" content="Verify your OTP code to complete RukaPay merchant login" />
+        <link rel="icon" href="/favicon.ico" />
+      </Head>
+      <div className="min-h-screen bg-gradient-to-br from-main-50 via-white to-main-50 flex items-center justify-center p-4">
       <div className="w-full max-w-md">
+        {/* Page Header */}
         <div className="text-center mb-8">
-          <div className="flex items-center justify-center mb-4">
-            <div className="w-12 h-12 bg-main-600 rounded-xl flex items-center justify-center mr-3">
-              <Image src="/images/logo.jpg" alt="RukaPay" width={48} height={48} className='rounded-xl' />
+          <div className="flex items-center justify-center mb-6">
+            <div className="w-16 h-16 rounded-xl flex items-center justify-center mr-3 bg-white shadow-md">
+              <Image src="/images/logo.jpg" alt="RukaPay" width={56} height={56} className='rounded-lg' />
             </div>
-            <span className="text-3xl font-bold text-gray-900">RukaPay</span>
+            <span className="text-4xl font-bold text-[#08163d]">RukaPay</span>
           </div>
-          <h1 className="text-2xl font-bold text-gray-900 mb-2">Verify OTP</h1>
-          <p className="text-gray-600">
+          <h1 className="text-3xl font-bold text-[#08163d] mb-3">Verify OTP</h1>
+          <p className="text-gray-600 text-lg">
             Enter the 6-digit code sent to <br />
-            <span className="font-semibold text-main-600">{phoneNumber}</span>
+            <span className="font-semibold text-[#08163d]">{phoneNumber}</span>
           </p>
         </div>
 
@@ -218,6 +226,7 @@ function OTPContent() {
         </Card>
       </div>
     </div>
+    </>
   );
 }
 
