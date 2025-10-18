@@ -4,6 +4,7 @@ import Sidebar from "../components/Sidebar";
 import Topbar from "../components/Topbar";
 import { useState, useEffect } from 'react';
 import MerchantAuthGuard from "@/components/auth/MerchantAuthGuard";
+import AuthBridge from "@/components/auth/AuthBridge";
 import { UserProfileProvider } from "./UserProfileProvider";
 import { startTokenRefresh, stopTokenRefresh } from "@/lib/utils/token-refresh";
 
@@ -34,6 +35,7 @@ export default function RootLayout({
 
   return (
     <MerchantAuthGuard>
+      <AuthBridge />
       <UserProfileProvider>
         <div className="w-full h-screen flex bg-gray-50 overflow-hidden">
           {/* Sidebar */}
