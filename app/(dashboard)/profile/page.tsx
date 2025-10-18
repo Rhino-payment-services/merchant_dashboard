@@ -2,12 +2,26 @@
 
 import React from 'react';
 import { useUserProfile } from '../UserProfileProvider';
+import { useMerchantAuth } from '@/lib/context/MerchantAuthContext';
 import { useSession } from 'next-auth/react';
-import { User, Mail, Phone, Building2, MapPin, Calendar, CreditCard, Wallet } from 'lucide-react';
+import { User, Mail, Phone, Building2, MapPin, Calendar, CreditCard, Wallet, RefreshCw } from 'lucide-react';
 
 export default function ProfilePage() {
-  const { profile, loading, error } = useUserProfile();
+  const { profile, loading, error, refetch, isRefetching } = useUserProfile();
   const { data: session } = useSession();
+  const { user: authUser, isAuthenticated, accessToken } = useMerchantAuth();
+
+  // Debug authentication status
+  React.useEffect(() => {
+    console.log('🔍 Profile Page Debug:');
+    console.log('- Profile data:', profile);
+    console.log('- Loading:', loading);
+    console.log('- Error:', error);
+    console.log('- NextAuth Session:', session);
+    console.log('- MerchantAuth User:', authUser);
+    console.log('- MerchantAuth isAuthenticated:', isAuthenticated);
+    console.log('- MerchantAuth accessToken exists:', !!accessToken);
+  }, [profile, loading, error, session, authUser, isAuthenticated, accessToken]);
 
   if (loading) {
     return (
@@ -86,17 +100,36 @@ export default function ProfilePage() {
       <div className="max-w-4xl mx-auto">
         {/* Page Header */}
         <div className="mb-8">
-          <h1 className="text-3xl font-bold text-[#08163d] mb-2">Profile</h1>
-          <p className="text-gray-600">Manage your merchant account information and settings</p>
+          <div className="flex justify-between items-start">
+            <div>
+              <h1 className="text-3xl font-bold text-[#08163d] mb-2">Profile</h1>
+              <p className="text-gray-600">Manage your merchant account information and settings</p>
+            </div>
+            <button
+              onClick={refetch}
+              disabled={isRefetching}
+              className="flex items-center gap-2 px-4 py-2 text-sm bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200 transition-colors disabled:opacity-50"
+            >
+              <RefreshCw className={`h-4 w-4 ${isRefetching ? 'animate-spin' : ''}`} />
+              {isRefetching ? 'Refreshing...' : 'Refresh Profile'}
+            </button>
+          </div>
         </div>
 
         {/* Profile Header */}
         <div className="bg-white rounded-2xl shadow-md p-8 mb-6">
           <div className="flex flex-col md:flex-row items-center md:items-start gap-6">
-            <div className="w-24 h-24 rounded-full bg-main-50 flex items-center justify-center border-4 border-main-100">
-              <span className="text-4xl text-main-600 font-bold">
-                {getInitials(merchantName)}
-              </span>
+            <div className="relative">
+              <div className="w-24 h-24 rounded-full bg-main-50 flex items-center justify-center border-4 border-main-100">
+                <span className="text-4xl text-main-600 font-bold">
+                  {getInitials(merchantName)}
+                </span>
+              </div>
+              {isRefetching && (
+                <div className="absolute -top-1 -right-1 w-6 h-6 bg-blue-100 rounded-full flex items-center justify-center">
+                  <RefreshCw className="h-3 w-3 text-blue-600 animate-spin" />
+                </div>
+              )}
             </div>
             <div className="flex-1 text-center md:text-left">
               <h2 className="text-2xl font-bold text-gray-900 mb-2">{merchantName}</h2>
