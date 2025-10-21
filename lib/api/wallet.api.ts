@@ -34,10 +34,11 @@ export interface TransactionsResponse {
 
 /**
  * Get merchant wallet balance
+ * Uses /wallet/me/business to explicitly get the business wallet
  */
 export const getWalletBalance = async (): Promise<WalletBalance> => {
   try {
-    const response = await apiClient.get('/wallet/me')
+    const response = await apiClient.get('/wallet/me/business')
     return response.data
   } catch (error: any) {
     console.error('Error fetching wallet balance:', error)
