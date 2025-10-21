@@ -48,8 +48,9 @@ export const getWalletBalance = async (): Promise<WalletBalance> => {
 
 /**
  * Get merchant transactions
- * Uses /transactions/my-transactions which is now wallet-aware
- * For merchants: automatically returns BUSINESS wallet transactions
+ * Uses /wallet/me/business/transactions to explicitly get BUSINESS wallet transactions ONLY
+ * This ensures that ONLY business wallet transactions are shown in the merchant dashboard
+ * Personal wallet transactions will NEVER appear here
  */
 export const getMyTransactions = async (params?: {
   page?: number
@@ -60,11 +61,11 @@ export const getMyTransactions = async (params?: {
   endDate?: string
 }): Promise<TransactionsResponse> => {
   try {
-    const response = await apiClient.get('/transactions/my-transactions', { params })
+    const response = await apiClient.get('/wallet/me/business/transactions', { params })
     return response.data
   } catch (error: any) {
-    console.error('Error fetching transactions:', error)
-    throw new Error(error.response?.data?.message || 'Failed to fetch transactions')
+    console.error('Error fetching business wallet transactions:', error)
+    throw new Error(error.response?.data?.message || 'Failed to fetch business wallet transactions')
   }
 }
 
