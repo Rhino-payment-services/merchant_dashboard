@@ -33,6 +33,9 @@ export interface Transaction {
   description?: string
   reference?: string
   channel?: string
+  fee?: number
+  netAmount?: number
+  externalReference?: string
   createdAt: string
   updatedAt: string
   wallet?: {
