@@ -88,6 +88,8 @@ const getMyTransactions = async (filter: TransactionFilter = {}): Promise<Transa
   if (filter.page) params.append('page', filter.page.toString())
   if (filter.limit) params.append('limit', filter.limit.toString())
 
+  // Use wallet-aware my-transactions endpoint
+  // For merchants: automatically returns BUSINESS wallet transactions
   const response = await apiClient.get(`/transactions/my-transactions?${params.toString()}`)
   return response.data
 }
