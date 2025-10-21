@@ -27,7 +27,7 @@ export default function StatCards() {
       // Fetch transactions to calculate totals
       const transactionsData = await getMyTransactions({ limit: 1000 });
       console.log('Transactions API Response:', transactionsData);
-      setTotalTransactions(transactionsData.pagination?.total || transactionsData.total || 0);
+      setTotalTransactions(transactionsData.total || 0);
 
       // Calculate total credit (incoming money - what came into the wallet)
       const credit = transactionsData.transactions
