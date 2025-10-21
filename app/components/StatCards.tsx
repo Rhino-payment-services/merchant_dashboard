@@ -26,18 +26,19 @@ export default function StatCards() {
 
       // Fetch transactions to calculate totals
       const transactionsData = await getMyTransactions({ limit: 1000 });
-      setTotalTransactions(transactionsData.total);
+      console.log('Transactions API Response:', transactionsData);
+      setTotalTransactions(transactionsData.pagination?.total || transactionsData.total || 0);
 
       // Calculate total credit (incoming money - what came into the wallet)
       const credit = transactionsData.transactions
-        .filter(t => t.direction === 'CREDIT' && t.status === 'SUCCESS')
+        .filter(t => (t.direction === 'CREDIT' || t.type === 'DEPOSIT' || t.type === 'TOPUP') && t.status === 'SUCCESS')
         .reduce((sum, t) => sum + t.amount, 0);
       setTotalCredit(credit);
 
       // Calculate total debit (outgoing money - what left the wallet including fees)
       // For DEBIT, we use amount (which is the total that left the wallet)
       const debit = transactionsData.transactions
-        .filter(t => t.direction === 'DEBIT' && t.status === 'SUCCESS')
+        .filter(t => (t.direction === 'DEBIT' || t.type === 'WITHDRAWAL' || t.type === 'TRANSFER') && t.status === 'SUCCESS')
         .reduce((sum, t) => sum + t.amount, 0);
       setTotalDebit(debit);
 
