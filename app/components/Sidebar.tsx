@@ -15,7 +15,8 @@ import {
   HelpCircle, 
   MessageCircle,
   ArrowDown,
-  X
+  X,
+  QrCode
 } from 'lucide-react';
 import Image from 'next/image';
 import { useSession } from 'next-auth/react';
@@ -27,6 +28,7 @@ const navLinks = [
     { name: 'Transaction', path: '/transactions', icon: CreditCard },
     // { name: 'Withdraw', path: '/transfer', icon: ArrowRightLeft },
     { name: 'Top Up', path: '/top-up', icon: ArrowDown },
+    { name: 'QR Code', path: '/qr-code', icon: QrCode },
     // { name: 'Save', path: '/save', icon: BarChart3 },
     // { name: 'Employees', path: '/employees', icon: Package },
     // { name: 'Payroll', path: '/payroll', icon: FileText },

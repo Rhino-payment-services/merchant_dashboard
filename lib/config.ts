@@ -21,10 +21,26 @@ export const getApiUrl = (): string => {
 // Export the current API URL
 export const API_URL = getApiUrl();
 
+// Get the base URL for the payment page
+const getBaseUrl = (): string => {
+  // Use custom environment variable or fallback to window.location.origin in browser
+  if (typeof window !== 'undefined') {
+    return process.env.NEXT_PUBLIC_PAYMENT_PAGE_URL || window.location.origin;
+  }
+  return process.env.NEXT_PUBLIC_PAYMENT_PAGE_URL || '';
+};
+
+export const API_CONFIG = {
+  API_URL: API_URL,
+  PAYMENT_PAGE_URL: getBaseUrl(),
+  ENVIRONMENT: process.env.NEXT_PUBLIC_APP_ENV || 'development',
+};
+
 // Log environment configuration (only in browser)
 if (typeof window !== 'undefined') {
   console.log(`🌍 App Environment: ${process.env.NEXT_PUBLIC_APP_ENV || 'development'}`);
   console.log(`🔗 API URL: ${API_URL}`);
+  console.log(`💳 Payment Page URL: ${API_CONFIG.PAYMENT_PAGE_URL}`);
 }
 
 export default {
