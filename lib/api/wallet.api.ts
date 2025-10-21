@@ -48,6 +48,8 @@ export const getWalletBalance = async (): Promise<WalletBalance> => {
 
 /**
  * Get merchant transactions
+ * Uses /transactions/my-transactions which is now wallet-aware
+ * For merchants: automatically returns BUSINESS wallet transactions
  */
 export const getMyTransactions = async (params?: {
   page?: number
