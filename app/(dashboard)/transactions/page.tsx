@@ -50,10 +50,39 @@ export default function TransactionsPage() {
     isRefetching 
   } = useMyTransactions(filter);
 
+  // Debug logging
+  console.log('Transactions Page - API Response:', transactionsData);
+  console.log('Transactions Page - Error:', error);
+
   // Extract data from API response
   const transactions = transactionsData?.transactions || [];
-  const paginationInfo = transactionsData?.pagination;
-  const summary = transactionsData?.summary;
+  const paginationInfo = transactionsData?.pagination || {
+    page: 1,
+    limit: 10,
+    total: 0,
+    totalPages: 1
+  };
+  const summary = transactionsData?.summary || {
+    totalTransactions: 0,
+    walletType: 'PERSONAL'
+  };
+
+  // Calculate summary statistics from transactions
+  const calculatedSummary = useMemo(() => {
+    const totalAmount = transactions.reduce((sum, tx) => sum + (tx.amount || 0), 0);
+    const totalFee = transactions.reduce((sum, tx) => sum + (tx.fee || 0), 0);
+    const successfulCount = transactions.filter(tx => tx.status === 'SUCCESS' || tx.status === 'COMPLETED').length;
+    const failedCount = transactions.filter(tx => tx.status === 'FAILED').length;
+    
+    return {
+      totalAmount,
+      totalFee,
+      successfulCount,
+      failedCount,
+      totalTransactions: transactions.length,
+      walletType: (summary as any).walletType || 'PERSONAL'
+    };
+  }, [transactions, (summary as any).walletType]);
 
   // Filter transactions client-side for search only
   const filteredTransactions = useMemo(() => {
@@ -62,6 +91,7 @@ export default function TransactionsPage() {
     const searchLower = search.toLowerCase();
     return transactions.filter(tx => 
       tx.transactionId?.toLowerCase().includes(searchLower) ||
+      tx.id?.toLowerCase().includes(searchLower) ||
       tx.reference?.toLowerCase().includes(searchLower) ||
       tx.description?.toLowerCase().includes(searchLower)
     );
@@ -122,36 +152,34 @@ export default function TransactionsPage() {
         </div>
 
         {/* Summary Cards */}
-        {summary && (
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
-            <Card className="p-4">
-              <h3 className="text-sm font-medium text-gray-500">Total Amount</h3>
-              <p className="text-2xl font-bold text-gray-900">
-                {new Intl.NumberFormat('en-UG', { 
-                  style: 'currency', 
-                  currency: 'UGX' 
-                }).format(summary.totalAmount || 0)}
-              </p>
-            </Card>
-            <Card className="p-4">
-              <h3 className="text-sm font-medium text-gray-500">Total Fees</h3>
-              <p className="text-2xl font-bold text-gray-900">
-                {new Intl.NumberFormat('en-UG', { 
-                  style: 'currency', 
-                  currency: 'UGX' 
-                }).format(summary.totalFee || 0)}
-              </p>
-            </Card>
-            <Card className="p-4">
-              <h3 className="text-sm font-medium text-gray-500">Successful</h3>
-              <p className="text-2xl font-bold text-green-600">{summary.completedCount || 0}</p>
-            </Card>
-            <Card className="p-4">
-              <h3 className="text-sm font-medium text-gray-500">Failed</h3>
-              <p className="text-2xl font-bold text-red-600">{summary.failedCount || 0}</p>
-            </Card>
-          </div>
-        )}
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+          <Card className="p-4">
+            <h3 className="text-sm font-medium text-gray-500">Total Amount</h3>
+            <p className="text-2xl font-bold text-gray-900">
+              {new Intl.NumberFormat('en-UG', { 
+                style: 'currency', 
+                currency: 'UGX' 
+              }).format(calculatedSummary.totalAmount || 0)}
+            </p>
+          </Card>
+          <Card className="p-4">
+            <h3 className="text-sm font-medium text-gray-500">Total Fees</h3>
+            <p className="text-2xl font-bold text-gray-900">
+              {new Intl.NumberFormat('en-UG', { 
+                style: 'currency', 
+                currency: 'UGX' 
+              }).format(calculatedSummary.totalFee || 0)}
+            </p>
+          </Card>
+          <Card className="p-4">
+            <h3 className="text-sm font-medium text-gray-500">Successful</h3>
+            <p className="text-2xl font-bold text-green-600">{calculatedSummary.successfulCount || 0}</p>
+          </Card>
+          <Card className="p-4">
+            <h3 className="text-sm font-medium text-gray-500">Failed</h3>
+            <p className="text-2xl font-bold text-red-600">{calculatedSummary.failedCount || 0}</p>
+          </Card>
+        </div>
 
         {/* Filters */}
         <Card className="p-4 mb-6">
@@ -234,7 +262,7 @@ export default function TransactionsPage() {
                   filteredTransactions.map((transaction) => (
                     <TableRow key={transaction.id}>
                       <TableCell className="font-mono text-sm">
-                        {transaction.reference}
+                        {transaction.transactionId || transaction.id || transaction.reference || 'N/A'}
                       </TableCell>
                       <TableCell>
                         <div className="font-[25px]">
