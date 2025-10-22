@@ -148,13 +148,14 @@ export default function BulkPaymentPage() {
     setValidating(true);
 
     try {
+      // Don't send walletType to validation endpoint - it's only needed for processing
       const items: BulkTransactionItem[] = payments.map(p => ({
         itemId: p.itemId!,
         mode: p.mode!,
         amount: p.amount!,
         currency: p.currency!,
         description: p.description,
-        walletType: 'BUSINESS' as 'BUSINESS', // ✅ Hardcoded to BUSINESS wallet
+        // walletType is not needed for validation, only for processing
         phoneNumber: p.phoneNumber,
         mnoProvider: p.mnoProvider,
         recipientName: p.recipientName,
