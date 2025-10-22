@@ -70,7 +70,7 @@ export default function BulkPaymentPage() {
   const [formData, setFormData] = useState<Partial<PaymentItem>>({
     mode: 'WALLET_TO_MNO',
     currency: 'UGX',
-    walletType: 'BUSINESS', // ✅ Default to BUSINESS wallet for merchant dashboard
+    walletType: 'BUSINESS', // ✅ Hardcoded to BUSINESS wallet for merchant dashboard
   });
 
   const handleAddPayment = () => {
@@ -97,21 +97,22 @@ export default function BulkPaymentPage() {
     }
 
     if (editingId) {
-      // Update existing payment
+      // Update existing payment (always use BUSINESS wallet)
       setPayments(prev => prev.map(p => 
         p.id === editingId 
-          ? { ...formData as PaymentItem, id: p.id, itemId: p.itemId, status: 'pending', validated: false }
+          ? { ...formData as PaymentItem, id: p.id, itemId: p.itemId, status: 'pending', validated: false, walletType: 'BUSINESS' }
           : p
       ));
       setEditingId(null);
       toast.success('Payment updated');
     } else {
-      // Add new payment
+      // Add new payment (always use BUSINESS wallet)
       const newPayment: PaymentItem = {
         ...formData as BulkTransactionItem,
         id: `item-${Date.now()}`,
         itemId: `ITEM-${Date.now()}`,
         status: 'pending',
+        walletType: 'BUSINESS', // ✅ Hardcoded to BUSINESS wallet
       };
       setPayments(prev => [...prev, newPayment]);
       toast.success('Payment added to list');
@@ -152,7 +153,8 @@ export default function BulkPaymentPage() {
         mode: p.mode!,
         amount: p.amount!,
         currency: p.currency!,
-        description: p.description!,
+        description: p.description,
+        walletType: 'BUSINESS' as 'BUSINESS', // ✅ Hardcoded to BUSINESS wallet
         phoneNumber: p.phoneNumber,
         mnoProvider: p.mnoProvider,
         recipientName: p.recipientName,
@@ -230,8 +232,9 @@ export default function BulkPaymentPage() {
           mode: p.mode!,
           amount: p.amount!,
           currency: p.currency!,
-          description: p.description!,
+          description: p.description,
           reference: p.reference,
+          walletType: 'BUSINESS' as 'BUSINESS', // ✅ Hardcoded to BUSINESS wallet for merchant dashboard
           phoneNumber: p.phoneNumber,
           mnoProvider: p.mnoProvider,
           recipientName: p.recipientName,
@@ -825,21 +828,6 @@ export default function BulkPaymentPage() {
                   />
                 </div>
 
-                <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-2">
-                    Wallet Type <span className="text-red-500">*</span>
-                  </label>
-                  <select
-                    value={formData.walletType || 'BUSINESS'}
-                    onChange={(e) => setFormData(prev => ({ ...prev, walletType: e.target.value as 'PERSONAL' | 'BUSINESS' }))}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg"
-                  >
-                    <option value="BUSINESS">Business Wallet</option>
-                    <option value="PERSONAL">Personal Wallet</option>
-                  </select>
-                  <p className="text-xs text-gray-500 mt-1">Choose which wallet to debit from</p>
-                </div>
-
                 <div className="col-span-full">
                   <label className="block text-sm font-semibold text-gray-700 mb-2">
                     Description <span className="text-gray-400">(Optional)</span>
@@ -849,6 +837,9 @@ export default function BulkPaymentPage() {
                     onChange={(e) => setFormData(prev => ({ ...prev, description: e.target.value }))}
                     placeholder="e.g., January 2025 salary (auto-generated if empty)"
                   />
+                  <p className="text-xs text-gray-500 mt-1">
+                    💼 Payments will be deducted from your Business Wallet
+                  </p>
                 </div>
 
                 <div className="col-span-full flex justify-end gap-2">
