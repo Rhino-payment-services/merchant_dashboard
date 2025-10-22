@@ -91,9 +91,10 @@ const getMyTransactions = async (filter: TransactionFilter = {}): Promise<Transa
   if (filter.page) params.append('page', filter.page.toString())
   if (filter.limit) params.append('limit', filter.limit.toString())
 
-  // Use wallet-aware my-transactions endpoint
-  // For merchants: automatically returns BUSINESS wallet transactions
-  const response = await apiClient.get(`/transactions/my-transactions?${params.toString()}`)
+  // Use explicit BUSINESS wallet transactions endpoint
+  // This ensures that ONLY business wallet transactions are shown in merchant dashboard
+  // Personal wallet transactions will NEVER appear here
+  const response = await apiClient.get(`/wallet/me/business/transactions?${params.toString()}`)
   return response.data
 }
 

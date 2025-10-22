@@ -110,7 +110,7 @@ export default function RecentTransactions({ transactions, isNewFormat = false }
           <Table>
           <TableHeader>
               <TableRow>
-                <TableHead>Transaction ID</TableHead>
+                <TableHead>Reference ID</TableHead>
                 <TableHead>Amount</TableHead>
                 <TableHead>Charges</TableHead>
                 <TableHead>Type</TableHead>
