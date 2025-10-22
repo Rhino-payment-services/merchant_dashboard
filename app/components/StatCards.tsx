@@ -49,19 +49,10 @@ export default function StatCards() {
     }
   };
 
-  // Initial fetch and refetch on dashboard refresh
+  // Initial fetch and refetch only when user manually refreshes
   useEffect(() => {
     fetchWalletData();
   }, [isRefetching]);
-
-  // Auto-refresh every 10 seconds to catch recent transactions
-  useEffect(() => {
-    const interval = setInterval(() => {
-      fetchWalletData();
-    }, 10000); // Refresh every 10 seconds
-
-    return () => clearInterval(interval);
-  }, []);
 
   const stats = [
     {

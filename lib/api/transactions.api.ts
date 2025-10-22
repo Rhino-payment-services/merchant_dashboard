@@ -109,7 +109,7 @@ export const useMyTransactions = (filter?: TransactionFilter) => useQuery({
   queryFn: () => getMyTransactions(filter),
   staleTime: 30000, // 30 seconds
   retry: 3,
-  refetchOnWindowFocus: true,
+  refetchOnWindowFocus: false, // Only refetch when user explicitly refreshes
 })
 
 export const useTransaction = (transactionId: string, enabled = true) => useQuery({
