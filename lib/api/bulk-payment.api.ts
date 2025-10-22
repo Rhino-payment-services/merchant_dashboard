@@ -2,11 +2,12 @@ import apiClient from './client'
 
 export interface BulkTransactionItem {
   itemId: string
-  mode: 'WALLET_TO_MNO' | 'WALLET_TO_BANK' | 'WALLET_TO_WALLET' | 'UTILITIES' | 'WALLET_TO_MERCHANT'
+  mode: 'WALLET_TO_MNO' | 'WALLET_TO_BANK' | 'WALLET_TO_WALLET' | 'UTILITIES' | 'WALLET_TO_MERCHANT' | 'WALLET_TO_INTERNAL_MERCHANT' | 'WALLET_TO_EXTERNAL_MERCHANT'
   amount: number
   currency: string
-  description: string
+  description?: string  // ✅ Optional now, auto-generated if not provided
   reference?: string
+  walletType?: 'PERSONAL' | 'BUSINESS'  // ✅ Specify which wallet to use (PERSONAL or BUSINESS)
   
   // MNO fields
   phoneNumber?: string

@@ -70,11 +70,13 @@ export default function BulkPaymentPage() {
   const [formData, setFormData] = useState<Partial<PaymentItem>>({
     mode: 'WALLET_TO_MNO',
     currency: 'UGX',
+    walletType: 'BUSINESS', // ✅ Default to BUSINESS wallet for merchant dashboard
   });
 
   const handleAddPayment = () => {
-    if (!formData.amount || !formData.description) {
-      toast.error('Please fill in all required fields');
+    // ✅ Description is now optional - only validate amount
+    if (!formData.amount) {
+      toast.error('Amount is required');
       return;
     }
 
@@ -115,7 +117,7 @@ export default function BulkPaymentPage() {
       toast.success('Payment added to list');
     }
 
-    setFormData({ mode: 'WALLET_TO_MNO', currency: 'UGX' });
+    setFormData({ mode: 'WALLET_TO_MNO', currency: 'UGX', walletType: 'BUSINESS' });
     setShowAddForm(false);
   };
 
@@ -127,7 +129,7 @@ export default function BulkPaymentPage() {
   };
 
   const handleCancelEdit = () => {
-    setFormData({ mode: 'WALLET_TO_MNO', currency: 'UGX' });
+    setFormData({ mode: 'WALLET_TO_MNO', currency: 'UGX', walletType: 'BUSINESS' });
     setEditingId(null);
     setShowAddForm(false);
   };
@@ -823,14 +825,29 @@ export default function BulkPaymentPage() {
                   />
                 </div>
 
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">
+                    Wallet Type <span className="text-red-500">*</span>
+                  </label>
+                  <select
+                    value={formData.walletType || 'BUSINESS'}
+                    onChange={(e) => setFormData(prev => ({ ...prev, walletType: e.target.value as 'PERSONAL' | 'BUSINESS' }))}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                  >
+                    <option value="BUSINESS">Business Wallet</option>
+                    <option value="PERSONAL">Personal Wallet</option>
+                  </select>
+                  <p className="text-xs text-gray-500 mt-1">Choose which wallet to debit from</p>
+                </div>
+
                 <div className="col-span-full">
                   <label className="block text-sm font-semibold text-gray-700 mb-2">
-                    Description <span className="text-red-500">*</span>
+                    Description <span className="text-gray-400">(Optional)</span>
                   </label>
                   <Input
                     value={formData.description || ''}
                     onChange={(e) => setFormData(prev => ({ ...prev, description: e.target.value }))}
-                    placeholder="e.g., January 2025 salary"
+                    placeholder="e.g., January 2025 salary (auto-generated if empty)"
                   />
                 </div>
 
