@@ -70,9 +70,9 @@ export function UserProfileProvider({
       };
     },
     enabled: isAuthenticated && !!user?.id,
-    refetchInterval: 30000, // Refetch every 30 seconds
-    refetchIntervalInBackground: true, // Continue polling even when tab is not active
-    staleTime: 10000, // Consider data stale after 10 seconds
+    refetchOnWindowFocus: false, // Only refetch when user explicitly refreshes
+    refetchOnMount: false, // Don't auto-refetch on component mount
+    staleTime: Infinity, // Data doesn't become stale automatically
     gcTime: 5 * 60 * 1000, // Keep data in cache for 5 minutes
     retry: 3,
     retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 30000),
