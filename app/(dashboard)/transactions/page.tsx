@@ -233,7 +233,7 @@ export default function TransactionsPage() {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Transaction ID</TableHead>
+                  <TableHead>Reference ID</TableHead>
                   <TableHead>Amount</TableHead>
                   <TableHead>Charges</TableHead>
                   <TableHead>Type</TableHead>
@@ -262,7 +262,7 @@ export default function TransactionsPage() {
                   filteredTransactions.map((transaction) => (
                     <TableRow key={transaction.id}>
                       <TableCell className="font-mono text-sm">
-                        {transaction.transactionId || transaction.id || transaction.reference || 'N/A'}
+                        {transaction.reference || 'N/A'}
                       </TableCell>
                       <TableCell>
                         <div className="font-[25px]">
@@ -286,7 +286,7 @@ export default function TransactionsPage() {
                             ? 'bg-green-100 text-green-800' 
                             : 'bg-red-100 text-red-800'
                         }`}>
-                          {transaction.direction}
+                          {transaction.direction || 'N/A'}
                         </span>
                       </TableCell>
                       <TableCell>

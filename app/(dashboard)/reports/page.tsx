@@ -497,7 +497,7 @@ export default function ReportsPage() {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Transaction ID</TableHead>
+                    <TableHead>Reference ID</TableHead>
                     <TableHead>Date & Time</TableHead>
                     <TableHead>Customer</TableHead>
                     <TableHead>Type</TableHead>
