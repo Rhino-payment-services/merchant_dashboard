@@ -128,7 +128,7 @@ export const validateBulkRecipients = async (
 }
 
 /**
- * Process bulk transaction
+ * Process bulk transaction (synchronous - use for small batches)
  */
 export const processBulkTransaction = async (
   request: CreateBulkTransactionRequest
@@ -138,6 +138,21 @@ export const processBulkTransaction = async (
     return response.data
   } catch (error: any) {
     console.error('Error processing bulk transaction:', error)
+    throw new Error(error.response?.data?.message || 'Failed to process bulk transaction')
+  }
+}
+
+/**
+ * Process bulk transaction asynchronously (recommended for large batches)
+ */
+export const processBulkTransactionAsync = async (
+  request: CreateBulkTransactionRequest
+): Promise<BulkTransactionResponse> => {
+  try {
+    const response = await apiClient.post('/transactions/bulk/async', request)
+    return response.data
+  } catch (error: any) {
+    console.error('Error processing bulk transaction async:', error)
     throw new Error(error.response?.data?.message || 'Failed to process bulk transaction')
   }
 }
