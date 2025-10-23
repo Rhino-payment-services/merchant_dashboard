@@ -7,8 +7,11 @@ import { Button } from '@/components/ui/button';
 import { Input } from '../../../components/ui/input';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useMyTransactions, TransactionFilter } from '@/lib/api/transactions.api';
-import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, RefreshCw, Activity } from 'lucide-react';
+import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, RefreshCw, Activity, BarChart3, Clock, CheckCircle, XCircle, AlertCircle, TrendingUp, TrendingDown, DollarSign, Eye, Search } from 'lucide-react';
 import { toast } from 'sonner';
+import { useSession } from 'next-auth/react';
+import { getBulkTransactionStatus, getBulkTransactionList } from '@/lib/api/bulk-payment.api';
+import { Badge } from '@/components/ui/badge';
 
 type StatusType = 'COMPLETED' | 'PENDING' | 'PROCESSING' | 'FAILED' | 'CANCELLED' | 'REFUNDED' | "SUCCESS";
 const statusColor: Record<StatusType, string> = {
@@ -21,13 +24,38 @@ const statusColor: Record<StatusType, string> = {
   SUCCESS: 'text-green-600 bg-green-50',
 };
 
+interface BulkTransaction {
+  bulkTransactionId: string;
+  status: 'PENDING' | 'PROCESSING' | 'COMPLETED' | 'FAILED' | 'PARTIAL_SUCCESS' | 'SUCCESS';
+  totalTransactions?: number;
+  successfulTransactions?: number;
+  failedTransactions?: number;
+  pendingTransactions?: number;
+  totalAmount?: number;
+  totalFees?: number;
+  currency?: string;
+  createdAt?: string;
+  completedAt?: string;
+  errorMessage?: string;
+  description?: string;
+  transactionResults?: any[];
+}
+
 export default function TransactionsPage() {
+  const { data: session } = useSession();
   const [search, setSearch] = useState('');
   const [from, setFrom] = useState<string>("");
   const [to, setTo] = useState<string>("");
   const [status, setStatus] = useState<string>("");
   const [currentPage, setCurrentPage] = useState(1);
   const [currentLimit, setCurrentLimit] = useState(10);
+
+  // Bulk transaction state
+  const [bulkTransactions, setBulkTransactions] = useState<BulkTransaction[]>([]);
+  const [bulkLoading, setBulkLoading] = useState(false);
+  const [bulkSearchTerm, setBulkSearchTerm] = useState('');
+  const [bulkStatusFilter, setBulkStatusFilter] = useState<string>('all');
+  const [selectedBulkTransaction, setSelectedBulkTransaction] = useState<BulkTransaction | null>(null);
 
   // Build filter object for API
   const filter: TransactionFilter = useMemo(() => {
@@ -108,6 +136,104 @@ export default function TransactionsPage() {
       toast.error('Failed to refresh transactions');
     }
   };
+
+  // Bulk transaction functions
+  const loadBulkTransactions = async () => {
+    if (!session?.user) return;
+    
+    setBulkLoading(true);
+    try {
+      console.log('Loading bulk transactions for user:', (session.user as any).id);
+      
+      const response = await getBulkTransactionList({
+        page: 1,
+        limit: 50,
+        userId: (session.user as any).id
+      });
+      
+      console.log('Bulk transactions response:', response);
+      setBulkTransactions(response.bulkTransactions || []);
+      
+      if (response.bulkTransactions?.length === 0) {
+        console.log('No bulk transactions found for user');
+      }
+    } catch (error) {
+      console.error('Error loading bulk transactions:', error);
+      toast.error('Failed to load bulk transactions');
+      setBulkTransactions([]);
+    } finally {
+      setBulkLoading(false);
+    }
+  };
+
+  const loadBulkTransactionDetails = async (bulkTransactionId: string) => {
+    try {
+      const details = await getBulkTransactionStatus(bulkTransactionId);
+      setSelectedBulkTransaction(details);
+    } catch (error) {
+      console.error('Error loading bulk transaction details:', error);
+      toast.error('Failed to load transaction details');
+    }
+  };
+
+  // Filter bulk transactions
+  const filteredBulkTransactions = useMemo(() => {
+    return bulkTransactions.filter(tx => {
+      const matchesSearch = !bulkSearchTerm || 
+        tx.bulkTransactionId.toLowerCase().includes(bulkSearchTerm.toLowerCase()) ||
+        tx.description?.toLowerCase().includes(bulkSearchTerm.toLowerCase());
+      
+      const matchesStatus = bulkStatusFilter === 'all' || tx.status.toLowerCase() === bulkStatusFilter.toLowerCase();
+      
+      return matchesSearch && matchesStatus;
+    });
+  }, [bulkTransactions, bulkSearchTerm, bulkStatusFilter]);
+
+  // Calculate bulk summary statistics
+  const bulkSummary = useMemo(() => {
+    return {
+      total: bulkTransactions.length,
+      pending: bulkTransactions.filter(tx => tx.status === 'PENDING').length,
+      processing: bulkTransactions.filter(tx => tx.status === 'PROCESSING').length,
+      completed: bulkTransactions.filter(tx => tx.status === 'COMPLETED' || tx.status === 'SUCCESS').length,
+      failed: bulkTransactions.filter(tx => tx.status === 'FAILED').length,
+      partialSuccess: bulkTransactions.filter(tx => tx.status === 'PARTIAL_SUCCESS').length,
+      totalAmount: bulkTransactions.reduce((sum, tx) => sum + (tx.totalAmount || 0), 0),
+      totalFees: bulkTransactions.reduce((sum, tx) => sum + (tx.totalFees || 0), 0),
+    };
+  }, [bulkTransactions]);
+
+  const getStatusBadge = (status: string) => {
+    const statusConfig = {
+      PENDING: { color: 'bg-yellow-100 text-yellow-800', icon: Clock },
+      PROCESSING: { color: 'bg-blue-100 text-blue-800', icon: RefreshCw },
+      COMPLETED: { color: 'bg-green-100 text-green-800', icon: CheckCircle },
+      SUCCESS: { color: 'bg-green-100 text-green-800', icon: CheckCircle },
+      FAILED: { color: 'bg-red-100 text-red-800', icon: XCircle },
+      PARTIAL_SUCCESS: { color: 'bg-orange-100 text-orange-800', icon: AlertCircle },
+    };
+
+    const config = statusConfig[status as keyof typeof statusConfig] || statusConfig.PENDING;
+    const Icon = config.icon;
+
+    return (
+      <Badge className={`${config.color} flex items-center gap-1`}>
+        <Icon className="w-3 h-3" />
+        {status.replace('_', ' ')}
+      </Badge>
+    );
+  };
+
+  const getProgressPercentage = (tx: BulkTransaction) => {
+    const processed = (tx.successfulTransactions || 0) + (tx.failedTransactions || 0);
+    const total = tx.totalTransactions || 1;
+    return Math.round((processed / total) * 100);
+  };
+
+  // Load bulk transactions on component mount
+  React.useEffect(() => {
+    loadBulkTransactions();
+  }, [session]);
 
   if (error) {
     return (
@@ -375,19 +501,193 @@ export default function TransactionsPage() {
           </TabsContent>
 
           <TabsContent value="tracking" className="space-y-6">
-            <Card className="p-6">
-              <div className="text-center">
-                <Activity className="w-12 h-12 text-blue-600 mx-auto mb-4" />
-                <h3 className="text-lg font-semibold text-gray-900 mb-2">Bulk Transaction Tracking</h3>
-                <p className="text-gray-600 mb-4">
-                  Track the status and progress of your bulk payment transactions
+            {/* Bulk Transaction Summary Cards */}
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+              <Card className="p-4">
+                <h3 className="text-sm font-medium text-gray-500">Total Bulk Payments</h3>
+                <p className="text-2xl font-bold text-gray-900">{bulkSummary.total}</p>
+                <div className="flex items-center mt-2">
+                  <TrendingUp className="w-4 h-4 text-blue-600 mr-1" />
+                  <span className="text-sm text-blue-600">+0%</span>
+                </div>
+              </Card>
+              
+              <Card className="p-4">
+                <h3 className="text-sm font-medium text-gray-500">Completed</h3>
+                <p className="text-2xl font-bold text-green-600">{bulkSummary.completed}</p>
+                <div className="flex items-center mt-2">
+                  <CheckCircle className="w-4 h-4 text-green-600 mr-1" />
+                  <span className="text-sm text-green-600">Success</span>
+                </div>
+              </Card>
+              
+              <Card className="p-4">
+                <h3 className="text-sm font-medium text-gray-500">Failed</h3>
+                <p className="text-2xl font-bold text-red-600">{bulkSummary.failed}</p>
+                <div className="flex items-center mt-2">
+                  <XCircle className="w-4 h-4 text-red-600 mr-1" />
+                  <span className="text-sm text-red-600">Errors</span>
+                </div>
+              </Card>
+              
+              <Card className="p-4">
+                <h3 className="text-sm font-medium text-gray-500">Total Amount</h3>
+                <p className="text-2xl font-bold text-gray-900">
+                  {new Intl.NumberFormat('en-UG', { 
+                    style: 'currency', 
+                    currency: 'UGX' 
+                  }).format(bulkSummary.totalAmount || 0)}
                 </p>
-                <Button 
-                  onClick={() => window.location.href = '/transaction-tracking'}
-                  className="bg-blue-600 hover:bg-blue-700"
-                >
-                  Go to Transaction Tracking
-                </Button>
+                <div className="flex items-center mt-2">
+                  <DollarSign className="w-4 h-4 text-green-600 mr-1" />
+                  <span className="text-sm text-green-600">Processed</span>
+                </div>
+              </Card>
+            </div>
+
+            {/* Bulk Transaction Filters */}
+            <Card>
+              <div className="p-4">
+                <div className="flex flex-col sm:flex-row gap-4">
+                  <div className="flex-1">
+                    <div className="relative">
+                      <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+                      <Input
+                        placeholder="Search by transaction ID or description..."
+                        value={bulkSearchTerm}
+                        onChange={(e) => setBulkSearchTerm(e.target.value)}
+                        className="pl-10"
+                      />
+                    </div>
+                  </div>
+                  <div className="flex gap-2">
+                    <select
+                      value={bulkStatusFilter}
+                      onChange={(e) => setBulkStatusFilter(e.target.value)}
+                      className="px-3 py-2 border border-gray-300 rounded-md text-sm"
+                    >
+                      <option value="all">All Status</option>
+                      <option value="pending">Pending</option>
+                      <option value="processing">Processing</option>
+                      <option value="completed">Completed</option>
+                      <option value="failed">Failed</option>
+                      <option value="partial_success">Partial Success</option>
+                    </select>
+                    <Button onClick={loadBulkTransactions} disabled={bulkLoading} className="flex items-center gap-2">
+                      <RefreshCw className={`w-4 h-4 ${bulkLoading ? 'animate-spin' : ''}`} />
+                      Refresh
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            </Card>
+
+            {/* Bulk Transactions Table */}
+            <Card>
+              <div className="p-4">
+                <h3 className="text-lg font-semibold text-gray-900 mb-4">Bulk Transactions</h3>
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Transaction ID</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead>Progress</TableHead>
+                      <TableHead>Amount</TableHead>
+                      <TableHead>Transactions</TableHead>
+                      <TableHead>Created</TableHead>
+                      <TableHead>Actions</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {filteredBulkTransactions.map((tx) => (
+                      <TableRow key={tx.bulkTransactionId}>
+                        <TableCell className="font-mono text-sm">
+                          {tx.bulkTransactionId}
+                        </TableCell>
+                        <TableCell>
+                          {getStatusBadge(tx.status)}
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex items-center gap-2">
+                            <div className="w-20 bg-gray-200 rounded-full h-2">
+                              <div 
+                                className="bg-blue-600 h-2 rounded-full transition-all duration-300"
+                                style={{ width: `${getProgressPercentage(tx)}%` }}
+                              />
+                            </div>
+                            <span className="text-sm text-gray-600">
+                              {getProgressPercentage(tx)}%
+                            </span>
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <div className="text-sm">
+                            <div className="font-medium">UGX {(tx.totalAmount || 0).toLocaleString()}</div>
+                            {(tx.totalFees || 0) > 0 && (
+                              <div className="text-gray-500">Fee: UGX {(tx.totalFees || 0).toLocaleString()}</div>
+                            )}
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <div className="text-sm">
+                            <div className="flex items-center gap-1">
+                              <CheckCircle className="w-3 h-3 text-green-600" />
+                              <span className="text-green-600">{tx.successfulTransactions || 0}</span>
+                            </div>
+                            <div className="flex items-center gap-1">
+                              <XCircle className="w-3 h-3 text-red-600" />
+                              <span className="text-red-600">{tx.failedTransactions || 0}</span>
+                            </div>
+                            <div className="flex items-center gap-1">
+                              <Clock className="w-3 h-3 text-yellow-600" />
+                              <span className="text-yellow-600">{tx.pendingTransactions || 0}</span>
+                            </div>
+                          </div>
+                        </TableCell>
+                        <TableCell className="text-sm text-gray-600">
+                          {tx.createdAt ? new Date(tx.createdAt).toLocaleDateString() : 'N/A'}
+                        </TableCell>
+                        <TableCell>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => {
+                              setSelectedBulkTransaction(tx);
+                              loadBulkTransactionDetails(tx.bulkTransactionId);
+                            }}
+                            className="flex items-center gap-1"
+                          >
+                            <Eye className="w-3 h-3" />
+                            View
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+
+                {filteredBulkTransactions.length === 0 && (
+                  <div className="text-center py-12">
+                    <div className="mx-auto w-24 h-24 bg-gray-100 rounded-full flex items-center justify-center mb-4">
+                      <BarChart3 className="w-12 h-12 text-gray-400" />
+                    </div>
+                    <h3 className="text-lg font-medium text-gray-900 mb-2">No bulk transactions found</h3>
+                    <p className="text-gray-500 mb-4">
+                      {bulkTransactions.length === 0 
+                        ? "You haven't created any bulk payments yet. Start by creating a bulk payment to track its progress here."
+                        : "No transactions match your current search criteria."
+                      }
+                    </p>
+                    {bulkTransactions.length === 0 && (
+                      <Button 
+                        onClick={() => window.location.href = '/bulk-payment'}
+                        className="bg-blue-600 hover:bg-blue-700"
+                      >
+                        Create Bulk Payment
+                      </Button>
+                    )}
+                  </div>
+                )}
               </div>
             </Card>
           </TabsContent>

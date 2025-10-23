@@ -27,7 +27,6 @@ const navLinks = [
   { section: 'GENERAL', links: [
     { name: 'Dashboard', path: '/', icon: LayoutDashboard },
     { name: 'Transaction', path: '/transactions', icon: CreditCard },
-    { name: 'Tracking (Bulk)', path: '/transaction-tracking', icon: BarChart3 },
     // { name: 'Withdraw', path: '/transfer', icon: ArrowRightLeft },
     { name: 'Top Up', path: '/top-up', icon: ArrowDown },
     { name: 'QR Code', path: '/qr-code', icon: QrCode },
