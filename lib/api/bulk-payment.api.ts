@@ -174,13 +174,11 @@ export const retryFailedTransactions = async (
 }
 
 /**
- * Get bulk transaction list
+ * View bulk transactions (new endpoint)
  */
-export const getBulkTransactionList = async (params?: {
+export const viewBulkTransactions = async (params?: {
   page?: number
   limit?: number
-  status?: string
-  userId?: string
 }): Promise<{
   bulkTransactions: BulkTransactionResponse[]
   total: number
@@ -189,11 +187,89 @@ export const getBulkTransactionList = async (params?: {
   totalPages: number
 }> => {
   try {
-    const response = await apiClient.get('/transactions/bulk', { params })
-    return response.data
+    console.log('🔍 [Bulk API] Viewing bulk transactions with params:', params);
+    console.log('🔍 [Bulk API] API_URL:', process.env.NEXT_PUBLIC_DEV_API_URL || process.env.NEXT_PUBLIC_API_URL);
+    
+    const response = await apiClient.get('/transactions/bulk/view', { params });
+    console.log('🔍 [Bulk API] Raw response:', response);
+    console.log('🔍 [Bulk API] Response data:', response.data);
+    
+    // Ensure we always return the expected structure
+    const result = {
+      bulkTransactions: response.data?.bulkTransactions || [],
+      total: response.data?.total || 0,
+      page: response.data?.page || 1,
+      limit: response.data?.limit || 20,
+      totalPages: response.data?.totalPages || 0
+    };
+    
+    console.log('🔍 [Bulk API] Processed result:', result);
+    return result;
   } catch (error: any) {
-    console.error('Error fetching bulk transaction list:', error)
-    throw new Error(error.response?.data?.message || 'Failed to fetch bulk transactions')
+    console.error('❌ [Bulk API] Error viewing bulk transactions:', error);
+    console.error('❌ [Bulk API] Error response:', error.response?.data);
+    console.error('❌ [Bulk API] Error status:', error.response?.status);
+    console.error('❌ [Bulk API] Error statusText:', error.response?.statusText);
+    console.error('❌ [Bulk API] Error headers:', error.response?.headers);
+    
+    // Return empty structure instead of throwing error
+    return {
+      bulkTransactions: [],
+      total: 0,
+      page: 1,
+      limit: 20,
+      totalPages: 0
+    };
+  }
+}
+
+/**
+ * Get bulk transaction list
+ */
+export const getBulkTransactionList = async (params?: {
+  page?: number
+  limit?: number
+}): Promise<{
+  bulkTransactions: BulkTransactionResponse[]
+  total: number
+  page: number
+  limit: number
+  totalPages: number
+}> => {
+  try {
+    console.log('🔍 [Bulk API] Fetching bulk transaction list with params:', params);
+    console.log('🔍 [Bulk API] API_URL:', process.env.NEXT_PUBLIC_DEV_API_URL || process.env.NEXT_PUBLIC_API_URL);
+    
+    const response = await apiClient.get('/transactions/bulk', { params });
+    console.log('🔍 [Bulk API] Raw response:', response);
+    console.log('🔍 [Bulk API] Response data:', response.data);
+    
+    // Ensure we always return the expected structure
+    const result = {
+      bulkTransactions: response.data?.bulkTransactions || [],
+      total: response.data?.total || 0,
+      page: response.data?.page || 1,
+      limit: response.data?.limit || 20,
+      totalPages: response.data?.totalPages || 0
+    };
+    
+    console.log('🔍 [Bulk API] Processed result:', result);
+    return result;
+  } catch (error: any) {
+    console.error('❌ [Bulk API] Error fetching bulk transaction list:', error);
+    console.error('❌ [Bulk API] Error response:', error.response?.data);
+    console.error('❌ [Bulk API] Error status:', error.response?.status);
+    console.error('❌ [Bulk API] Error statusText:', error.response?.statusText);
+    console.error('❌ [Bulk API] Error headers:', error.response?.headers);
+    
+    // Return empty structure instead of throwing error
+    return {
+      bulkTransactions: [],
+      total: 0,
+      page: 1,
+      limit: 20,
+      totalPages: 0
+    };
   }
 }
 

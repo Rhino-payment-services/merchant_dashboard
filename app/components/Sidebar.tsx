@@ -33,7 +33,7 @@ const navLinks = [
     // { name: 'Save', path: '/save', icon: BarChart3 },
     // { name: 'Employees', path: '/employees', icon: Package },
     // { name: 'Payroll', path: '/payroll', icon: FileText },
-    { name: 'Bulk Payment', path: '/bulk-payment', icon: ArrowRightLeft },
+    { name: 'Payment', path: '/bulk-payment', icon: ArrowRightLeft },
   ]},
   { section: 'TOOLS', links: [
     { name: 'Report', path: '/reports', icon: FileBarChart },

@@ -4,6 +4,7 @@ import React, { useState } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { 
   Upload, Download, Plus, Trash2, Users, CheckCircle2, 
   XCircle, Clock, Send, AlertCircle, Info, Loader2,
@@ -12,6 +13,7 @@ import {
 import { useSession } from "next-auth/react";
 import { toast } from 'sonner';
 import * as XLSX from 'xlsx';
+import { processSinglePayment, validateTransaction, SinglePaymentDto, TransactionResponseDto, FeePreviewResponseDto } from "@/lib/api/single-payment.api";
 import { processBulkTransactionAsync, validateBulkRecipients, getBulkTransactionStatus, BulkTransactionItem, BulkTransactionItemResult } from "@/lib/api/bulk-payment.api";
 
 const TRANSACTION_TYPES = [
@@ -61,7 +63,105 @@ export default function BulkPaymentPage() {
   const [payments, setPayments] = useState<PaymentItem[]>([]);
   const [bulkDescription, setBulkDescription] = useState('');
   const [bulkReference, setBulkReference] = useState('');
-  // State for progress tracking
+  
+  // Single Payment State
+  const [singlePayment, setSinglePayment] = useState<SinglePaymentDto>({
+    mode: 'WALLET_TO_MNO',
+    amount: 0,
+    currency: 'UGX',
+    walletType: 'BUSINESS'
+  });
+  const [singlePaymentLoading, setSinglePaymentLoading] = useState(false);
+  const [feePreview, setFeePreview] = useState<FeePreviewResponseDto | null>(null);
+  const [validationInfo, setValidationInfo] = useState<{
+    recipientName?: string;
+    partnerCode?: string;
+    partnerName?: string;
+    isValid?: boolean;
+  } | null>(null);
+  // Single Payment Functions
+  const handleSinglePaymentChange = (field: keyof SinglePaymentDto, value: any) => {
+    setSinglePayment(prev => ({
+      ...prev,
+      [field]: value
+    }));
+  };
+
+  const previewSinglePaymentFees = async () => {
+    if (!singlePayment.amount || singlePayment.amount <= 0) {
+      toast.error('Please enter a valid amount');
+      return;
+    }
+
+    try {
+      const validation = await validateTransaction(singlePayment);
+      console.log('Validation result:', validation);
+      
+      // Store validation info
+      setValidationInfo({
+        recipientName: validation.recipientName,
+        partnerCode: validation.partnerCode,
+        partnerName: validation.partnerName,
+        isValid: validation.isValid
+      });
+      
+      if (validation.feePreview) {
+        setFeePreview(validation.feePreview);
+        toast.success('Fee preview updated');
+      } else {
+        toast.info('Validation completed - no fee preview available');
+      }
+      
+      if (validation.recipientName) {
+        toast.success(`Recipient validated: ${validation.recipientName}`);
+      }
+      
+      if (validation.errors && validation.errors.length > 0) {
+        toast.error(`Validation errors: ${validation.errors.join(', ')}`);
+      }
+      
+      if (validation.warnings && validation.warnings.length > 0) {
+        toast.warning(`Validation warnings: ${validation.warnings.join(', ')}`);
+      }
+    } catch (error: any) {
+      console.error('Error validating transaction:', error);
+      toast.error('Failed to validate transaction');
+      setValidationInfo(null);
+    }
+  };
+
+  const processSinglePaymentTransaction = async () => {
+    if (!singlePayment.amount || singlePayment.amount <= 0) {
+      toast.error('Please enter a valid amount');
+      return;
+    }
+
+    if (!session?.user) {
+      toast.error('Please log in to process payments');
+      return;
+    }
+
+    setSinglePaymentLoading(true);
+    try {
+      const result = await processSinglePayment(singlePayment, (session.user as any).id);
+      toast.success('Payment processed successfully!');
+      console.log('Single payment result:', result);
+      
+      // Reset form
+      setSinglePayment({
+        mode: 'WALLET_TO_MNO',
+        amount: 0,
+        currency: 'UGX',
+        walletType: 'BUSINESS'
+      });
+      setFeePreview(null);
+    } catch (error: any) {
+      console.error('Error processing single payment:', error);
+      toast.error(error.message || 'Failed to process payment');
+    } finally {
+      setSinglePaymentLoading(false);
+    }
+  };
   const [bulkTransactionId, setBulkTransactionId] = useState<string | null>(null);
   const [processing, setProcessing] = useState(false);
   const [progressStats, setProgressStats] = useState({
@@ -333,6 +433,22 @@ export default function BulkPaymentPage() {
     setTimeout(poll, 2000);
   };
 
+  const getValidMnoProvider = (provider: string | undefined): string => {
+    const validProviders = ['MTN', 'Airtel'];
+    if (provider) {
+      const normalizedProvider = provider.trim();
+      // Check exact match first
+      if (validProviders.includes(normalizedProvider)) {
+        return normalizedProvider;
+      }
+      // Check case-insensitive match and return correct capitalization
+      const upperProvider = normalizedProvider.toUpperCase();
+      if (upperProvider === 'MTN') return 'MTN';
+      if (upperProvider === 'AIRTEL') return 'Airtel';
+    }
+    return 'MTN'; // Default to MTN if invalid or empty
+  };
+
   const handleProcessBulk = async () => {
     if (payments.length === 0) {
       toast.error('No payments to process');
@@ -510,7 +626,7 @@ export default function BulkPaymentPage() {
               currency: row.currency || 'UGX',
               description: row.description,
               phoneNumber: row.phoneNumber || '',
-              mnoProvider: row.mnoProvider || row.network || '',
+              mnoProvider: getValidMnoProvider(row.mnoProvider || row.network),
               recipientName: row.recipientName || row.name || '',
               accountNumber: row.accountNumber || '',
               bankSortCode: row.bankSortCode || '',
@@ -566,7 +682,7 @@ export default function BulkPaymentPage() {
               currency: row.currency || 'UGX',
               description: row.description,
               phoneNumber: row.phoneNumber || '',
-              mnoProvider: row.mnoProvider || row.network || '',
+              mnoProvider: getValidMnoProvider(row.mnoProvider || row.network),
               recipientName: row.recipientName || row.name || '',
               accountNumber: row.accountNumber || '',
               bankSortCode: row.bankSortCode || '',
@@ -671,8 +787,8 @@ export default function BulkPaymentPage() {
         <div className="mb-8">
           <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
             <div>
-              <h1 className="text-3xl font-bold text-[#08163d] mb-2">Bulk Payments</h1>
-              <p className="text-gray-600">Process multiple payments at once with mixed payment methods</p>
+              <h1 className="text-3xl font-bold text-[#08163d] mb-2">Payments</h1>
+              <p className="text-gray-600">Process single or multiple payments with various payment methods</p>
             </div>
             
             <Card className="md:w-80 bg-gradient-to-br from-purple-600 to-purple-700 text-white border-0">
@@ -774,7 +890,247 @@ export default function BulkPaymentPage() {
           </Card>
         )}
 
-        {/* Bulk Info */}
+        {/* Main Content Tabs */}
+        <Tabs defaultValue="bulk" className="space-y-6">
+          <TabsList className="grid w-full grid-cols-2">
+            <TabsTrigger value="single">Single Payment</TabsTrigger>
+            <TabsTrigger value="bulk">Bulk Payment</TabsTrigger>
+          </TabsList>
+
+          {/* Single Payment Tab */}
+          <TabsContent value="single" className="space-y-6">
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-lg">Single Payment</CardTitle>
+                <CardDescription>
+                  Process a single payment transaction
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-6">
+                {/* Transaction Type Selection */}
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-3">
+                    Choose Transaction Type
+                  </label>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                    {TRANSACTION_TYPES.map((type) => {
+                      const Icon = type.icon;
+                      return (
+                        <button
+                          key={type.value}
+                          onClick={() => handleSinglePaymentChange('mode', type.value)}
+                          className={`p-4 rounded-lg border-2 transition-all ${
+                            singlePayment.mode === type.value
+                              ? 'border-blue-500 bg-blue-50'
+                              : 'border-gray-200 hover:border-gray-300'
+                          }`}
+                        >
+                          <div className="flex items-center gap-3">
+                            <Icon className={`w-6 h-6 ${type.color}`} />
+                            <span className="font-medium text-gray-900">{type.label}</span>
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Amount Input */}
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">
+                    Amount (UGX)
+                  </label>
+                  <Input
+                    type="number"
+                    value={singlePayment.amount || ''}
+                    onChange={(e) => handleSinglePaymentChange('amount', Number(e.target.value))}
+                    placeholder="Enter amount"
+                    className="w-full"
+                  />
+                </div>
+
+                {/* Transaction Type Specific Fields */}
+                {singlePayment.mode === 'WALLET_TO_MNO' && (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-semibold text-gray-700 mb-2">
+                        Phone Number
+                      </label>
+                      <Input
+                        value={singlePayment.phoneNumber || ''}
+                        onChange={(e) => handleSinglePaymentChange('phoneNumber', e.target.value)}
+                        placeholder="e.g., +256700000000"
+                        className="w-full"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-semibold text-gray-700 mb-2">
+                        MNO Provider
+                      </label>
+                      <select
+                        value={singlePayment.mnoProvider || ''}
+                        onChange={(e) => handleSinglePaymentChange('mnoProvider', e.target.value)}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                      >
+                        <option value="">Select Provider</option>
+                        <option value="MTN">MTN</option>
+                        <option value="Airtel">Airtel</option>
+                        <option value="UGA_TELECOM">UGA Telecom</option>
+                        <option value="LYCAMOBILE">LycaMobile</option>
+                      </select>
+                    </div>
+                  </div>
+                )}
+
+                {singlePayment.mode === 'WALLET_TO_BANK' && (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-semibold text-gray-700 mb-2">
+                        Bank Name
+                      </label>
+                      <select
+                        value={singlePayment.bankName || ''}
+                        onChange={(e) => handleSinglePaymentChange('bankName', e.target.value)}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                      >
+                        <option value="">Select Bank</option>
+                        {UGANDAN_BANKS.map((bank) => (
+                          <option key={bank.bankSortCode} value={bank.bankName}>
+                            {bank.bankName}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-semibold text-gray-700 mb-2">
+                        Account Number
+                      </label>
+                      <Input
+                        value={singlePayment.accountNumber || ''}
+                        onChange={(e) => handleSinglePaymentChange('accountNumber', e.target.value)}
+                        placeholder="Enter account number"
+                        className="w-full"
+                      />
+                    </div>
+                  </div>
+                )}
+
+                {singlePayment.mode === 'WALLET_TO_WALLET' && (
+                  <div>
+                    <label className="block text-sm font-semibold text-gray-700 mb-2">
+                      Recipient Phone Number
+                    </label>
+                    <Input
+                      value={singlePayment.recipientPhoneNumber || ''}
+                      onChange={(e) => handleSinglePaymentChange('recipientPhoneNumber', e.target.value)}
+                      placeholder="e.g., +256700000000"
+                      className="w-full"
+                    />
+                  </div>
+                )}
+
+                {/* Description */}
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">
+                    Description (Optional)
+                  </label>
+                  <Input
+                    value={singlePayment.description || ''}
+                    onChange={(e) => handleSinglePaymentChange('description', e.target.value)}
+                    placeholder="Enter transaction description"
+                    className="w-full"
+                  />
+                </div>
+
+          {/* Validation Info */}
+          {validationInfo && (
+            <Card className="bg-green-50 border-green-200">
+              <CardContent className="pt-4">
+                <h4 className="font-semibold text-green-900 mb-2">Validation Result</h4>
+                <div className="grid grid-cols-1 gap-3 text-sm">
+                  {validationInfo.recipientName && (
+                    <div className="flex items-center gap-2">
+                      <span className="text-gray-600">Recipient:</span>
+                      <span className="font-medium text-green-800">{validationInfo.recipientName}</span>
+                    </div>
+                  )}
+                  {validationInfo.partnerName && (
+                    <div className="flex items-center gap-2">
+                      <span className="text-gray-600">Partner:</span>
+                      <span className="font-medium text-green-800">{validationInfo.partnerName}</span>
+                    </div>
+                  )}
+                  <div className="flex items-center gap-2">
+                    <span className="text-gray-600">Status:</span>
+                    <span className={`font-medium ${validationInfo.isValid ? 'text-green-800' : 'text-red-600'}`}>
+                      {validationInfo.isValid ? 'Valid' : 'Invalid'}
+                    </span>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Fee Preview */}
+          {feePreview && (
+            <Card className="bg-blue-50 border-blue-200">
+              <CardContent className="pt-4">
+                <h4 className="font-semibold text-blue-900 mb-2">Fee Preview</h4>
+                <div className="grid grid-cols-2 gap-4 text-sm">
+                  <div>
+                    <span className="text-gray-600">Total Amount:</span>
+                    <span className="font-medium ml-2">UGX {singlePayment.amount?.toLocaleString()}</span>
+                  </div>
+                  <div>
+                    <span className="text-gray-600">Fee:</span>
+                    <span className="font-medium ml-2">UGX {feePreview.totalFee.toLocaleString()}</span>
+                  </div>
+                  <div>
+                    <span className="text-gray-600">Net Amount:</span>
+                    <span className="font-medium ml-2">UGX {feePreview.netAmount.toLocaleString()}</span>
+                  </div>
+                  <div>
+                    <span className="text-gray-600">Tariff:</span>
+                    <span className="font-medium ml-2">{feePreview.tariffName}</span>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+                {/* Action Buttons */}
+                <div className="flex gap-3">
+                  <Button
+                    onClick={previewSinglePaymentFees}
+                    variant="outline"
+                    disabled={!singlePayment.amount || singlePayment.amount <= 0}
+                  >
+                    Validate Transaction
+                  </Button>
+                  <Button
+                    onClick={processSinglePaymentTransaction}
+                    disabled={singlePaymentLoading || !singlePayment.amount || singlePayment.amount <= 0}
+                    className="flex items-center gap-2"
+                  >
+                    {singlePaymentLoading ? (
+                      <>
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                        Processing...
+                      </>
+                    ) : (
+                      <>
+                        <Send className="w-4 h-4" />
+                        Process Payment
+                      </>
+                    )}
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          {/* Bulk Payment Tab */}
+          <TabsContent value="bulk" className="space-y-6">
         <Card>
           <CardHeader>
             <CardTitle className="text-lg">Bulk Transaction Details</CardTitle>
@@ -1006,7 +1362,7 @@ export default function BulkPaymentPage() {
                         className="w-full px-3 py-2 border border-gray-300 rounded-lg"
                       >
                         <option value="MTN">MTN</option>
-                        <option value="AIRTEL">Airtel</option>
+                        <option value="Airtel">Airtel</option>
                       </select>
                     </div>
                     <div>
@@ -1350,6 +1706,8 @@ export default function BulkPaymentPage() {
             </CardContent>
           </Card>
         </div>
+          </TabsContent>
+        </Tabs>
       </div>
     </div>
   );
