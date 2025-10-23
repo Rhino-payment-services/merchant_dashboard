@@ -12,7 +12,7 @@ import {
 import { useSession } from "next-auth/react";
 import { toast } from 'sonner';
 import * as XLSX from 'xlsx';
-import { processBulkTransaction, validateBulkRecipients, BulkTransactionItem, BulkTransactionItemResult } from "@/lib/api/bulk-payment.api";
+import { processBulkTransactionAsync, validateBulkRecipients, getBulkTransactionStatus, BulkTransactionItem, BulkTransactionItemResult } from "@/lib/api/bulk-payment.api";
 
 const TRANSACTION_TYPES = [
   { value: 'WALLET_TO_MNO', label: 'Mobile Money', icon: Phone, color: 'text-blue-600', bg: 'bg-blue-50' },
@@ -61,7 +61,16 @@ export default function BulkPaymentPage() {
   const [payments, setPayments] = useState<PaymentItem[]>([]);
   const [bulkDescription, setBulkDescription] = useState('');
   const [bulkReference, setBulkReference] = useState('');
+  // State for progress tracking
+  const [bulkTransactionId, setBulkTransactionId] = useState<string | null>(null);
   const [processing, setProcessing] = useState(false);
+  const [progressStats, setProgressStats] = useState({
+    total: 0,
+    successful: 0,
+    failed: 0,
+    pending: 0,
+    percentage: 0
+  });
   const [validating, setValidating] = useState(false);
   const [showAddForm, setShowAddForm] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -210,6 +219,83 @@ export default function BulkPaymentPage() {
     }
   };
 
+  // Poll bulk transaction status
+  const pollBulkTransactionStatus = async (bulkTransactionId: string) => {
+    const maxAttempts = 60; // 5 minutes max
+    let attempts = 0;
+
+    const poll = async () => {
+      try {
+        attempts++;
+        const status = await getBulkTransactionStatus(bulkTransactionId);
+
+        // Update progress stats
+        const successCount = status.successfulTransactions || status.successfulItems || 0;
+        const failCount = status.failedTransactions || status.failedItems || 0;
+        const pendingCount = status.pendingTransactions || status.pendingItems || 0;
+        const totalCount = status.totalTransactions || status.totalItems || payments.length;
+        const processed = successCount + failCount;
+        
+        setProgressStats({
+          total: totalCount,
+          successful: successCount,
+          failed: failCount,
+          pending: pendingCount,
+          percentage: Math.round((processed / totalCount) * 100)
+        });
+        
+        // Update individual payment statuses
+        const transactionResults = status.transactionResults || status.results || [];
+        const updatedPayments = payments.map(payment => {
+          const itemResult = transactionResults.find((r: any) => r.itemId === payment.itemId);
+          if (itemResult) {
+            return {
+              ...payment,
+              status: itemResult.status?.toLowerCase() || 'pending' as any,
+              error: itemResult.errorMessage || itemResult.error,
+            };
+          }
+          return payment;
+        });
+        setPayments(updatedPayments);
+
+        // Check for completion
+        if (status.status === 'SUCCESS' || status.status === 'FAILED' || status.status === 'PARTIAL_SUCCESS') {
+          setBulkTransactionId(null);
+          // Show final summary toast
+          if (successCount === totalCount) {
+            toast.success(`🎉 All ${successCount} payments completed successfully!`);
+          } else if (successCount > 0) {
+            toast.warning(`⚠️ ${successCount} succeeded, ${failCount} failed`);
+          } else {
+            toast.error(`❌ All ${failCount} payments failed`);
+          }
+          return; // Stop polling
+        }
+
+        // Continue polling
+        if (attempts < maxAttempts) {
+          setTimeout(poll, 5000); // Poll every 5 seconds
+        } else {
+          setBulkTransactionId(null);
+          toast.warning('⏰ Status polling timeout. Check transaction status manually.');
+        }
+
+      } catch (error) {
+        console.error('❌ Error polling bulk transaction status:', error);
+        if (attempts < maxAttempts) {
+          setTimeout(poll, 5000);
+        } else {
+          setBulkTransactionId(null);
+          toast.error('❌ Failed to get bulk transaction status');
+        }
+      }
+    };
+
+    // Start polling after 2 seconds
+    setTimeout(poll, 2000);
+  };
+
   const handleProcessBulk = async () => {
     if (payments.length === 0) {
       toast.error('No payments to process');
@@ -254,11 +340,23 @@ export default function BulkPaymentPage() {
         stopOnFirstFailure: false,
       };
 
-      console.log('🚀 Processing bulk transaction:', bulkRequest);
+      console.log('🚀 Processing bulk transaction async:', bulkRequest);
       
-      const result = await processBulkTransaction(bulkRequest);
+      const result = await processBulkTransactionAsync(bulkRequest);
       
-      console.log('✅ Bulk transaction result:', result);
+      console.log('✅ Bulk transaction queued:', result);
+
+      setBulkTransactionId(result.bulkTransactionId);
+      setProgressStats({
+        total: payments.length,
+        successful: 0,
+        failed: 0,
+        pending: payments.length,
+        percentage: 0
+      });
+      
+      toast.success(`🚀 Bulk payment queued! Processing ${payments.length} transactions in background.`);
+      await pollBulkTransactionStatus(result.bulkTransactionId);
 
       // Update payment statuses based on results
       // Backend returns transactionResults, not results
@@ -557,6 +655,79 @@ export default function BulkPaymentPage() {
           </Card>
           </div>
         </div>
+
+        {/* Progress Indicator Card */}
+        {bulkTransactionId && processing && (
+          <Card className="border-blue-200 bg-blue-50">
+            <CardHeader>
+              <CardTitle className="text-lg flex items-center gap-2">
+                <Loader2 className="w-5 h-5 animate-spin text-blue-600" />
+                Processing Bulk Payment
+              </CardTitle>
+              <CardDescription>
+                Transaction ID: {bulkTransactionId}
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {/* Progress Bar */}
+              <div>
+                <div className="flex justify-between text-sm mb-2">
+                  <span className="font-medium text-gray-700">Progress</span>
+                  <span className="font-bold text-blue-600">{progressStats.percentage}%</span>
+                </div>
+                <div className="w-full bg-gray-200 rounded-full h-3 overflow-hidden">
+                  <div
+                    className="bg-gradient-to-r from-blue-500 to-blue-600 h-3 rounded-full transition-all duration-500 ease-out"
+                    style={{ width: `${progressStats.percentage}%` }}
+                  />
+                </div>
+              </div>
+
+              {/* Stats Grid */}
+              <div className="grid grid-cols-4 gap-4">
+                <div className="bg-white rounded-lg p-3 text-center border border-gray-200">
+                  <div className="text-2xl font-bold text-gray-800">{progressStats.total}</div>
+                  <div className="text-xs text-gray-600 mt-1">Total</div>
+                </div>
+                <div className="bg-green-50 rounded-lg p-3 text-center border border-green-200">
+                  <div className="text-2xl font-bold text-green-700">{progressStats.successful}</div>
+                  <div className="text-xs text-green-700 mt-1 flex items-center justify-center gap-1">
+                    <CheckCircle2 className="w-3 h-3" />
+                    Success
+                  </div>
+                </div>
+                <div className="bg-red-50 rounded-lg p-3 text-center border border-red-200">
+                  <div className="text-2xl font-bold text-red-700">{progressStats.failed}</div>
+                  <div className="text-xs text-red-700 mt-1 flex items-center justify-center gap-1">
+                    <XCircle className="w-3 h-3" />
+                    Failed
+                  </div>
+                </div>
+                <div className="bg-yellow-50 rounded-lg p-3 text-center border border-yellow-200">
+                  <div className="text-2xl font-bold text-yellow-700">{progressStats.pending}</div>
+                  <div className="text-xs text-yellow-700 mt-1 flex items-center justify-center gap-1">
+                    <Clock className="w-3 h-3" />
+                    Pending
+                  </div>
+                </div>
+              </div>
+
+              {/* Processing Info */}
+              <div className="bg-white rounded-lg p-3 border border-blue-200">
+                <div className="flex items-start gap-2">
+                  <Info className="w-4 h-4 text-blue-600 mt-0.5 flex-shrink-0" />
+                  <div className="text-sm text-gray-700">
+                    <p className="font-medium mb-1">Processing in background</p>
+                    <p className="text-xs text-gray-600">
+                      Transactions are being processed asynchronously. You can leave this page and check back later.
+                      The individual transaction statuses will update automatically every 5 seconds.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        )}
 
         {/* Bulk Info */}
         <Card>
@@ -922,10 +1093,34 @@ export default function BulkPaymentPage() {
                   return (
                     <div
                       key={payment.id}
-                      className="flex items-center gap-4 p-4 border rounded-lg hover:bg-gray-50 transition-colors"
+                      className={`flex items-center gap-4 p-4 border rounded-lg transition-all ${
+                        payment.status === 'processing' 
+                          ? 'border-blue-300 bg-blue-50 animate-pulse' 
+                          : payment.status === 'success'
+                          ? 'border-green-200 bg-green-50'
+                          : payment.status === 'failed'
+                          ? 'border-red-200 bg-red-50'
+                          : 'border-gray-200 hover:bg-gray-50'
+                      }`}
                     >
-                      <div className={`p-3 rounded-lg ${typeInfo?.bg || 'bg-gray-100'}`}>
-                        <Icon className={`w-5 h-5 ${typeInfo?.color || 'text-gray-600'}`} />
+                      <div className={`p-3 rounded-lg ${
+                        payment.status === 'processing'
+                          ? 'bg-blue-100'
+                          : payment.status === 'success'
+                          ? 'bg-green-100'
+                          : payment.status === 'failed'
+                          ? 'bg-red-100'
+                          : typeInfo?.bg || 'bg-gray-100'
+                      }`}>
+                        <Icon className={`w-5 h-5 ${
+                          payment.status === 'processing'
+                            ? 'text-blue-600'
+                            : payment.status === 'success'
+                            ? 'text-green-600'
+                            : payment.status === 'failed'
+                            ? 'text-red-600'
+                            : typeInfo?.color || 'text-gray-600'
+                        }`} />
                       </div>
                       
                       <div className="flex-1 grid grid-cols-1 md:grid-cols-4 gap-2">
