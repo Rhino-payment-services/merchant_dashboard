@@ -16,7 +16,8 @@ import {
   MessageCircle,
   ArrowDown,
   X,
-  QrCode
+  QrCode,
+  Activity
 } from 'lucide-react';
 import Image from 'next/image';
 import { useSession } from 'next-auth/react';
@@ -26,6 +27,7 @@ const navLinks = [
   { section: 'GENERAL', links: [
     { name: 'Dashboard', path: '/', icon: LayoutDashboard },
     { name: 'Transaction', path: '/transactions', icon: CreditCard },
+    { name: 'Transaction Tracking', path: '/transaction-tracking', icon: Activity },
     // { name: 'Withdraw', path: '/transfer', icon: ArrowRightLeft },
     { name: 'Top Up', path: '/top-up', icon: ArrowDown },
     { name: 'QR Code', path: '/qr-code', icon: QrCode },

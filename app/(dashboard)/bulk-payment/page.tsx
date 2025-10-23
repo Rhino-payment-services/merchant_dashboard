@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { 
   Upload, Download, Plus, Trash2, Users, CheckCircle2, 
   XCircle, Clock, Send, AlertCircle, Info, Loader2,
-  Wallet, Phone, Building2, Zap, Edit
+  Wallet, Phone, Building2, Zap, Edit, RefreshCw
 } from "lucide-react";
 import { useSession } from "next-auth/react";
 import { toast } from 'sonner';
@@ -219,15 +219,29 @@ export default function BulkPaymentPage() {
     }
   };
 
-  // Poll bulk transaction status
+  // Enhanced polling mechanism for bulk transaction status
   const pollBulkTransactionStatus = async (bulkTransactionId: string) => {
-    const maxAttempts = 60; // 5 minutes max
+    const maxAttempts = 120; // 10 minutes max (increased from 5 minutes)
+    const pollInterval = 3000; // Poll every 3 seconds (reduced from 5 seconds)
     let attempts = 0;
+    let consecutiveErrors = 0;
+    const maxConsecutiveErrors = 5;
 
     const poll = async () => {
       try {
         attempts++;
+        console.log(`🔄 Polling attempt ${attempts}/${maxAttempts} for bulk transaction ${bulkTransactionId}`);
+        
         const status = await getBulkTransactionStatus(bulkTransactionId);
+        consecutiveErrors = 0; // Reset error counter on successful poll
+
+        console.log('📊 Bulk transaction status:', {
+          status: status.status,
+          total: status.totalTransactions || status.totalItems || 0,
+          successful: status.successfulTransactions || status.successfulItems || 0,
+          failed: status.failedTransactions || status.failedItems || 0,
+          pending: status.pendingTransactions || status.pendingItems || 0,
+        });
 
         // Update progress stats
         const successCount = status.successfulTransactions || status.successfulItems || 0;
@@ -260,8 +274,10 @@ export default function BulkPaymentPage() {
         setPayments(updatedPayments);
 
         // Check for completion
-        if (status.status === 'SUCCESS' || status.status === 'FAILED' || status.status === 'PARTIAL_SUCCESS') {
+        if (status.status === 'SUCCESS' || status.status === 'FAILED' || status.status === 'PARTIAL_SUCCESS' || status.status === 'COMPLETED') {
           setBulkTransactionId(null);
+          setProcessing(false);
+          
           // Show final summary toast
           if (successCount === totalCount) {
             toast.success(`🎉 All ${successCount} payments completed successfully!`);
@@ -270,23 +286,44 @@ export default function BulkPaymentPage() {
           } else {
             toast.error(`❌ All ${failCount} payments failed`);
           }
-          return; // Stop polling
+          
+          console.log('✅ Bulk transaction completed:', {
+            status: status.status,
+            successful: successCount,
+            failed: failCount,
+            total: totalCount
+          });
+          return;
         }
 
-        // Continue polling
+        // Continue polling if not completed and under max attempts
         if (attempts < maxAttempts) {
-          setTimeout(poll, 5000); // Poll every 5 seconds
+          setTimeout(poll, pollInterval);
         } else {
           setBulkTransactionId(null);
-          toast.warning('⏰ Status polling timeout. Check transaction status manually.');
+          setProcessing(false);
+          toast.error('⏰ Bulk payment polling timeout - please check status manually');
+          console.warn('⚠️ Bulk transaction polling timeout after', maxAttempts, 'attempts');
         }
-
       } catch (error) {
-        console.error('❌ Error polling bulk transaction status:', error);
+        consecutiveErrors++;
+        console.error(`❌ Error polling bulk transaction status (attempt ${attempts}, consecutive errors: ${consecutiveErrors}):`, error);
+        
+        if (consecutiveErrors >= maxConsecutiveErrors) {
+          setBulkTransactionId(null);
+          setProcessing(false);
+          toast.error('❌ Too many polling errors - please check status manually');
+          console.error('❌ Stopping polling due to consecutive errors:', consecutiveErrors);
+          return;
+        }
+        
         if (attempts < maxAttempts) {
-          setTimeout(poll, 5000);
+          // Exponential backoff for errors
+          const backoffDelay = Math.min(pollInterval * Math.pow(2, consecutiveErrors - 1), 30000);
+          setTimeout(poll, backoffDelay);
         } else {
           setBulkTransactionId(null);
+          setProcessing(false);
           toast.error('❌ Failed to get bulk transaction status');
         }
       }
@@ -683,6 +720,14 @@ export default function BulkPaymentPage() {
                 </div>
               </div>
 
+              {/* Polling Status Indicator */}
+              {bulkTransactionId && (
+                <div className="flex items-center justify-center gap-2 text-sm text-blue-600 bg-blue-50 rounded-lg p-2 border border-blue-200">
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  <span>Live monitoring active - Updates every 3 seconds</span>
+                </div>
+              )}
+
               {/* Stats Grid */}
               <div className="grid grid-cols-4 gap-4">
                 <div className="bg-white rounded-lg p-3 text-center border border-gray-200">
@@ -822,6 +867,58 @@ export default function BulkPaymentPage() {
                 </>
               )}
             </Button>
+
+            {/* Manual Status Check Button */}
+            {bulkTransactionId && (
+              <Button
+                onClick={async () => {
+                  try {
+                    const status = await getBulkTransactionStatus(bulkTransactionId);
+                    console.log('📊 Manual status check:', status);
+                    
+                    // Update progress stats
+                    const successCount = status.successfulTransactions || status.successfulItems || 0;
+                    const failCount = status.failedTransactions || status.failedItems || 0;
+                    const pendingCount = status.pendingTransactions || status.pendingItems || 0;
+                    const totalCount = status.totalTransactions || status.totalItems || payments.length;
+                    const processed = successCount + failCount;
+                    
+                    setProgressStats({
+                      total: totalCount,
+                      successful: successCount,
+                      failed: failCount,
+                      pending: pendingCount,
+                      percentage: Math.round((processed / totalCount) * 100)
+                    });
+                    
+                    // Update individual payment statuses
+                    const transactionResults = status.transactionResults || status.results || [];
+                    const updatedPayments = payments.map(payment => {
+                      const itemResult = transactionResults.find((r: any) => r.itemId === payment.itemId);
+                      if (itemResult) {
+                        return {
+                          ...payment,
+                          status: itemResult.status?.toLowerCase() || 'pending' as any,
+                          error: itemResult.errorMessage || itemResult.error,
+                        };
+                      }
+                      return payment;
+                    });
+                    setPayments(updatedPayments);
+                    
+                    toast.success('✅ Status updated successfully');
+                  } catch (error) {
+                    console.error('❌ Error checking status:', error);
+                    toast.error('❌ Failed to check status');
+                  }
+                }}
+                variant="outline"
+                className="bg-blue-50 hover:bg-blue-100 border-blue-200"
+              >
+                <RefreshCw className="w-4 h-4 mr-2" />
+                Check Status
+              </Button>
+            )}
 
             <Button
               onClick={handleProcessBulk}

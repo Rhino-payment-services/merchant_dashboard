@@ -5,8 +5,9 @@ import { Card } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Button } from '@/components/ui/button';
 import { Input } from '../../../components/ui/input';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useMyTransactions, TransactionFilter } from '@/lib/api/transactions.api';
-import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, RefreshCw } from 'lucide-react';
+import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, RefreshCw, Activity } from 'lucide-react';
 import { toast } from 'sonner';
 
 type StatusType = 'COMPLETED' | 'PENDING' | 'PROCESSING' | 'FAILED' | 'CANCELLED' | 'REFUNDED' | "SUCCESS";
@@ -151,7 +152,21 @@ export default function TransactionsPage() {
           </div>
         </div>
 
-        {/* Summary Cards */}
+        {/* Tabs */}
+        <Tabs defaultValue="transactions" className="mb-6">
+          <TabsList className="grid w-full grid-cols-2">
+            <TabsTrigger value="transactions" className="flex items-center gap-2">
+              <RefreshCw className="w-4 h-4" />
+              Transactions
+            </TabsTrigger>
+            <TabsTrigger value="tracking" className="flex items-center gap-2">
+              <Activity className="w-4 h-4" />
+              Bulk Tracking
+            </TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="transactions" className="space-y-6">
+            {/* Summary Cards */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
           <Card className="p-4">
             <h3 className="text-sm font-medium text-gray-500">Total Amount</h3>
@@ -357,6 +372,26 @@ export default function TransactionsPage() {
             </div>
           </div>
         </Card>
+          </TabsContent>
+
+          <TabsContent value="tracking" className="space-y-6">
+            <Card className="p-6">
+              <div className="text-center">
+                <Activity className="w-12 h-12 text-blue-600 mx-auto mb-4" />
+                <h3 className="text-lg font-semibold text-gray-900 mb-2">Bulk Transaction Tracking</h3>
+                <p className="text-gray-600 mb-4">
+                  Track the status and progress of your bulk payment transactions
+                </p>
+                <Button 
+                  onClick={() => window.location.href = '/transaction-tracking'}
+                  className="bg-blue-600 hover:bg-blue-700"
+                >
+                  Go to Transaction Tracking
+                </Button>
+              </div>
+            </Card>
+          </TabsContent>
+        </Tabs>
       </div>
     </div>
     </>
