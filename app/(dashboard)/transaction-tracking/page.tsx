@@ -26,7 +26,8 @@ import {
   AlertCircle,
   TrendingUp,
   TrendingDown,
-  DollarSign
+  DollarSign,
+  BarChart3
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useSession } from 'next-auth/react';
@@ -64,16 +65,25 @@ export default function TransactionTrackingPage() {
     
     setLoading(true);
     try {
+      console.log('Loading bulk transactions for user:', (session.user as any).id);
+      
       const response = await getBulkTransactionList({
         page: 1,
         limit: 50,
         userId: (session.user as any).id
       });
       
+      console.log('Bulk transactions response:', response);
       setBulkTransactions(response.bulkTransactions || []);
+      
+      if (response.bulkTransactions?.length === 0) {
+        console.log('No bulk transactions found for user');
+      }
     } catch (error) {
       console.error('Error loading bulk transactions:', error);
       toast.error('Failed to load bulk transactions');
+      // Set empty array instead of showing error state
+      setBulkTransactions([]);
     } finally {
       setLoading(false);
     }
@@ -152,18 +162,19 @@ export default function TransactionTrackingPage() {
   };
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold text-gray-900">Transaction Tracking</h1>
-          <p className="text-gray-600 mt-1">Monitor and track your bulk payment transactions</p>
+    <div className="min-h-screen bg-gray-50 p-6">
+      <div className="max-w-screen-2xl mx-auto space-y-6">
+        {/* Header */}
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-3xl font-bold text-[#08163d] mb-2">Transaction Tracking</h1>
+            <p className="text-gray-600">Monitor and track your bulk payment transactions</p>
+          </div>
+          <Button onClick={loadBulkTransactions} disabled={loading} className="flex items-center gap-2">
+            <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+            Refresh
+          </Button>
         </div>
-        <Button onClick={loadBulkTransactions} disabled={loading} className="flex items-center gap-2">
-          <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
-          Refresh
-        </Button>
-      </div>
 
       {/* Summary Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -349,8 +360,25 @@ export default function TransactionTrackingPage() {
               </Table>
 
               {filteredTransactions.length === 0 && (
-                <div className="text-center py-8 text-gray-500">
-                  No bulk transactions found
+                <div className="text-center py-12">
+                  <div className="mx-auto w-24 h-24 bg-gray-100 rounded-full flex items-center justify-center mb-4">
+                    <BarChart3 className="w-12 h-12 text-gray-400" />
+                  </div>
+                  <h3 className="text-lg font-medium text-gray-900 mb-2">No bulk transactions found</h3>
+                  <p className="text-gray-500 mb-4">
+                    {bulkTransactions.length === 0 
+                      ? "You haven't created any bulk payments yet. Start by creating a bulk payment to track its progress here."
+                      : "No transactions match your current search criteria."
+                    }
+                  </p>
+                  {bulkTransactions.length === 0 && (
+                    <Button 
+                      onClick={() => window.location.href = '/bulk-payment'}
+                      className="bg-blue-600 hover:bg-blue-700"
+                    >
+                      Create Bulk Payment
+                    </Button>
+                  )}
                 </div>
               )}
             </CardContent>
@@ -443,6 +471,7 @@ export default function TransactionTrackingPage() {
           )}
         </TabsContent>
       </Tabs>
+      </div>
     </div>
   );
 }
