@@ -35,30 +35,18 @@ import { getBulkTransactionStatus, getBulkTransactionList } from '@/lib/api/bulk
 interface BulkTransaction {
   bulkTransactionId: string;
   status: 'PENDING' | 'PROCESSING' | 'COMPLETED' | 'FAILED' | 'PARTIAL_SUCCESS' | 'SUCCESS';
-  totalTransactions: number;
-  successfulTransactions: number;
-  failedTransactions: number;
-  pendingTransactions: number;
-  totalAmount: number;
-  totalFees: number;
-  currency: string;
-  createdAt: string;
+  totalTransactions?: number;
+  successfulTransactions?: number;
+  failedTransactions?: number;
+  pendingTransactions?: number;
+  totalAmount?: number;
+  totalFees?: number;
+  currency?: string;
+  createdAt?: string;
   completedAt?: string;
   errorMessage?: string;
-  transactionResults: Array<{
-    itemId: string;
-    transactionId: string;
-    status: string;
-    amount: number;
-    fee: number;
-    netAmount: number;
-    currency: string;
-    reference: string;
-    description: string;
-    createdAt: string;
-    processedAt: string;
-    errorMessage?: string;
-  }>;
+  description?: string;
+  transactionResults?: any[];
 }
 
 export default function TransactionTrackingPage() {
@@ -132,8 +120,8 @@ export default function TransactionTrackingPage() {
     completed: bulkTransactions.filter(tx => tx.status === 'COMPLETED' || tx.status === 'SUCCESS').length,
     failed: bulkTransactions.filter(tx => tx.status === 'FAILED').length,
     partialSuccess: bulkTransactions.filter(tx => tx.status === 'PARTIAL_SUCCESS').length,
-    totalAmount: bulkTransactions.reduce((sum, tx) => sum + tx.totalAmount, 0),
-    totalFees: bulkTransactions.reduce((sum, tx) => sum + tx.totalFees, 0),
+    totalAmount: bulkTransactions.reduce((sum, tx) => sum + (tx.totalAmount || 0), 0),
+    totalFees: bulkTransactions.reduce((sum, tx) => sum + (tx.totalFees || 0), 0),
   };
 
   const getStatusBadge = (status: string) => {
@@ -158,8 +146,9 @@ export default function TransactionTrackingPage() {
   };
 
   const getProgressPercentage = (tx: BulkTransaction) => {
-    const processed = tx.successfulTransactions + tx.failedTransactions;
-    return Math.round((processed / tx.totalTransactions) * 100);
+    const processed = (tx.successfulTransactions || 0) + (tx.failedTransactions || 0);
+    const total = tx.totalTransactions || 1;
+    return Math.round((processed / total) * 100);
   };
 
   return (
@@ -314,9 +303,9 @@ export default function TransactionTrackingPage() {
                       </TableCell>
                       <TableCell>
                         <div className="text-sm">
-                          <div className="font-medium">UGX {tx.totalAmount.toLocaleString()}</div>
-                          {tx.totalFees > 0 && (
-                            <div className="text-gray-500">Fee: UGX {tx.totalFees.toLocaleString()}</div>
+                          <div className="font-medium">UGX {(tx.totalAmount || 0).toLocaleString()}</div>
+                          {(tx.totalFees || 0) > 0 && (
+                            <div className="text-gray-500">Fee: UGX {(tx.totalFees || 0).toLocaleString()}</div>
                           )}
                         </div>
                       </TableCell>
@@ -324,20 +313,20 @@ export default function TransactionTrackingPage() {
                         <div className="text-sm">
                           <div className="flex items-center gap-1">
                             <CheckCircle className="w-3 h-3 text-green-600" />
-                            <span className="text-green-600">{tx.successfulTransactions}</span>
+                            <span className="text-green-600">{tx.successfulTransactions || 0}</span>
                           </div>
                           <div className="flex items-center gap-1">
                             <XCircle className="w-3 h-3 text-red-600" />
-                            <span className="text-red-600">{tx.failedTransactions}</span>
+                            <span className="text-red-600">{tx.failedTransactions || 0}</span>
                           </div>
                           <div className="flex items-center gap-1">
                             <Clock className="w-3 h-3 text-yellow-600" />
-                            <span className="text-yellow-600">{tx.pendingTransactions}</span>
+                            <span className="text-yellow-600">{tx.pendingTransactions || 0}</span>
                           </div>
                         </div>
                       </TableCell>
                       <TableCell className="text-sm text-gray-600">
-                        {new Date(tx.createdAt).toLocaleDateString()}
+                        {tx.createdAt ? new Date(tx.createdAt).toLocaleDateString() : 'N/A'}
                       </TableCell>
                       <TableCell>
                         <Button
@@ -387,15 +376,15 @@ export default function TransactionTrackingPage() {
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                     <div>
                       <p className="text-sm font-medium text-gray-600">Total Amount</p>
-                      <p className="text-lg font-bold">UGX {selectedBulkTransaction.totalAmount.toLocaleString()}</p>
+                      <p className="text-lg font-bold">UGX {(selectedBulkTransaction.totalAmount || 0).toLocaleString()}</p>
                     </div>
                     <div>
                       <p className="text-sm font-medium text-gray-600">Total Fees</p>
-                      <p className="text-lg font-bold">UGX {selectedBulkTransaction.totalFees.toLocaleString()}</p>
+                      <p className="text-lg font-bold">UGX {(selectedBulkTransaction.totalFees || 0).toLocaleString()}</p>
                     </div>
                     <div>
                       <p className="text-sm font-medium text-gray-600">Currency</p>
-                      <p className="text-lg font-bold">{selectedBulkTransaction.currency}</p>
+                      <p className="text-lg font-bold">{selectedBulkTransaction.currency || 'UGX'}</p>
                     </div>
                   </div>
                 </CardContent>
@@ -406,7 +395,7 @@ export default function TransactionTrackingPage() {
                 <CardHeader>
                   <CardTitle>Individual Transactions</CardTitle>
                   <CardDescription>
-                    {selectedBulkTransaction.transactionResults.length} transactions
+                    {selectedBulkTransaction.transactionResults?.length || 0} transactions
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
@@ -422,7 +411,7 @@ export default function TransactionTrackingPage() {
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {selectedBulkTransaction.transactionResults.map((tx) => (
+                      {(selectedBulkTransaction.transactionResults || []).map((tx) => (
                         <TableRow key={tx.transactionId}>
                           <TableCell className="font-mono text-sm">
                             {tx.reference}
