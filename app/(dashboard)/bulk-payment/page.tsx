@@ -529,18 +529,19 @@ export default function BulkPaymentPage() {
 
       setPayments(updatedPayments);
 
-      // Show summary toast
+      // Show summary toast (only if there are actual results)
       const successCount = result.successfulTransactions || result.successfulItems || 0;
       const failCount = result.failedTransactions || result.failedItems || 0;
       const totalCount = result.totalTransactions || result.totalItems || payments.length;
       
-      if (successCount === totalCount) {
+      if (successCount === totalCount && successCount > 0) {
         toast.success(`🎉 All ${successCount} payments completed successfully!`);
-      } else if (successCount > 0) {
+      } else if (successCount > 0 && failCount > 0) {
         toast.warning(`⚠️ ${successCount} succeeded, ${failCount} failed`);
-      } else {
+      } else if (failCount > 0) {
         toast.error(`❌ All ${failCount} payments failed`);
       }
+      // Don't show toast if both counts are 0 (initial state)
 
     } catch (error: any) {
       console.error('❌ Bulk payment error:', error);
@@ -714,36 +715,25 @@ export default function BulkPaymentPage() {
   const downloadTemplate = (format: 'excel' | 'csv' = 'csv') => {
     const templateData = [
       {
-        mode: 'WALLET_TO_MNO',
-        phoneNumber: '256700111111',
-        mnoProvider: 'MTN',
-        recipientName: 'John Doe',
-        amount: 50000,
-        currency: 'UGX',
-        description: 'Salary payment',
+        'Transaction Mode': 'WALLET_TO_MNO',
+        'Phone Number / Account Number': '256700111111',
+        'Name': 'John Doe',
       },
       {
-        mode: 'WALLET_TO_BANK',
-        accountNumber: '1234567890',
-        bankSortCode: '040147',
-        bankName: 'Stanbic Bank Ltd',
-        accountName: 'Jane Smith',
-        amount: 100000,
-        currency: 'UGX',
-        description: 'Contractor payment',
+        'Transaction Mode': 'WALLET_TO_BANK',
+        'Phone Number / Account Number': '1234567890',
+        'Name': 'Jane Smith',
       },
       {
-        mode: 'WALLET_TO_WALLET',
-        recipientPhone: '256700333333',
-        amount: 75000,
-        currency: 'UGX',
-        description: 'Internal transfer',
+        'Transaction Mode': 'WALLET_TO_WALLET',
+        'Phone Number / Account Number': '256700333333',
+        'Name': 'Alice Johnson',
       },
     ];
 
     if (format === 'csv') {
       // Generate CSV content
-      const headers = ['mode', 'phoneNumber', 'mnoProvider', 'recipientName', 'accountNumber', 'bankSortCode', 'bankName', 'accountName', 'recipientPhone', 'amount', 'currency', 'description'];
+      const headers = ['Transaction Mode', 'Phone Number / Account Number', 'Name'];
       const csvContent = [
         headers.join(','),
         ...templateData.map(row => 
@@ -892,9 +882,10 @@ export default function BulkPaymentPage() {
 
         {/* Main Content Tabs */}
         <Tabs defaultValue="bulk" className="space-y-6">
-          <TabsList className="grid w-full grid-cols-2">
+          <TabsList className="grid w-full grid-cols-3">
             <TabsTrigger value="single">Single Payment</TabsTrigger>
             <TabsTrigger value="bulk">Bulk Payment</TabsTrigger>
+            <TabsTrigger value="mixed">Mixed Modes</TabsTrigger>
           </TabsList>
 
           {/* Single Payment Tab */}
@@ -1706,6 +1697,222 @@ export default function BulkPaymentPage() {
             </CardContent>
           </Card>
         </div>
+          </TabsContent>
+
+          {/* Mixed Modes Tab */}
+          <TabsContent value="mixed" className="space-y-6">
+            <Card className="border-2 border-blue-200 bg-blue-50">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Zap className="h-5 w-5 text-blue-600" />
+                  Mixed Transaction Modes
+                </CardTitle>
+                <CardDescription>
+                  Send payments to mobile money, bank accounts, and wallets all in one batch
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-4">
+                  <div className="bg-white p-4 rounded-lg border">
+                    <h4 className="font-semibold mb-2">How it works:</h4>
+                    <ul className="text-sm space-y-1 text-gray-600">
+                      <li>• Upload a file with different transaction modes</li>
+                      <li>• Each row can have a different mode (Mobile Money, Bank, or Wallet)</li>
+                      <li>• System automatically processes each according to its mode</li>
+                      <li>• Download the template to see the required format</li>
+                    </ul>
+                  </div>
+
+                  <div className="flex gap-3">
+                    <Button
+                      variant="outline"
+                      onClick={() => downloadTemplate('csv')}
+                    >
+                      <Download className="w-4 h-4 mr-2" />
+                      Download CSV Template
+                    </Button>
+
+                    <Button
+                      variant="outline"
+                      onClick={() => downloadTemplate('excel')}
+                    >
+                      <Download className="w-4 h-4 mr-2" />
+                      Download Excel Template
+                    </Button>
+                    
+                    <label className="cursor-pointer">
+                      <Button variant="outline" asChild>
+                        <span>
+                          <Upload className="w-4 h-4 mr-2" />
+                          Upload File
+                        </span>
+                      </Button>
+                      <input
+                        type="file"
+                        accept=".csv,.xlsx,.xls"
+                        onChange={handleFileUpload}
+                        className="hidden"
+                      />
+                    </label>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Payments List */}
+            {payments.length > 0 && (
+              <Card>
+                <CardHeader>
+                  <div className="flex justify-between items-center">
+                    <div>
+                      <CardTitle>Payment Queue</CardTitle>
+                      <CardDescription>
+                        {payments.length} payment{payments.length !== 1 ? 's' : ''} ready to process
+                      </CardDescription>
+                    </div>
+                    <div className="flex gap-2">
+                      <Button
+                        onClick={handleValidateAll}
+                        disabled={payments.length === 0 || validating || processing}
+                        variant="outline"
+                        className="border-orange-600 text-orange-600 hover:bg-orange-50"
+                      >
+                        {validating ? (
+                          <>
+                            <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                            Validating...
+                          </>
+                        ) : (
+                          <>
+                            <CheckCircle2 className="w-4 h-4 mr-2" />
+                            Validate All
+                          </>
+                        )}
+                      </Button>
+                      
+                      <Button
+                        onClick={handleProcessBulk}
+                        disabled={payments.length === 0 || processing || validating}
+                        className="bg-green-600 hover:bg-green-700"
+                      >
+                        {processing ? (
+                          <>
+                            <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                            Processing {successCount}/{payments.length}
+                          </>
+                        ) : (
+                          <>
+                            <Send className="w-4 h-4 mr-2" />
+                            Process {payments.length} Payment{payments.length !== 1 ? 's' : ''}
+                          </>
+                        )}
+                      </Button>
+                    </div>
+                  </div>
+                </CardHeader>
+                <CardContent>
+                  {/* Summary Stats */}
+                  <div className="grid grid-cols-4 gap-4 mb-6">
+                    <div className="bg-blue-50 p-3 rounded-lg">
+                      <div className="flex items-center gap-2 mb-1">
+                        <Phone className="h-4 w-4 text-blue-600" />
+                        <span className="text-xs font-medium text-blue-700">Mobile Money</span>
+                      </div>
+                      <p className="text-xl font-bold text-blue-900">
+                        {payments.filter(p => p.mode === 'WALLET_TO_MNO').length}
+                      </p>
+                    </div>
+                    <div className="bg-purple-50 p-3 rounded-lg">
+                      <div className="flex items-center gap-2 mb-1">
+                        <Building2 className="h-4 w-4 text-purple-600" />
+                        <span className="text-xs font-medium text-purple-700">Bank Transfer</span>
+                      </div>
+                      <p className="text-xl font-bold text-purple-900">
+                        {payments.filter(p => p.mode === 'WALLET_TO_BANK').length}
+                      </p>
+                    </div>
+                    <div className="bg-green-50 p-3 rounded-lg">
+                      <div className="flex items-center gap-2 mb-1">
+                        <Wallet className="h-4 w-4 text-green-600" />
+                        <span className="text-xs font-medium text-green-700">Wallet</span>
+                      </div>
+                      <p className="text-xl font-bold text-green-900">
+                        {payments.filter(p => p.mode === 'WALLET_TO_WALLET').length}
+                      </p>
+                    </div>
+                    <div className="bg-gray-50 p-3 rounded-lg">
+                      <div className="flex items-center gap-2 mb-1">
+                        <Users className="h-4 w-4 text-gray-600" />
+                        <span className="text-xs font-medium text-gray-700">Total</span>
+                      </div>
+                      <p className="text-xl font-bold text-gray-900">
+                        {payments.length}
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Payments Table */}
+                  <div className="border rounded-lg overflow-hidden">
+                    <div className="max-h-96 overflow-y-auto">
+                      <table className="w-full">
+                        <thead className="bg-gray-50 sticky top-0">
+                          <tr>
+                            <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Mode</th>
+                            <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Recipient</th>
+                            <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Amount</th>
+                            <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
+                            <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Actions</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y">
+                          {payments.map((payment) => (
+                            <tr key={payment.id} className="hover:bg-gray-50">
+                              <td className="px-4 py-3">
+                                <div className="flex items-center gap-2">
+                                  {payment.mode === 'WALLET_TO_MNO' && <Phone className="h-4 w-4 text-blue-600" />}
+                                  {payment.mode === 'WALLET_TO_BANK' && <Building2 className="h-4 w-4 text-purple-600" />}
+                                  {payment.mode === 'WALLET_TO_WALLET' && <Wallet className="h-4 w-4 text-green-600" />}
+                                  <span className="text-xs">
+                                    {payment.mode?.replace('WALLET_TO_', '')}
+                                  </span>
+                                </div>
+                              </td>
+                              <td className="px-4 py-3">
+                                <div className="text-sm">
+                                  <p className="font-medium">{payment.recipientName || payment.accountName || 'N/A'}</p>
+                                  <p className="text-xs text-gray-500">
+                                    {payment.phoneNumber || payment.accountNumber || payment.recipientPhone || 'N/A'}
+                                  </p>
+                                </div>
+                              </td>
+                              <td className="px-4 py-3">
+                                <span className="font-semibold">{payment.amount?.toLocaleString()} {payment.currency}</span>
+                              </td>
+                              <td className="px-4 py-3">
+                                {payment.status === 'success' && <CheckCircle2 className="h-5 w-5 text-green-600" />}
+                                {payment.status === 'failed' && <XCircle className="h-5 w-5 text-red-600" />}
+                                {payment.status === 'pending' && <Clock className="h-5 w-5 text-gray-400" />}
+                                {payment.status === 'processing' && <Loader2 className="h-5 w-5 text-blue-600 animate-spin" />}
+                              </td>
+                              <td className="px-4 py-3 text-right">
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => handleRemovePayment(payment.id)}
+                                  disabled={processing}
+                                >
+                                  <Trash2 className="h-4 w-4 text-red-600" />
+                                </Button>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
           </TabsContent>
         </Tabs>
       </div>

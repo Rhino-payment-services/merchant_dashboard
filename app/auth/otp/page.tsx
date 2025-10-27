@@ -126,13 +126,7 @@ function OTPContent() {
   };
 
   return (
-    <>
-      <Head>
-        <title>Verify OTP - RukaPay</title>
-        <meta name="description" content="Verify your OTP code to complete RukaPay merchant login" />
-        <link rel="icon" href="/favicon.ico" />
-      </Head>
-      <div className="min-h-screen bg-gradient-to-br from-main-50 via-white to-main-50 flex items-center justify-center p-4">
+    <div className="min-h-screen bg-gradient-to-br from-main-50 via-white to-main-50 flex items-center justify-center p-4">
       <div className="w-full max-w-md">
         {/* Page Header */}
         <div className="text-center mb-8">
@@ -150,6 +144,7 @@ function OTPContent() {
         </div>
 
         <Card className="p-8 shadow-xl border-0 bg-white/80 backdrop-blur-sm">
+
           <form onSubmit={handleSubmit} className="space-y-6">
             <div className="space-y-4">
               <label className="text-sm font-medium text-gray-700 text-center block">
@@ -201,7 +196,7 @@ function OTPContent() {
             >
               {isLoading ? (
                 <>
-                  <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
                   Verifying...
                 </>
               ) : (
@@ -226,7 +221,6 @@ function OTPContent() {
         </Card>
       </div>
     </div>
-    </>
   );
 }
 

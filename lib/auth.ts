@@ -5,6 +5,7 @@ import { API_URL } from "./config"
 
 export const authOptions: NextAuthOptions = {
   providers: [
+    // Provider 1: Phone + OTP (Business Owners)
     CredentialsProvider({
       id: "merchant-otp",
       name: "Merchant OTP",
@@ -47,6 +48,52 @@ export const authOptions: NextAuthOptions = {
         } catch (error: any) {
           console.error("Authorization error:", error)
           throw new Error(error.response?.data?.message || error.message || "OTP verification failed")
+        }
+      }
+    }),
+    // Provider 2: Email + Password (Team Members)
+    CredentialsProvider({
+      id: "team-member",
+      name: "Team Member",
+      credentials: {
+        email: { label: "Email", type: "email" },
+        password: { label: "Password", type: "password" }
+      },
+      async authorize(credentials) {
+        try {
+          if (!credentials?.email || !credentials?.password) {
+            throw new Error("Email and password are required")
+          }
+
+          // Login with backend
+          const response = await axios.post(`${API_URL}/auth/login`, {
+            email: credentials.email,
+            password: credentials.password
+          })
+
+          const { user, accessToken, refreshToken } = response.data
+
+          if (!accessToken || !refreshToken) {
+            throw new Error("Login failed")
+          }
+
+          // Return user data with tokens
+          return {
+            id: user.id,
+            email: user.email,
+            phone: user.phone,
+            name: user.profile?.firstName + " " + user.profile?.lastName || user.email,
+            role: user.role,
+            userType: user.userType,
+            subscriberType: user.subscriberType,
+            merchantCode: user.merchantCode,
+            accessToken,
+            refreshToken,
+            user: user
+          }
+        } catch (error: any) {
+          console.error("Authorization error:", error)
+          throw new Error(error.response?.data?.message || error.message || "Invalid email or password")
         }
       }
     })

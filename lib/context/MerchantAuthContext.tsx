@@ -40,6 +40,17 @@ interface MerchantUser {
     createdAt: string
     updatedAt: string
   }
+  merchant?: {
+    id: string
+    businessTradeName: string
+    businessType: string
+    ownerFirstName: string
+    ownerLastName: string
+    registeredPhoneNumber: string
+    businessEmail: string
+    isVerified: boolean
+    isActive: boolean
+  }
 }
 
 interface AuthState {
