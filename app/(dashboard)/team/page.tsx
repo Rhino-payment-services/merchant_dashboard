@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useSession } from 'next-auth/react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -16,12 +16,23 @@ import {
   DialogTrigger 
 } from '@/components/ui/dialog';
 import { 
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
+import { 
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { 
   Users, 
   UserPlus, 
@@ -32,38 +43,72 @@ import {
   XCircle,
   MoreVertical,
   Trash2,
-  Edit
+  Edit,
+  Key,
+  ArrowRightLeft,
+  Loader2
 } from 'lucide-react';
 import { toast } from 'sonner';
-
-interface TeamMember {
-  id: string;
-  email: string;
-  firstName?: string;
-  lastName?: string;
-  role: 'OWNER' | 'ADMIN' | 'ACCOUNTANT' | 'MEMBER' | 'VIEWER';
-  status: 'PENDING' | 'ACTIVE' | 'SUSPENDED' | 'REMOVED';
-  invitedAt: string;
-  acceptedAt?: string;
-  canViewBalance: boolean;
-  canViewTransactions: boolean;
-  canInitiatePayments: boolean;
-  canApprovePayments: boolean;
-  canManageTeam: boolean;
-}
+import { useQueryClient } from '@tanstack/react-query';
+import {
+  useWalletTeam,
+  useMyBusinessWallet,
+  teamQueryKeys
+} from '@/lib/hooks/useTeam';
+import {
+  inviteTeamMember,
+  addTeamMemberDirect,
+  removeTeamMember,
+  transferOwnership
+} from '@/lib/api/team.api';
+import type { TeamMember } from '@/lib/api/team.api';
 
 export default function TeamManagementPage() {
   const { data: session } = useSession();
+  const [businessWalletId, setBusinessWalletId] = useState<string>('');
   const [showInviteDialog, setShowInviteDialog] = useState(false);
-  const [isInviting, setIsInviting] = useState(false);
-  const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
+  const [showAddDirectDialog, setShowAddDirectDialog] = useState(false);
+  const [showTransferDialog, setShowTransferDialog] = useState(false);
+  const [editingMember, setEditingMember] = useState<TeamMember | null>(null);
   
   const [inviteForm, setInviteForm] = useState({
     email: '',
     firstName: '',
     lastName: '',
-    role: 'MEMBER' as TeamMember['role']
+    role: 'MEMBER' as 'ADMIN' | 'ACCOUNTANT' | 'MEMBER' | 'VIEWER'
   });
+
+  const [addDirectForm, setAddDirectForm] = useState({
+    email: '',
+    password: '',
+    firstName: '',
+    lastName: '',
+    role: 'MEMBER' as 'ADMIN' | 'ACCOUNTANT' | 'MEMBER' | 'VIEWER'
+  });
+
+  const [transferForm, setTransferForm] = useState({
+    newOwnerUserId: '',
+    password: ''
+  });
+
+  // Get merchant's business wallet directly
+  const { data: businessWallet, isLoading: walletLoading, error: walletError } = useMyBusinessWallet();
+
+  useEffect(() => {
+    if (businessWallet?.id) {
+      setBusinessWalletId(businessWallet.id);
+      console.log('✅ Business wallet found:', businessWallet.id);
+    } else if (walletError) {
+      console.error('❌ Error fetching business wallet:', walletError);
+    }
+  }, [businessWallet, walletError]);
+
+  // Fetch team members (only if we have a wallet ID)
+  const { data: teamData, isLoading, refetch } = useWalletTeam(businessWalletId);
+  const teamMembers = teamData?.members || [];
+
+  // Query client for manual mutations
+  const queryClient = useQueryClient();
 
   const roleColors = {
     OWNER: 'bg-purple-100 text-purple-800',
@@ -91,77 +136,372 @@ export default function TeamManagementPage() {
   const handleInviteMember = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    if (!inviteForm.email) {
-      toast.error('Email is required');
+    if (!inviteForm.email || !inviteForm.firstName || !inviteForm.lastName) {
+      toast.error('All fields are required');
       return;
     }
 
-    setIsInviting(true);
-    
+    if (!businessWalletId || businessWalletId === '') {
+      toast.error('No business wallet found. Please refresh the page or contact support.');
+      console.error('Business wallet ID missing:', businessWalletId);
+      return;
+    }
+
+    // Validate UUID format
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (!uuidRegex.test(businessWalletId)) {
+      toast.error('Invalid wallet ID. Please refresh the page.');
+      console.error('Invalid wallet ID format:', businessWalletId);
+      return;
+    }
+
     try {
-      // TODO: Replace with actual API call
-      const response = await fetch('/api/wallet/team/invite', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${(session as any)?.accessToken}`
-        },
-        body: JSON.stringify({
-          walletId: 'current-wallet-id', // Get from context/session
-          ...inviteForm
-        })
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to invite team member');
-      }
-
-      toast.success(`Invitation sent to ${inviteForm.email}`);
+      console.log('Inviting team member to wallet:', businessWalletId, inviteForm);
+      await inviteTeamMember(businessWalletId, inviteForm);
+      queryClient.invalidateQueries({ queryKey: teamQueryKeys.walletTeam(businessWalletId) });
+      toast.success('Team member invited successfully');
       setShowInviteDialog(false);
       setInviteForm({ email: '', firstName: '', lastName: '', role: 'MEMBER' });
-      
-      // Refresh team members list
-      // await fetchTeamMembers();
-      
     } catch (error: any) {
-      toast.error(error.message || 'Failed to send invitation');
-    } finally {
-      setIsInviting(false);
+      console.error('Error inviting team member:', error);
+      toast.error(error.response?.data?.message || 'Failed to invite team member');
+    }
+  };
+
+  const handleAddMemberDirect = async (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    if (!addDirectForm.email || !addDirectForm.password || !addDirectForm.firstName || !addDirectForm.lastName) {
+      toast.error('All fields are required');
+      return;
+    }
+
+    if (!businessWalletId || businessWalletId === '') {
+      toast.error('No business wallet found. Please refresh the page or contact support.');
+      console.error('Business wallet ID missing:', businessWalletId);
+      return;
+    }
+
+    // Validate UUID format
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (!uuidRegex.test(businessWalletId)) {
+      toast.error('Invalid wallet ID. Please refresh the page.');
+      console.error('Invalid wallet ID format:', businessWalletId);
+      return;
+    }
+
+    try {
+      console.log('Adding team member to wallet:', businessWalletId, addDirectForm);
+      await addTeamMemberDirect(businessWalletId, addDirectForm);
+      queryClient.invalidateQueries({ queryKey: teamQueryKeys.walletTeam(businessWalletId) });
+      toast.success('Team member added successfully');
+      setShowAddDirectDialog(false);
+      setAddDirectForm({ email: '', password: '', firstName: '', lastName: '', role: 'MEMBER' });
+    } catch (error: any) {
+      console.error('Error adding team member:', error);
+      toast.error(error.response?.data?.message || 'Failed to add team member');
     }
   };
 
   const handleRemoveMember = async (memberId: string) => {
-    if (!confirm('Are you sure you want to remove this team member?')) {
+    try {
+      await removeTeamMember(memberId);
+      queryClient.invalidateQueries({ queryKey: teamQueryKeys.walletTeam(businessWalletId) });
+      toast.success('Team member removed successfully');
+    } catch (error: any) {
+      console.error('Error removing team member:', error);
+      toast.error(error.response?.data?.message || 'Failed to remove team member');
+    }
+  };
+
+  const handleTransferOwnership = async (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    if (!transferForm.newOwnerUserId || !transferForm.password) {
+      toast.error('New owner and password are required');
+      return;
+    }
+
+    if (!businessWalletId) {
+      toast.error('No business wallet found');
       return;
     }
 
     try {
-      const response = await fetch(`/api/wallet/team/${memberId}`, {
-        method: 'DELETE',
-        headers: {
-          'Authorization': `Bearer ${(session as any)?.accessToken}`
-        }
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to remove team member');
-      }
-
-      toast.success('Team member removed');
-      // Refresh list
-      
+      const result = await transferOwnership(businessWalletId, transferForm);
+      queryClient.invalidateQueries({ queryKey: teamQueryKeys.walletTeam(businessWalletId) });
+      toast.success(result.message);
+      setShowTransferDialog(false);
+      setTransferForm({ newOwnerUserId: '', password: '' });
     } catch (error: any) {
-      toast.error(error.message || 'Failed to remove team member');
+      console.error('Error transferring ownership:', error);
+      toast.error(error.response?.data?.message || 'Failed to transfer ownership');
     }
   };
 
+  // Show loading while fetching wallet
+  if (walletLoading || (isLoading && businessWalletId)) {
+    return (
+      <div className="container mx-auto py-8 px-4">
+        <div className="flex items-center justify-center h-64">
+          <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
+          <span className="ml-3 text-gray-600">Loading...</span>
+        </div>
+      </div>
+    );
+  }
+
+  // Show error if wallet fetch failed
+  if (walletError && !businessWalletId) {
+    return (
+      <div className="container mx-auto py-8 px-4">
+        <Card className="bg-red-50 border-red-200">
+          <CardContent className="pt-6">
+            <div className="flex gap-3">
+              <XCircle className="h-5 w-5 text-red-600 flex-shrink-0 mt-0.5" />
+              <div>
+                <h3 className="font-semibold text-red-900 mb-2">Error Loading Wallet</h3>
+                <p className="text-sm text-red-800">
+                  Failed to load business wallet. Please try refreshing or contact support.
+                </p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  // Show message if no business wallet found
+  if (!businessWalletId && !walletLoading) {
+    return (
+      <div className="container mx-auto py-8 px-4">
+        <Card className="bg-yellow-50 border-yellow-200">
+          <CardContent className="pt-6">
+            <div className="flex gap-3">
+              <Shield className="h-5 w-5 text-yellow-600 flex-shrink-0 mt-0.5" />
+              <div>
+                <h3 className="font-semibold text-yellow-900 mb-2">No Business Wallet Found</h3>
+                <p className="text-sm text-yellow-800 mb-3">
+                  You need a business wallet to manage team members. Please create one first or contact support.
+                </p>
+                <p className="text-xs text-yellow-700">
+                  Debug: Wallet ID = {businessWalletId || 'null'}, Loading = {walletLoading ? 'true' : 'false'}
+                </p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
   return (
     <div className="container mx-auto py-8 px-4">
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold text-gray-900">Team Management</h1>
-        <p className="text-gray-600 mt-2">
-          Manage who has access to your business wallet
-        </p>
+      <div className="mb-8 flex items-center justify-between">
+        <div>
+          <h1 className="text-3xl font-bold text-gray-900">Team Management</h1>
+          <p className="text-gray-600 mt-2">
+            Manage who has access to your business wallet
+          </p>
+          {businessWallet && (
+            <p className="text-xs text-gray-500 mt-1">
+              Wallet: {businessWallet.id} | Balance: {businessWallet.balance?.toLocaleString()} {businessWallet.currency}
+            </p>
+          )}
+        </div>
+        
+        <div className="flex gap-2">
+          <Dialog open={showAddDirectDialog} onOpenChange={setShowAddDirectDialog}>
+            <DialogTrigger asChild>
+              <Button className="bg-green-600 hover:bg-green-700">
+                <UserPlus className="h-4 w-4 mr-2" />
+                Add Member
+              </Button>
+            </DialogTrigger>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Add Team Member Directly</DialogTitle>
+                <DialogDescription>
+                  Create a team member account immediately
+                </DialogDescription>
+              </DialogHeader>
+              
+              <form onSubmit={handleAddMemberDirect} className="space-y-4">
+                <div>
+                  <Label htmlFor="add-email">Email Address *</Label>
+                  <Input
+                    id="add-email"
+                    type="email"
+                    placeholder="member@company.com"
+                    value={addDirectForm.email}
+                    onChange={(e) => setAddDirectForm({ ...addDirectForm, email: e.target.value })}
+                    required
+                  />
+                </div>
+
+                <div>
+                  <Label htmlFor="add-password">Password *</Label>
+                  <Input
+                    id="add-password"
+                    type="password"
+                    placeholder="Secure password"
+                    value={addDirectForm.password}
+                    onChange={(e) => setAddDirectForm({ ...addDirectForm, password: e.target.value })}
+                    required
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <Label htmlFor="add-firstName">First Name *</Label>
+                    <Input
+                      id="add-firstName"
+                      placeholder="John"
+                      value={addDirectForm.firstName}
+                      onChange={(e) => setAddDirectForm({ ...addDirectForm, firstName: e.target.value })}
+                      required
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="add-lastName">Last Name *</Label>
+                    <Input
+                      id="add-lastName"
+                      placeholder="Doe"
+                      value={addDirectForm.lastName}
+                      onChange={(e) => setAddDirectForm({ ...addDirectForm, lastName: e.target.value })}
+                      required
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <Label htmlFor="add-role">Role *</Label>
+                  <Select 
+                    value={addDirectForm.role} 
+                    onValueChange={(value: any) => setAddDirectForm({ ...addDirectForm, role: value })}
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="ADMIN">Admin - Full access</SelectItem>
+                      <SelectItem value="ACCOUNTANT">Accountant - View & initiate</SelectItem>
+                      <SelectItem value="MEMBER">Member - Basic view</SelectItem>
+                      <SelectItem value="VIEWER">Viewer - Read only</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="flex justify-end gap-3 pt-4">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => setShowAddDirectDialog(false)}
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    type="submit"
+                    className="bg-green-600 hover:bg-green-700"
+                  >
+                    <UserPlus className="h-4 w-4 mr-2" />
+                    Add Member
+                  </Button>
+                </div>
+              </form>
+            </DialogContent>
+          </Dialog>
+
+          <Dialog open={showInviteDialog} onOpenChange={setShowInviteDialog}>
+            <DialogTrigger asChild>
+              <Button className="bg-blue-600 hover:bg-blue-700">
+                <Mail className="h-4 w-4 mr-2" />
+                Send Invite
+              </Button>
+            </DialogTrigger>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Invite Team Member</DialogTitle>
+                <DialogDescription>
+                  Send an email invitation (they'll set their own password)
+                </DialogDescription>
+              </DialogHeader>
+              
+              <form onSubmit={handleInviteMember} className="space-y-4">
+                <div>
+                  <Label htmlFor="email">Email Address *</Label>
+                  <Input
+                    id="email"
+                    type="email"
+                    placeholder="team.member@company.com"
+                    value={inviteForm.email}
+                    onChange={(e) => setInviteForm({ ...inviteForm, email: e.target.value })}
+                    required
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <Label htmlFor="firstName">First Name *</Label>
+                    <Input
+                      id="firstName"
+                      placeholder="John"
+                      value={inviteForm.firstName}
+                      onChange={(e) => setInviteForm({ ...inviteForm, firstName: e.target.value })}
+                      required
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="lastName">Last Name *</Label>
+                    <Input
+                      id="lastName"
+                      placeholder="Doe"
+                      value={inviteForm.lastName}
+                      onChange={(e) => setInviteForm({ ...inviteForm, lastName: e.target.value })}
+                      required
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <Label htmlFor="role">Role *</Label>
+                  <Select 
+                    value={inviteForm.role} 
+                    onValueChange={(value: any) => setInviteForm({ ...inviteForm, role: value })}
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="ADMIN">Admin - Full access</SelectItem>
+                      <SelectItem value="ACCOUNTANT">Accountant - View & initiate</SelectItem>
+                      <SelectItem value="MEMBER">Member - Basic view</SelectItem>
+                      <SelectItem value="VIEWER">Viewer - Read only</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="flex justify-end gap-3 pt-4">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => setShowInviteDialog(false)}
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    type="submit"
+                    className="bg-blue-600 hover:bg-blue-700"
+                  >
+                    <Mail className="h-4 w-4 mr-2" />
+                    Send Invitation
+                  </Button>
+                </div>
+              </form>
+            </DialogContent>
+          </Dialog>
+        </div>
       </div>
 
       {/* Stats */}
@@ -208,115 +548,13 @@ export default function TeamManagementPage() {
 
         <Card>
           <CardContent className="pt-6">
-            <Dialog open={showInviteDialog} onOpenChange={setShowInviteDialog}>
-              <DialogTrigger asChild>
-                <Button className="w-full bg-blue-600 hover:bg-blue-700">
-                  <UserPlus className="h-4 w-4 mr-2" />
-                  Invite Member
-                </Button>
-              </DialogTrigger>
-              <DialogContent>
-                <DialogHeader>
-                  <DialogTitle>Invite Team Member</DialogTitle>
-                  <DialogDescription>
-                    Send an invitation to grant access to your business wallet
-                  </DialogDescription>
-                </DialogHeader>
-                
-                <form onSubmit={handleInviteMember} className="space-y-4">
-                  <div>
-                    <Label htmlFor="email">Email Address *</Label>
-                    <Input
-                      id="email"
-                      type="email"
-                      placeholder="team.member@company.com"
-                      value={inviteForm.email}
-                      onChange={(e) => setInviteForm({ ...inviteForm, email: e.target.value })}
-                      required
-                    />
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <Label htmlFor="firstName">First Name</Label>
-                      <Input
-                        id="firstName"
-                        placeholder="John"
-                        value={inviteForm.firstName}
-                        onChange={(e) => setInviteForm({ ...inviteForm, firstName: e.target.value })}
-                      />
-                    </div>
-                    <div>
-                      <Label htmlFor="lastName">Last Name</Label>
-                      <Input
-                        id="lastName"
-                        placeholder="Doe"
-                        value={inviteForm.lastName}
-                        onChange={(e) => setInviteForm({ ...inviteForm, lastName: e.target.value })}
-                      />
-                    </div>
-                  </div>
-
-                  <div>
-                    <Label htmlFor="role">Role</Label>
-                    <Select 
-                      value={inviteForm.role} 
-                      onValueChange={(value: any) => setInviteForm({ ...inviteForm, role: value })}
-                    >
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="ADMIN">
-                          <div>
-                            <div className="font-medium">Admin</div>
-                            <div className="text-xs text-gray-500">Can manage team & approve payments</div>
-                          </div>
-                        </SelectItem>
-                        <SelectItem value="ACCOUNTANT">
-                          <div>
-                            <div className="font-medium">Accountant</div>
-                            <div className="text-xs text-gray-500">Can view all & initiate payments</div>
-                          </div>
-                        </SelectItem>
-                        <SelectItem value="MEMBER">
-                          <div>
-                            <div className="font-medium">Member</div>
-                            <div className="text-xs text-gray-500">Basic view access</div>
-                          </div>
-                        </SelectItem>
-                        <SelectItem value="VIEWER">
-                          <div>
-                            <div className="font-medium">Viewer</div>
-                            <div className="text-xs text-gray-500">Read-only access</div>
-                          </div>
-                        </SelectItem>
-                      </SelectContent>
-                    </Select>
-                    <p className="text-xs text-gray-500 mt-1">
-                      {roleDescriptions[inviteForm.role]}
-                    </p>
-                  </div>
-
-                  <div className="flex justify-end gap-3 pt-4">
-                    <Button
-                      type="button"
-                      variant="outline"
-                      onClick={() => setShowInviteDialog(false)}
-                    >
-                      Cancel
-                    </Button>
-                    <Button
-                      type="submit"
-                      className="bg-blue-600 hover:bg-blue-700"
-                      disabled={isInviting}
-                    >
-                      {isInviting ? 'Sending...' : 'Send Invitation'}
-                    </Button>
-                  </div>
-                </form>
-              </DialogContent>
-            </Dialog>
+            <Button 
+              className="w-full bg-orange-600 hover:bg-orange-700"
+              onClick={() => setShowTransferDialog(true)}
+            >
+              <ArrowRightLeft className="h-4 w-4 mr-2" />
+              Transfer Ownership
+            </Button>
           </CardContent>
         </Card>
       </div>
@@ -417,13 +655,33 @@ export default function TeamManagementPage() {
                         >
                           <Edit className="h-4 w-4" />
                         </Button>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => handleRemoveMember(member.id)}
-                        >
-                          <Trash2 className="h-4 w-4 text-red-500" />
-                        </Button>
+                        <AlertDialog>
+                          <DialogTrigger asChild>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                            >
+                              <Trash2 className="h-4 w-4 text-red-500" />
+                            </Button>
+                          </DialogTrigger>
+                          <AlertDialogContent>
+                            <AlertDialogHeader>
+                              <AlertDialogTitle>Remove Team Member?</AlertDialogTitle>
+                              <AlertDialogDescription>
+                                This will remove {member.firstName} {member.lastName} from your team. They will no longer have access to the wallet.
+                              </AlertDialogDescription>
+                            </AlertDialogHeader>
+                            <AlertDialogFooter>
+                              <AlertDialogCancel>Cancel</AlertDialogCancel>
+                              <AlertDialogAction
+                                onClick={() => handleRemoveMember(member.id)}
+                                className="bg-red-600 hover:bg-red-700"
+                              >
+                                Remove Member
+                              </AlertDialogAction>
+                            </AlertDialogFooter>
+                          </AlertDialogContent>
+                        </AlertDialog>
                       </>
                     )}
                   </div>
@@ -434,6 +692,82 @@ export default function TeamManagementPage() {
         </CardContent>
       </Card>
 
+      {/* Transfer Ownership Dialog */}
+      <Dialog open={showTransferDialog} onOpenChange={setShowTransferDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Transfer Wallet Ownership</DialogTitle>
+            <DialogDescription>
+              Transfer complete ownership of this wallet to another team member. You will become an ADMIN member.
+            </DialogDescription>
+          </DialogHeader>
+          
+          <form onSubmit={handleTransferOwnership} className="space-y-4">
+            <div>
+              <Label htmlFor="newOwner">New Owner *</Label>
+              <Select 
+                value={transferForm.newOwnerUserId} 
+                onValueChange={(value) => setTransferForm({ ...transferForm, newOwnerUserId: value })}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select team member" />
+                </SelectTrigger>
+                <SelectContent>
+                  {teamMembers
+                    .filter(m => m.status === 'ACTIVE' && m.role !== 'OWNER')
+                    .map(member => (
+                      <SelectItem key={member.userId} value={member.userId}>
+                        {member.firstName} {member.lastName} ({member.email})
+                      </SelectItem>
+                    ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div>
+              <Label htmlFor="transfer-password">Confirm Your Password *</Label>
+              <Input
+                id="transfer-password"
+                type="password"
+                placeholder="Enter your password"
+                value={transferForm.password}
+                onChange={(e) => setTransferForm({ ...transferForm, password: e.target.value })}
+                required
+              />
+              <p className="text-xs text-gray-500 mt-1">
+                Password confirmation required for security
+              </p>
+            </div>
+
+            <div className="bg-orange-50 border border-orange-200 rounded-lg p-4">
+              <h4 className="font-semibold text-orange-900 mb-2">Important:</h4>
+              <ul className="text-sm text-orange-800 space-y-1">
+                <li>• You will become an ADMIN (no longer owner)</li>
+                <li>• New owner gets full control of the wallet</li>
+                <li>• This action cannot be undone without the new owner's consent</li>
+              </ul>
+            </div>
+
+            <div className="flex justify-end gap-3 pt-4">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setShowTransferDialog(false)}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="submit"
+                className="bg-orange-600 hover:bg-orange-700"
+              >
+                <ArrowRightLeft className="h-4 w-4 mr-2" />
+                Transfer Ownership
+              </Button>
+            </div>
+          </form>
+        </DialogContent>
+      </Dialog>
+
       {/* Info Card */}
       <Card className="mt-6 bg-blue-50 border-blue-200">
         <CardContent className="pt-6">
@@ -442,10 +776,10 @@ export default function TeamManagementPage() {
             <div>
               <h3 className="font-semibold text-blue-900 mb-2">About Team Access</h3>
               <ul className="text-sm text-blue-800 space-y-1">
-                <li>• Team members login with <strong>email and password</strong></li>
-                <li>• Each member has specific permissions based on their role</li>
+                <li>• <strong>Add Member</strong>: Create account immediately (active right away)</li>
+                <li>• <strong>Send Invite</strong>: Email invitation (they set password)</li>
+                <li>• <strong>Transfer Ownership</strong>: Hand over complete control</li>
                 <li>• All actions are logged for security and audit purposes</li>
-                <li>• You can remove team members at any time</li>
               </ul>
             </div>
           </div>

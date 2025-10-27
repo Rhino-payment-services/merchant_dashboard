@@ -59,11 +59,12 @@ export interface SinglePaymentDto {
 
 // Validation DTO that matches the backend ValidateTransactionDto
 export interface ValidateTransactionRequestDto {
-  transactionType: 'WALLET_TO_MNO' | 'WALLET_TO_BANK' | 'BILL_PAYMENT' | 'MNO_TO_WALLET' | 'WALLET_TOPUP_PULL' | 'WALLET_TO_WALLET' | 'WALLET_TO_MERCHANT'
+  transactionType: 'WALLET_TO_MNO' | 'WALLET_TO_BANK' | 'BILL_PAYMENT' | 'MNO_TO_WALLET' | 'WALLET_TO_WALLET' | 'WALLET_TO_MERCHANT'
   phoneNumber?: string
   network?: string // MNO provider
   accountNumber?: string
   bankCode?: string // Bank name
+  accountName?: string // Account holder name (for fallback)
   geographicRegion?: string
   customerRef?: string
   billType?: string
@@ -190,23 +191,32 @@ export const validateTransaction = async (paymentData: SinglePaymentDto): Promis
       userId: undefined, // Will be set by backend from JWT
     };
 
-    // Map transaction-specific fields
-    if (paymentData.mode === 'WALLET_TO_MNO') {
-      validationData.phoneNumber = paymentData.phoneNumber;
-      validationData.network = getValidMnoProvider(paymentData.mnoProvider); // Map mnoProvider to network
-    } else if (paymentData.mode === 'WALLET_TO_BANK') {
-      validationData.accountNumber = paymentData.accountNumber;
-      validationData.bankCode = paymentData.bankName; // Map bankName to bankCode
-    } else if (paymentData.mode === 'UTILITIES') {
-      validationData.customerRef = paymentData.customerRef;
-      validationData.billType = paymentData.utilityProvider;
-      validationData.area = paymentData.area;
-      validationData.customerPhoneNumber = paymentData.phoneNumber;
-    } else if (paymentData.mode === 'WALLET_TO_MERCHANT') {
-      validationData.merchantCode = paymentData.merchantCode;
-    }
+  // Map transaction-specific fields
+  if (paymentData.mode === 'WALLET_TO_MNO') {
+    validationData.phoneNumber = paymentData.phoneNumber;
+    validationData.network = getValidMnoProvider(paymentData.mnoProvider); // Map mnoProvider to network
+  } else if (paymentData.mode === 'WALLET_TO_BANK') {
+    validationData.accountNumber = paymentData.accountNumber;
+    // CRITICAL: Use bankSortCode, not bankName! ABC needs the sort code like "040147"
+    validationData.bankCode = paymentData.bankSortCode || paymentData.bankName; // Map bankSortCode to bankCode
+    validationData.accountName = paymentData.accountName; // Send account holder name for fallback
+    
+    console.log('🔍 BANK VALIDATION DATA CHECK:');
+    console.log('  bankName:', paymentData.bankName);
+    console.log('  bankSortCode:', paymentData.bankSortCode);
+    console.log('  accountNumber:', paymentData.accountNumber);
+    console.log('  accountName:', paymentData.accountName);
+    console.log('  Sending bankCode:', validationData.bankCode);
+  } else if (paymentData.mode === 'UTILITIES') {
+    validationData.customerRef = paymentData.customerRef;
+    validationData.billType = paymentData.utilityProvider;
+    validationData.area = paymentData.area;
+    validationData.customerPhoneNumber = paymentData.phoneNumber;
+  } else if (paymentData.mode === 'WALLET_TO_MERCHANT') {
+    validationData.merchantCode = paymentData.merchantCode;
+  }
 
-    console.log('API: Validating transaction:', validationData);
+  console.log('API: Validating transaction:', validationData);
     const response = await apiClient.post('/transactions/validate', validationData);
     console.log('API: Validation response:', response.data);
     
@@ -220,7 +230,7 @@ export const validateTransaction = async (paymentData: SinglePaymentDto): Promis
     return {
       isValid: response.data.success || false,
       errors: response.data.error ? [response.data.error] : [],
-      warnings: [],
+      warnings: response.data.warnings || [],
       recipientName: recipientName,
       partnerCode: response.data.partnerCode,
       partnerName: response.data.partnerName,
