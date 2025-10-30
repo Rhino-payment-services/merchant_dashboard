@@ -110,15 +110,15 @@ export default function Home() {
               </div>
             </div>
           )}
-          <DebugWallet />
+          {process.env.NODE_ENV === 'development' && <DebugWallet />}
           <StatCards />
         </div>
-        <div className="grid grid-cols-1  gap-6">
-          {/* Stats Overview Chart */}
+        {/* Merchant Monthly Summary - Disabled for now */}
+        {/* <div className="grid grid-cols-1  gap-6">
           <div className="lg:col-span-2 bg-white rounded-xl shadow p-4">
             <StatsOverviewChart />
           </div>
-        </div>
+        </div> */}
         <div className="grid grid-cols-1 gap-6">
           {/* Recent Transactions */}
           <div className="lg:col-span-2 bg-white rounded-xl shadow p-4">

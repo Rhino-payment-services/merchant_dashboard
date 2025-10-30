@@ -241,7 +241,7 @@ export default function PayrollEmployeesPage() {
                         {employee.employeeNumber}
                       </Badge>
                       <Badge variant="outline" className="text-xs capitalize">
-                        {employee.employmentType.replace('_', ' ').toLowerCase()}
+                        {employee.employmentType?.replace('_', ' ')?.toLowerCase() || 'N/A'}
                       </Badge>
                     </div>
                     
@@ -266,16 +266,16 @@ export default function PayrollEmployeesPage() {
                         <div className="flex items-center gap-2">
                           <DollarSign className="h-4 w-4" />
                           <div className="flex flex-col">
-                            <span className="text-xs text-gray-500">Gross: {formatUGX(employee.grossSalary || employee.baseSalary)}</span>
+                            <span className="text-xs text-gray-500">Gross: {formatUGX(employee.grossSalary || (employee as any).baseSalary || 0)}</span>
                             <span className="font-semibold text-green-600">
-                              Net: {formatUGX(calculateSalaryBreakdown(employee.grossSalary || employee.baseSalary).netSalary)}
+                              Net: {formatUGX(calculateSalaryBreakdown(employee.grossSalary || (employee as any).baseSalary || 0).netSalary)}
                             </span>
                           </div>
                         </div>
                         <div className="text-xs text-gray-500 ml-6">
                           <Calculator className="h-3 w-3 inline mr-1" />
-                          NSSF: {formatUGX(calculateSalaryBreakdown(employee.grossSalary || employee.baseSalary).nssf)} • 
-                          PAYE: {formatUGX(calculateSalaryBreakdown(employee.grossSalary || employee.baseSalary).paye)}
+                          NSSF: {formatUGX(calculateSalaryBreakdown(employee.grossSalary || (employee as any).baseSalary || 0).nssf)} • 
+                          PAYE: {formatUGX(calculateSalaryBreakdown(employee.grossSalary || (employee as any).baseSalary || 0).paye)}
                         </div>
                       </div>
                     </div>

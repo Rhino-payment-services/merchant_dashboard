@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { signIn } from 'next-auth/react';
 import { Button } from '../../../components/ui/button';
@@ -12,7 +12,7 @@ import { Phone, Mail, Lock, Building2 } from 'lucide-react';
 import Image from 'next/image';
 import { toast } from 'sonner';
 
-export default function EnhancedLoginPage() {
+function LoginContent() {
   useEffect(() => {
     document.title = 'Login - RukaPay Merchant';
   }, []);
@@ -220,5 +220,19 @@ export default function EnhancedLoginPage() {
         </Card>
       </div>
     </div>
+  );
+}
+
+export default function EnhancedLoginPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen bg-gradient-to-br from-blue-50 to-blue-100 flex items-center justify-center">
+        <div className="text-center">
+          <h1 className="text-2xl font-bold text-gray-900 mb-2">Loading...</h1>
+        </div>
+      </div>
+    }>
+      <LoginContent />
+    </Suspense>
   );
 }

@@ -115,11 +115,14 @@ export default function ReportsPage() {
   const exportToExcel = () => {
     setIsExporting(true);
     try {
-      const exportData = filteredTransactions.map(txn => ({
-        'Transaction Mode': txn.mode || txn.rdbs_type || 'N/A',
-        'Phone Number / Account Number': txn.phoneNumber || txn.accountNumber || txn.recipientPhone || 'N/A',
-        'Name': txn.rdbs_sender_name || txn.recipientName || 'N/A',
-      }));
+      const exportData = filteredTransactions.map(txn => {
+        const transaction = txn as any;
+        return {
+          'Transaction Mode': transaction.mode || transaction.rdbs_type || 'N/A',
+          'Phone Number / Account Number': transaction.phoneNumber || transaction.accountNumber || transaction.recipientPhone || 'N/A',
+          'Name': transaction.rdbs_sender_name || transaction.recipientName || 'N/A',
+        };
+      });
 
       const ws = XLSX.utils.json_to_sheet(exportData);
       const wb = XLSX.utils.book_new();

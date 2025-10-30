@@ -38,10 +38,10 @@ export default function ProfilePage() {
     );
   }
 
-  const merchantData = profile?.profile;
+  const merchantData = profile?.profile as any;
   const businessName = merchantData?.merchant_names || 'N/A';
   const ownerName = merchantData?.owner_name || merchantData?.merchant_names || 'N/A';
-  const merchantPhone = merchantData?.merchant_phone || session?.user?.phone || 'N/A';
+  const merchantPhone = merchantData?.merchant_phone || (session?.user as any)?.phone || (session?.user as any)?.phoneNumber || 'N/A';
   const businessEmail = merchantData?.business_email || session?.user?.email || 'N/A';
   const merchantBalance = merchantData?.merchant_balance || 0;
   const merchantStatus = merchantData?.merchant_status || 'N/A';

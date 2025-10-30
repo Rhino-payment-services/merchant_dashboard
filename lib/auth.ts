@@ -144,8 +144,10 @@ export const authOptions: NextAuthOptions = {
   session: {
     strategy: "jwt",
     maxAge: 4 * 60 * 60, // 4 hours (match backend JWT expiry)
+    updateAge: 24 * 60 * 60, // Update session only once per day
   },
   secret: process.env.NEXTAUTH_SECRET,
   debug: process.env.NODE_ENV === "development",
+  useSecureCookies: process.env.NODE_ENV === "production",
 }
 

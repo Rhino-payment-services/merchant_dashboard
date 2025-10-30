@@ -71,16 +71,16 @@ export default function DebugWallet() {
           <strong>Profile Balance:</strong> {profile?.profile?.merchant_balance || 0}
         </div>
         <div>
-          <strong>Has Business Wallet:</strong> {profile?.profile?.businessWallet ? 'Yes' : 'No'}
+          <strong>Has Business Wallet:</strong> {(profile?.profile as any)?.businessWallet ? 'Yes' : 'No'}
         </div>
         <div>
-          <strong>Is Team Member:</strong> {profile?.profile?.isTeamMember ? 'Yes' : 'No'}
+          <strong>Is Team Member:</strong> {(profile?.profile as any)?.isTeamMember ? 'Yes' : 'No'}
         </div>
-        {profile?.profile?.businessWallet && (
+        {(profile?.profile as any)?.businessWallet && profile?.profile && (
           <div className="mt-2">
             <strong>Business Wallet:</strong>
             <pre className="bg-gray-100 p-2 rounded text-xs overflow-auto max-h-48">
-              {JSON.stringify(profile.profile.businessWallet, null, 2)}
+              {JSON.stringify((profile.profile as any).businessWallet, null, 2)}
             </pre>
           </div>
         )}

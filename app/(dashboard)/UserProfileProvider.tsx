@@ -17,11 +17,19 @@ type UserProfile = {
   merchant_phone: string;
   merchant_status: string;
   merchant_transactions: any[];
+  merchant_code?: string;
+  owner_name?: string;
+  business_email?: string;
+  businessWallet?: any;
+  isTeamMember?: boolean;
+  isWalletOwner?: boolean; // NEW: True if user is original wallet owner (not a team member)
   // Wallet access information for team members
   accessibleWallets?: any[];
   primaryWallet?: any;
   userType?: string;
   role?: string;
+  // Make type extensible for any additional properties
+  [key: string]: any;
   }
   // Add other fields as needed
 };
@@ -176,6 +184,10 @@ export function UserProfileProvider({
           userType,
           role: userRole,
           isTeamMember,
+          // NEW: Flag to identify original wallet owner vs team members
+          // Original owner: Wallet.userId === user.id (isTeamMember = false)
+          // Team member: Has WalletTeamMember record (isTeamMember = true)
+          isWalletOwner: !isTeamMember && !!businessWallet,
           // Keep raw merchant data for reference
           merchantData: merchantData
         }

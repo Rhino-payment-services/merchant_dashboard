@@ -32,6 +32,7 @@ import {
 import { toast } from 'sonner';
 import { Textarea } from '@/components/ui/textarea';
 import { canApprovePayroll, UserSession } from '@/lib/utils/permissions';
+import { useUserProfile } from '../../UserProfileProvider';
 
 // Transaction limit
 const TRANSACTION_LIMIT = 3500000; // 3.5M UGX
@@ -62,6 +63,7 @@ const formatDate = (date: string) => {
 
 export default function PayrollApprovalsPage() {
   const { data: session } = useSession();
+  const { profile } = useUserProfile();
   const [pendingPayrolls, setPendingPayrolls] = useState<any[]>([]);
   const [selectedPayroll, setSelectedPayroll] = useState<any>(null);
   const [loading, setLoading] = useState(false);
@@ -70,10 +72,12 @@ export default function PayrollApprovalsPage() {
   const [rejectionReason, setRejectionReason] = useState('');
   const [approvalNotes, setApprovalNotes] = useState('');
   
+  // Build user session with isWalletOwner flag
   const userSession: UserSession = {
-    role: (session as any)?.user?.role,
-    userType: (session as any)?.user?.userType,
-    userData: (session as any)?.userData || {}
+    role: (session as any)?.user?.role || profile?.profile?.role,
+    userType: (session as any)?.user?.userType || profile?.profile?.userType,
+    userData: (session as any)?.userData || {},
+    isWalletOwner: profile?.profile?.isWalletOwner || false
   };
 
   // Check if user can approve payroll using utility function
@@ -83,6 +87,9 @@ export default function PayrollApprovalsPage() {
   console.log('🧐 Payroll Approval Permissions Check:', {
     userSession,
     isChecker,
+    isWalletOwner: profile?.profile?.isWalletOwner,
+    isTeamMember: profile?.profile?.isTeamMember,
+    role: userSession.role,
     permissions: userSession.userData
   });
 
@@ -233,13 +240,14 @@ export default function PayrollApprovalsPage() {
         {/* Permission Status */}
         <div className="mt-4 p-4 bg-gray-50 rounded-lg border">
           <div className="flex items-center gap-2 mb-2">
-            <span className="text-sm font-medium text-gray-700">Your Role:</span>
+            <span className="text-sm font-medium text-gray-700">Account Type:</span>
             <span className={`px-2 py-1 text-xs font-medium rounded ${
+              userSession.isWalletOwner ? 'bg-purple-100 text-purple-800' :
               userSession.role === 'OWNER' ? 'bg-purple-100 text-purple-800' :
               userSession.role === 'ADMIN' ? 'bg-blue-100 text-blue-800' :
               'bg-gray-100 text-gray-800'
             }`}>
-              {userSession.role || 'Unknown'}
+              {userSession.isWalletOwner ? 'Account Owner' : (userSession.role || 'Team Member')}
             </span>
           </div>
           <div className="flex items-center gap-2">
@@ -252,7 +260,7 @@ export default function PayrollApprovalsPage() {
           </div>
           {!isChecker && (
             <p className="text-xs text-gray-600 mt-2">
-              Only users with OWNER or ADMIN roles, or explicit approval permissions can approve payroll.
+              Only the account owner, or team members with OWNER/ADMIN roles, or explicit approval permissions can approve payroll.
             </p>
           )}
         </div>
@@ -357,7 +365,7 @@ export default function PayrollApprovalsPage() {
                         <div className="flex items-center gap-2 text-orange-700">
                           <AlertTriangle className="h-4 w-4" />
                           <span className="text-sm font-medium">
-                            {tranchedEmployees} employee{tranchedEmployees > 1 ? 's' : ''} will have tranched payments (>3.5M)
+                            {tranchedEmployees} employee{tranchedEmployees > 1 ? 's' : ''} will have tranched payments ({'>'}3.5M)
                           </span>
                         </div>
                       </div>
@@ -647,7 +655,7 @@ export default function PayrollApprovalsPage() {
                 <ul className="text-sm text-blue-800 space-y-1 list-disc list-inside">
                   <li>Review all employee details carefully</li>
                   <li>Verify gross salaries and deductions</li>
-                  <li>Check for tranched payments (>3.5M)</li>
+                  <li>Check for tranched payments ({'>'}3.5M)</li>
                   <li>Ensure total amounts are correct</li>
                   <li>Approve only if everything is accurate</li>
                   <li>Provide clear rejection reasons if needed</li>
