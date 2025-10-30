@@ -7,7 +7,7 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api';
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const session = await getServerSession(authOptions);
@@ -20,7 +20,7 @@ export async function GET(
     }
 
     const accessToken = (session as any).accessToken;
-    const batchId = params.id;
+    const { id: batchId } = await params;
 
     // Fetch payroll batch details from backend
     const response = await axios.get(`${API_URL}/v1/payroll/batch/${batchId}`, {
