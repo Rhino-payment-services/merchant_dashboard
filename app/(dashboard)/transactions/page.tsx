@@ -145,21 +145,21 @@ export default function TransactionsPage() {
       console.log('No session found, skipping bulk transaction load');
       return;
     }
-    
+
     setBulkLoading(true);
     try {
       console.log('Loading bulk transactions for user:', (session.user as any).id);
       console.log('Session data:', session);
-      
+
       const response = await viewBulkTransactions({
         page: 1,
         limit: 50
       });
-      
+
       console.log('Bulk transactions response:', response);
       console.log('Response type:', typeof response);
       console.log('Response keys:', Object.keys(response || {}));
-      
+
       if (response && response.bulkTransactions) {
         setBulkTransactions(response.bulkTransactions);
         console.log('Set bulk transactions:', response.bulkTransactions.length);
@@ -167,7 +167,7 @@ export default function TransactionsPage() {
         console.log('No bulkTransactions in response, setting empty array');
         setBulkTransactions([]);
       }
-      
+
       if (response?.bulkTransactions?.length === 0) {
         console.log('No bulk transactions found for user');
       }

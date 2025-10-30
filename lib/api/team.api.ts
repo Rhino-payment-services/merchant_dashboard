@@ -42,8 +42,9 @@ export interface InviteTeamMemberDto {
 }
 
 export interface AddTeamMemberDirectDto {
+  walletId?: string;
   email: string;
-  password: string;
+  password: string; // Temporary password - user will change via email setup
   firstName: string;
   lastName: string;
   role: 'ADMIN' | 'ACCOUNTANT' | 'MEMBER' | 'VIEWER';
@@ -86,7 +87,10 @@ export async function inviteTeamMember(
   walletId: string,
   data: Omit<InviteTeamMemberDto, 'walletId'>
 ): Promise<TeamMember> {
-  const response = await apiClient.post(`/wallet/${walletId}/team/invite`, data);
+  const response = await apiClient.post(`/wallet/${walletId}/team/invite`, {
+    ...data,
+    walletId,
+  });
   return response.data;
 }
 
@@ -97,7 +101,10 @@ export async function addTeamMemberDirect(
   walletId: string,
   data: AddTeamMemberDirectDto
 ): Promise<TeamMember> {
-  const response = await apiClient.post(`/wallet/${walletId}/team/add-direct`, data);
+  const response = await apiClient.post(`/wallet/${walletId}/team/add-direct`, {
+    ...data,
+    walletId,
+  });
   return response.data;
 }
 
@@ -144,6 +151,17 @@ export async function getAccessibleWallets(): Promise<any[]> {
  */
 export async function getMyBusinessWallet(): Promise<{ id: string; walletType: string; balance: number; currency: string }> {
   const response = await apiClient.get('/wallet/me/business');
+  return response.data;
+}
+
+/**
+ * Set password for invited team member
+ */
+export async function acceptTeamInvitation(data: {
+  teamMemberId: string;
+  password: string;
+}): Promise<{ success: boolean; user: any }> {
+  const response = await apiClient.post('/wallet/team/accept-invitation', data);
   return response.data;
 }
 

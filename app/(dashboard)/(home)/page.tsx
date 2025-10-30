@@ -9,13 +9,16 @@ import RecentTransactions from "@/app/components/RecentTransactions";
 import TopLocationMap from "@/app/components/TopLocationMap";
 import QRCodeButton from "@/app/components/QRCodeButton";
 import { useUserProfile } from "../UserProfileProvider";
+import { useSession } from "next-auth/react";
 import { RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { getMyTransactions, Transaction } from "@/lib/api/wallet.api";
+import DebugWallet from "../debug-wallet";
 
 export default function Home() {
   const router = useRouter();
+  const { data: session } = useSession();
   const { profile, loading, error, refetch, isRefetching } = useUserProfile();
   const [recentTransactions, setRecentTransactions] = useState<Transaction[]>([]);
   const [transactionsLoading, setTransactionsLoading] = useState(true);
@@ -107,6 +110,7 @@ export default function Home() {
               </div>
             </div>
           )}
+          <DebugWallet />
           <StatCards />
         </div>
         <div className="grid grid-cols-1  gap-6">

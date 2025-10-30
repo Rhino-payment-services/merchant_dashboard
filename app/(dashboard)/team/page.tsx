@@ -15,7 +15,7 @@ import {
   DialogTitle,
   DialogTrigger 
 } from '@/components/ui/dialog';
-import { 
+import {
   AlertDialog,
   AlertDialogAction,
   AlertDialogCancel,
@@ -24,6 +24,7 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
+  AlertDialogTrigger,
 } from '@/components/ui/alert-dialog';
 import { 
   Select,
@@ -78,12 +79,18 @@ export default function TeamManagementPage() {
     role: 'MEMBER' as 'ADMIN' | 'ACCOUNTANT' | 'MEMBER' | 'VIEWER'
   });
 
-  const [addDirectForm, setAddDirectForm] = useState({
+  const [addDirectForm, setAddDirectForm] = useState<{
+    email: string;
+    firstName: string;
+    lastName: string;
+    role: 'ADMIN' | 'ACCOUNTANT' | 'MEMBER' | 'VIEWER';
+    password: string;
+  }>({
     email: '',
-    password: '',
     firstName: '',
     lastName: '',
-    role: 'MEMBER' as 'ADMIN' | 'ACCOUNTANT' | 'MEMBER' | 'VIEWER'
+    role: 'MEMBER',
+    password: '' // Temporary password - user will change via email
   });
 
   const [transferForm, setTransferForm] = useState({
@@ -159,7 +166,7 @@ export default function TeamManagementPage() {
       console.log('Inviting team member to wallet:', businessWalletId, inviteForm);
       await inviteTeamMember(businessWalletId, inviteForm);
       queryClient.invalidateQueries({ queryKey: teamQueryKeys.walletTeam(businessWalletId) });
-      toast.success('Team member invited successfully');
+      toast.success('Team member invited successfully! They will receive an email with instructions to set up their account.');
       setShowInviteDialog(false);
       setInviteForm({ email: '', firstName: '', lastName: '', role: 'MEMBER' });
     } catch (error: any) {
@@ -170,8 +177,8 @@ export default function TeamManagementPage() {
 
   const handleAddMemberDirect = async (e: React.FormEvent) => {
     e.preventDefault();
-    
-    if (!addDirectForm.email || !addDirectForm.password || !addDirectForm.firstName || !addDirectForm.lastName) {
+
+    if (!addDirectForm.email || !addDirectForm.firstName || !addDirectForm.lastName) {
       toast.error('All fields are required');
       return;
     }
@@ -190,13 +197,20 @@ export default function TeamManagementPage() {
       return;
     }
 
+    // Generate a temporary secure password (user will change it via email)
+    const tempPassword = Math.random().toString(36).slice(-12) + Math.random().toString(36).slice(-12);
+    const formData = {
+      ...addDirectForm,
+      password: tempPassword
+    };
+
     try {
-      console.log('Adding team member to wallet:', businessWalletId, addDirectForm);
-      await addTeamMemberDirect(businessWalletId, addDirectForm);
+      console.log('Adding team member to wallet:', businessWalletId, { ...formData, password: '[HIDDEN]' });
+      await addTeamMemberDirect(businessWalletId, formData);
       queryClient.invalidateQueries({ queryKey: teamQueryKeys.walletTeam(businessWalletId) });
-      toast.success('Team member added successfully');
+      toast.success('Team member added successfully! Login credentials have been sent to their email.');
       setShowAddDirectDialog(false);
-      setAddDirectForm({ email: '', password: '', firstName: '', lastName: '', role: 'MEMBER' });
+      setAddDirectForm({ email: '', firstName: '', lastName: '', role: 'MEMBER', password: '' });
     } catch (error: any) {
       console.error('Error adding team member:', error);
       toast.error(error.response?.data?.message || 'Failed to add team member');
@@ -321,9 +335,9 @@ export default function TeamManagementPage() {
             </DialogTrigger>
             <DialogContent>
               <DialogHeader>
-                <DialogTitle>Add Team Member Directly</DialogTitle>
+                <DialogTitle>Add Team Member</DialogTitle>
                 <DialogDescription>
-                  Create a team member account immediately
+                  Create a team member account and send them an email with login credentials
                 </DialogDescription>
               </DialogHeader>
               
@@ -340,17 +354,6 @@ export default function TeamManagementPage() {
                   />
                 </div>
 
-                <div>
-                  <Label htmlFor="add-password">Password *</Label>
-                  <Input
-                    id="add-password"
-                    type="password"
-                    placeholder="Secure password"
-                    value={addDirectForm.password}
-                    onChange={(e) => setAddDirectForm({ ...addDirectForm, password: e.target.value })}
-                    required
-                  />
-                </div>
 
                 <div className="grid grid-cols-2 gap-4">
                   <div>
@@ -656,14 +659,14 @@ export default function TeamManagementPage() {
                           <Edit className="h-4 w-4" />
                         </Button>
                         <AlertDialog>
-                          <DialogTrigger asChild>
+                          <AlertDialogTrigger asChild>
                             <Button
                               variant="ghost"
                               size="sm"
                             >
                               <Trash2 className="h-4 w-4 text-red-500" />
                             </Button>
-                          </DialogTrigger>
+                          </AlertDialogTrigger>
                           <AlertDialogContent>
                             <AlertDialogHeader>
                               <AlertDialogTitle>Remove Team Member?</AlertDialogTitle>
@@ -776,8 +779,8 @@ export default function TeamManagementPage() {
             <div>
               <h3 className="font-semibold text-blue-900 mb-2">About Team Access</h3>
               <ul className="text-sm text-blue-800 space-y-1">
-                <li>• <strong>Add Member</strong>: Create account immediately (active right away)</li>
-                <li>• <strong>Send Invite</strong>: Email invitation (they set password)</li>
+                <li>• <strong>Add Member</strong>: Create account and send login credentials via email</li>
+                <li>• <strong>Send Invite</strong>: Email invitation (they set password via secure link)</li>
                 <li>• <strong>Transfer Ownership</strong>: Hand over complete control</li>
                 <li>• All actions are logged for security and audit purposes</li>
               </ul>

@@ -1,7 +1,7 @@
 "use client"
 
 import React, { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { signIn } from 'next-auth/react';
 import { Button } from '../../../components/ui/button';
 import { Card } from '../../../components/ui/card';
@@ -17,8 +17,10 @@ export default function EnhancedLoginPage() {
     document.title = 'Login - RukaPay Merchant';
   }, []);
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const tabParam = searchParams.get('tab');
   const [isLoading, setIsLoading] = useState(false);
-  const [activeTab, setActiveTab] = useState("owner");
+  const [activeTab, setActiveTab] = useState(tabParam === 'team' ? "team" : "owner");
 
   // Owner login (Phone + OTP)
   const [ownerData, setOwnerData] = useState({

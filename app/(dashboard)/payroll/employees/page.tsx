@@ -30,26 +30,27 @@ import {
   Mail, 
   Phone,
   Briefcase,
-  DollarSign
+  DollarSign,
+  Calculator,
+  Info
 } from 'lucide-react';
 import { toast } from 'sonner';
-
-const formatCurrency = (amount: number) => {
-  return new Intl.NumberFormat('en-UG', {
-    style: 'currency',
-    currency: 'UGX',
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 0,
-  }).format(amount);
-};
+import { calculateSalaryBreakdown, formatUGX, SalaryBreakdown } from '@/lib/utils/salary-calculator';
+import { 
+  getPayrollEmployees, 
+  addPayrollEmployee, 
+  updatePayrollEmployee, 
+  deletePayrollEmployee,
+  PayrollEmployee 
+} from '@/lib/api/payroll.api';
 
 export default function PayrollEmployeesPage() {
   const { data: session } = useSession();
-  const [employees, setEmployees] = useState<any[]>([]);
+  const [employees, setEmployees] = useState<PayrollEmployee[]>([]);
   const [loading, setLoading] = useState(false);
   const [showAddDialog, setShowAddDialog] = useState(false);
   const [showEditDialog, setShowEditDialog] = useState(false);
-  const [selectedEmployee, setSelectedEmployee] = useState<any>(null);
+  const [selectedEmployee, setSelectedEmployee] = useState<PayrollEmployee | null>(null);
   
   // Form state
   const [formData, setFormData] = useState({
@@ -67,6 +68,20 @@ export default function PayrollEmployeesPage() {
     bankName: '',
   });
 
+  // Salary breakdown state
+  const [salaryBreakdown, setSalaryBreakdown] = useState<SalaryBreakdown | null>(null);
+  const [showBreakdown, setShowBreakdown] = useState(false);
+
+  // Calculate salary breakdown when gross salary changes
+  useEffect(() => {
+    if (formData.baseSalary && parseFloat(formData.baseSalary) > 0) {
+      const breakdown = calculateSalaryBreakdown(parseFloat(formData.baseSalary));
+      setSalaryBreakdown(breakdown);
+    } else {
+      setSalaryBreakdown(null);
+    }
+  }, [formData.baseSalary]);
+
   useEffect(() => {
     fetchEmployees();
   }, []);
@@ -74,32 +89,12 @@ export default function PayrollEmployeesPage() {
   const fetchEmployees = async () => {
     setLoading(true);
     try {
-      const response = await fetch('/api/payroll/employees', {
-        headers: {
-          'Authorization': `Bearer ${(session as any)?.accessToken}`
-        }
-      });
-
-      if (!response.ok) throw new Error('Failed to fetch employees');
-
-      const data = await response.json();
+      const data = await getPayrollEmployees();
       setEmployees(data);
     } catch (error: any) {
       console.error('Error fetching employees:', error);
-      // Mock data for development
-      setEmployees([
-        {
-          id: '1',
-          firstName: 'Jane',
-          lastName: 'Doe',
-          email: 'jane@example.com',
-          phoneNumber: '+256700123456',
-          employeeNumber: 'EMP001',
-          paymentMethod: 'MOBILE_MONEY',
-          baseSalary: 2000000,
-          employmentType: 'FULL_TIME'
-        }
-      ]);
+      toast.error('Failed to load employees');
+      setEmployees([]);
     } finally {
       setLoading(false);
     }
@@ -108,19 +103,10 @@ export default function PayrollEmployeesPage() {
   const handleAddEmployee = async () => {
     setLoading(true);
     try {
-      const response = await fetch('/api/payroll/employees', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${(session as any)?.accessToken}`
-        },
-        body: JSON.stringify({
-          ...formData,
-          baseSalary: Number(formData.baseSalary)
-        })
-      });
-
-      if (!response.ok) throw new Error('Failed to add employee');
+      await addPayrollEmployee({
+        ...formData,
+        grossSalary: Number(formData.baseSalary)
+      } as any);
 
       toast.success('✅ Employee added successfully');
       setShowAddDialog(false);
@@ -138,19 +124,10 @@ export default function PayrollEmployeesPage() {
     
     setLoading(true);
     try {
-      const response = await fetch(`/api/payroll/employees/${selectedEmployee.id}`, {
-        method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${(session as any)?.accessToken}`
-        },
-        body: JSON.stringify({
-          ...formData,
-          baseSalary: Number(formData.baseSalary)
-        })
-      });
-
-      if (!response.ok) throw new Error('Failed to update employee');
+      await updatePayrollEmployee(selectedEmployee.id, {
+        ...formData,
+        grossSalary: Number(formData.baseSalary)
+      } as any);
 
       toast.success('✅ Employee updated successfully');
       setShowEditDialog(false);
@@ -169,15 +146,7 @@ export default function PayrollEmployeesPage() {
     
     setLoading(true);
     try {
-      const response = await fetch(`/api/payroll/employees/${employeeId}`, {
-        method: 'DELETE',
-        headers: {
-          'Authorization': `Bearer ${(session as any)?.accessToken}`
-        }
-      });
-
-      if (!response.ok) throw new Error('Failed to delete employee');
-
+      await deletePayrollEmployee(employeeId);
       toast.success('✅ Employee deleted successfully');
       fetchEmployees();
     } catch (error: any) {
@@ -201,19 +170,21 @@ export default function PayrollEmployeesPage() {
       accountName: '',
       bankName: '',
     });
+    setSalaryBreakdown(null);
+    setShowBreakdown(false);
   };
 
-  const openEditDialog = (employee: any) => {
+  const openEditDialog = (employee: PayrollEmployee) => {
     setSelectedEmployee(employee);
     setFormData({
       firstName: employee.firstName,
       lastName: employee.lastName,
       email: employee.email || '',
       phoneNumber: employee.phoneNumber,
-      employeeNumber: employee.employeeNumber,
+      employeeNumber: employee.employeeNumber || '',
       paymentMethod: employee.paymentMethod,
-      baseSalary: employee.baseSalary.toString(),
-      employmentType: employee.employmentType,
+      baseSalary: (employee.grossSalary || (employee as any).baseSalary).toString(),
+      employmentType: employee.employmentType || 'FULL_TIME',
       accountNumber: employee.accountNumber || '',
       accountName: employee.accountName || '',
       bankName: employee.bankName || '',
@@ -291,11 +262,21 @@ export default function PayrollEmployeesPage() {
                           {employee.paymentMethod.replace('_', ' ').toLowerCase()}
                         </span>
                       </div>
-                      <div className="flex items-center gap-2">
-                        <DollarSign className="h-4 w-4" />
-                        <span className="font-semibold text-green-600">
-                          {formatCurrency(employee.baseSalary)}
-                        </span>
+                      <div className="flex flex-col gap-1">
+                        <div className="flex items-center gap-2">
+                          <DollarSign className="h-4 w-4" />
+                          <div className="flex flex-col">
+                            <span className="text-xs text-gray-500">Gross: {formatUGX(employee.grossSalary || employee.baseSalary)}</span>
+                            <span className="font-semibold text-green-600">
+                              Net: {formatUGX(calculateSalaryBreakdown(employee.grossSalary || employee.baseSalary).netSalary)}
+                            </span>
+                          </div>
+                        </div>
+                        <div className="text-xs text-gray-500 ml-6">
+                          <Calculator className="h-3 w-3 inline mr-1" />
+                          NSSF: {formatUGX(calculateSalaryBreakdown(employee.grossSalary || employee.baseSalary).nssf)} • 
+                          PAYE: {formatUGX(calculateSalaryBreakdown(employee.grossSalary || employee.baseSalary).paye)}
+                        </div>
                       </div>
                     </div>
 
@@ -398,7 +379,7 @@ export default function PayrollEmployeesPage() {
                 />
               </div>
               <div>
-                <label className="text-sm font-medium">Base Salary (UGX) *</label>
+                <label className="text-sm font-medium">Gross Salary (UGX) *</label>
                 <Input
                   type="number"
                   value={formData.baseSalary}
@@ -406,6 +387,64 @@ export default function PayrollEmployeesPage() {
                   placeholder="2000000"
                   className="mt-1"
                 />
+                {salaryBreakdown && (
+                  <div className="mt-2 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-sm font-semibold text-blue-900">Salary Breakdown</span>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => setShowBreakdown(!showBreakdown)}
+                        className="h-6 px-2"
+                      >
+                        <Info className="w-4 h-4 mr-1" />
+                        {showBreakdown ? 'Hide' : 'Details'}
+                      </Button>
+                    </div>
+                    
+                    <div className="space-y-1 text-sm">
+                      <div className="flex justify-between">
+                        <span className="text-gray-600">Gross Salary:</span>
+                        <span className="font-semibold text-gray-900">{formatUGX(salaryBreakdown.grossSalary)}</span>
+                      </div>
+                      <div className="flex justify-between text-red-600">
+                        <span>- NSSF (5%):</span>
+                        <span>{formatUGX(salaryBreakdown.nssf)}</span>
+                      </div>
+                      <div className="flex justify-between text-red-600">
+                        <span>- PAYE Tax:</span>
+                        <span>{formatUGX(salaryBreakdown.paye)}</span>
+                      </div>
+                      <div className="flex justify-between pt-1 border-t border-blue-300">
+                        <span className="font-semibold text-green-700">Net Salary:</span>
+                        <span className="font-bold text-green-700">{formatUGX(salaryBreakdown.netSalary)}</span>
+                      </div>
+                    </div>
+
+                    {showBreakdown && (
+                      <div className="mt-3 pt-3 border-t border-blue-200 space-y-2 text-xs">
+                        <div>
+                          <span className="font-semibold text-gray-700">NSSF Breakdown:</span>
+                          <div className="ml-2 space-y-1 text-gray-600">
+                            <div>Employee: {formatUGX(salaryBreakdown.breakdownDetails.nssfEmployee)} (5%)</div>
+                            <div>Employer: {formatUGX(salaryBreakdown.breakdownDetails.nssfEmployer)} (10%)</div>
+                          </div>
+                        </div>
+                        <div>
+                          <span className="font-semibold text-gray-700">PAYE Tax Bands:</span>
+                          <div className="ml-2 space-y-1 text-gray-600">
+                            {salaryBreakdown.breakdownDetails.payeBands.map((band, idx) => (
+                              <div key={idx}>
+                                {band.band}: {formatUGX(band.amount)} ({band.rate})
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             </div>
 

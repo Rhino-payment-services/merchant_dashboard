@@ -31,6 +31,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Textarea } from '@/components/ui/textarea';
+import { canApprovePayroll, UserSession } from '@/lib/utils/permissions';
 
 // Transaction limit
 const TRANSACTION_LIMIT = 3500000; // 3.5M UGX
@@ -69,8 +70,21 @@ export default function PayrollApprovalsPage() {
   const [rejectionReason, setRejectionReason] = useState('');
   const [approvalNotes, setApprovalNotes] = useState('');
   
-  const userRole = (session as any)?.user?.role;
-  const isChecker = true; // Check permissions: PAYROLL_APPROVE
+  const userSession: UserSession = {
+    role: (session as any)?.user?.role,
+    userType: (session as any)?.user?.userType,
+    userData: (session as any)?.userData || {}
+  };
+
+  // Check if user can approve payroll using utility function
+  const isChecker = canApprovePayroll(userSession);
+
+  // Debug logging to show who can approve payroll
+  console.log('🧐 Payroll Approval Permissions Check:', {
+    userSession,
+    isChecker,
+    permissions: userSession.userData
+  });
 
   useEffect(() => {
     fetchPendingPayrolls();
@@ -215,6 +229,33 @@ export default function PayrollApprovalsPage() {
         <p className="text-gray-600 mt-2">
           Review and approve pending payroll batches
         </p>
+
+        {/* Permission Status */}
+        <div className="mt-4 p-4 bg-gray-50 rounded-lg border">
+          <div className="flex items-center gap-2 mb-2">
+            <span className="text-sm font-medium text-gray-700">Your Role:</span>
+            <span className={`px-2 py-1 text-xs font-medium rounded ${
+              userSession.role === 'OWNER' ? 'bg-purple-100 text-purple-800' :
+              userSession.role === 'ADMIN' ? 'bg-blue-100 text-blue-800' :
+              'bg-gray-100 text-gray-800'
+            }`}>
+              {userSession.role || 'Unknown'}
+            </span>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="text-sm font-medium text-gray-700">Can Approve Payroll:</span>
+            <span className={`px-2 py-1 text-xs font-medium rounded ${
+              isChecker ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
+            }`}>
+              {isChecker ? 'Yes' : 'No'}
+            </span>
+          </div>
+          {!isChecker && (
+            <p className="text-xs text-gray-600 mt-2">
+              Only users with OWNER or ADMIN roles, or explicit approval permissions can approve payroll.
+            </p>
+          )}
+        </div>
       </div>
 
       {/* Pending Payrolls List */}
