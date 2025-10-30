@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Your RukaPay Team Account is Ready</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            max-width: 600px;
+            margin: 0 auto;
+            background-color: #f8f9fa;
+            padding: 20px;
+        }
+        .container {
+            background-color: white;
+            border-radius: 10px;
+            padding: 40px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .logo {
+            width: 120px;
+            height: auto;
+            margin-bottom: 20px;
+        }
+        .welcome-text {
+            font-size: 24px;
+            font-weight: bold;
+            color: #08163d;
+            margin-bottom: 10px;
+        }
+        .subtitle {
+            font-size: 16px;
+            color: #666;
+            margin-bottom: 30px;
+        }
+        .content {
+            margin-bottom: 30px;
+        }
+        .highlight-box {
+            background-color: #f0f8ff;
+            border-left: 4px solid #08163d;
+            padding: 20px;
+            margin: 20px 0;
+            border-radius: 5px;
+        }
+        .role-badge {
+            display: inline-block;
+            background-color: #08163d;
+            color: white;
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-size: 14px;
+            font-weight: bold;
+            margin: 10px 0;
+        }
+        .cta-button {
+            display: inline-block;
+            background-color: #08163d;
+            color: white;
+            text-decoration: none;
+            padding: 15px 30px;
+            border-radius: 8px;
+            font-weight: bold;
+            text-align: center;
+            margin: 20px 0;
+            transition: background-color 0.3s ease;
+        }
+        .cta-button:hover {
+            background-color: #0a1a4a;
+        }
+        .footer {
+            margin-top: 40px;
+            padding-top: 20px;
+            border-top: 1px solid #eee;
+            font-size: 14px;
+            color: #666;
+            text-align: center;
+        }
+        .security-note {
+            background-color: #fff3cd;
+            border: 1px solid #ffeaa7;
+            color: #856404;
+            padding: 15px;
+            border-radius: 5px;
+            margin: 20px 0;
+            font-size: 14px;
+        }
+        .contact-info {
+            background-color: #f8f9fa;
+            padding: 15px;
+            border-radius: 5px;
+            margin: 20px 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <img src="{{logo_url}}" alt="RukaPay" class="logo">
+            <div class="welcome-text">Your Account is Ready!</div>
+            <div class="subtitle">You've been added to your company's RukaPay team</div>
+        </div>
+
+        <div class="content">
+            <p>Hi <strong>{{first_name}} {{last_name}}</strong>,</p>
+
+            <p>Great news! Your business owner has added you as a team member to your company's RukaPay merchant account. You now have access to manage business payments and transactions.</p>
+
+            <div class="highlight-box">
+                <h3 style="margin-top: 0; color: #08163d;">Your Team Role</h3>
+                <span class="role-badge">{{role_display}}</span>
+                <p style="margin: 10px 0 0 0; font-size: 14px;">{{role_description}}</p>
+            </div>
+
+            <div class="highlight-box">
+                <h3 style="margin-top: 0; color: #08163d;">Your Login Credentials</h3>
+                <div style="background-color: #f8f9fa; padding: 15px; border-radius: 5px; margin: 10px 0;">
+                    <p style="margin: 5px 0;"><strong>Email:</strong> {{email}}</p>
+                    <p style="margin: 5px 0;"><strong>Temporary Password:</strong> <span style="font-family: monospace; background: #e9ecef; padding: 2px 6px; border-radius: 3px;">{{temp_password}}</span></p>
+                </div>
+                <p style="color: #856404; font-size: 14px; margin: 10px 0 0 0;">
+                    ⚠️ <strong>Important:</strong> Please change your password after first login for security.
+                </p>
+            </div>
+
+            <div style="text-align: center;">
+                <a href="{{login_url}}" class="cta-button">
+                    Login to Your Account
+                </a>
+            </div>
+
+            <p><strong>What happens next?</strong></p>
+            <ol>
+                <li>Click the "Login to Your Account" button above</li>
+                <li>Use the credentials provided above to sign in</li>
+                <li>Change your password in your profile settings</li>
+                <li>Start managing your company's payments</li>
+            </ol>
+
+            <div class="contact-info">
+                <strong>Need Help?</strong><br>
+                If you have any questions about your account or need assistance, please contact your business owner or reach out to our support team at <a href="mailto:support@rukapay.co.ug">support@rukapay.co.ug</a>.
+            </div>
+
+            <p>We're excited to have you on board and look forward to helping you streamline your business payments!</p>
+
+            <p>Best regards,<br>
+            <strong>The RukaPay Team</strong></p>
+        </div>
+
+        <div class="footer">
+            <p>This email was sent to {{email}} with your login credentials for the RukaPay merchant dashboard.</p>
+            <p>If you believe this was sent in error, please contact <a href="mailto:support@rukapay.co.ug">support@rukapay.co.ug</a>.</p>
+            <p>&copy; 2024 RukaPay. All rights reserved.</p>
+        </div>
+    </div>
+</body>
+</html>

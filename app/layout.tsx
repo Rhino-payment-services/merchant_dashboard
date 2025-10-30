@@ -87,7 +87,10 @@ export default function RootLayout({
           </div>
         ) : (
  
-        <SessionProvider>
+        <SessionProvider 
+          refetchInterval={0}
+          refetchOnWindowFocus={false}
+        >
           <ReactQueryProvider>
             {children}
             <Toaster position="top-center" richColors />

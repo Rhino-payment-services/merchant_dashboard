@@ -4,6 +4,7 @@ import React, { useRef, useState, useEffect } from 'react';
 import QRCode from 'qrcode';
 import html2canvas from 'html2canvas';
 import { useSession } from 'next-auth/react';
+import { useUserProfile } from '../UserProfileProvider';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { 
@@ -25,9 +26,10 @@ export default function QRCodePage() {
   const [error, setError] = useState<string>('');
   const qrCodeRef = useRef<HTMLDivElement>(null);
   const { data: session, status } = useSession();
+  const { profile } = useUserProfile();
 
-  const merchantCode = (session?.user as any)?.merchantCode || "";
-  const merchantName = (session?.user as any)?.name || (session?.user as any)?.userData?.profile?.firstName + " " + (session?.user as any)?.userData?.profile?.lastName || "Your Business";
+  const merchantCode = (profile?.profile as any)?.merchant_code || (session?.user as any)?.merchantCode || "";
+  const merchantName = (profile?.profile as any)?.merchant_names || "Your Business";
   const baseUrl = API_CONFIG.PAYMENT_PAGE_URL || (typeof window !== 'undefined' ? window.location.origin : '');
   const paymentUrl = `${baseUrl}/receive_payment/${merchantCode}`;
   const loading = status === "loading";
@@ -35,9 +37,12 @@ export default function QRCodePage() {
   // Debug logging
   console.log('QR Code Debug:', {
     session,
+    profile,
     merchantCode,
     merchantName,
     paymentUrl,
+    merchantCodeFromProfile: profile?.profile?.merchant_code,
+    merchantCodeFromSession: (session?.user as any)?.merchantCode,
     API_CONFIG: API_CONFIG
   });
 

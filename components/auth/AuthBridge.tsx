@@ -66,7 +66,8 @@ export default function AuthBridge() {
       console.log('🔗 AuthBridge: NextAuth unauthenticated, logging out from MerchantAuthContext');
       logout();
     }
-  }, [session, status, login, logout, isAuthenticated]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session, status]);
 
   // This component doesn't render anything
   return null;

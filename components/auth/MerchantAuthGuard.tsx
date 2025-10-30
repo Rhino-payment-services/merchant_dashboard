@@ -13,7 +13,9 @@ export default function MerchantAuthGuard({
   children, 
   redirectTo = '/auth/login' 
 }: MerchantAuthGuardProps) {
-  const { data: session, status } = useSession()
+  const { data: session, status } = useSession({
+    required: false // Don't automatically refetch
+  })
   const router = useRouter()
   const isLoading = status === 'loading'
   const isAuthenticated = status === 'authenticated'

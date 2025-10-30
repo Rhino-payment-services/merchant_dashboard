@@ -38,14 +38,25 @@ export default function ProfilePage() {
     );
   }
 
-  const merchantData = profile?.profile;
-  const merchantName = merchantData?.merchant_names || 'N/A';
-  const merchantPhone = merchantData?.merchant_phone || session?.user?.phoneNumber || 'N/A';
+  const merchantData = profile?.profile as any;
+  const businessName = merchantData?.merchant_names || 'N/A';
+  const ownerName = merchantData?.owner_name || merchantData?.merchant_names || 'N/A';
+  const merchantPhone = merchantData?.merchant_phone || (session?.user as any)?.phone || (session?.user as any)?.phoneNumber || 'N/A';
+  const businessEmail = merchantData?.business_email || session?.user?.email || 'N/A';
   const merchantBalance = merchantData?.merchant_balance || 0;
   const merchantStatus = merchantData?.merchant_status || 'N/A';
   const merchantCard = merchantData?.merchant_card || 'N/A';
   const merchantCardExp = merchantData?.merchant_card_exp || 'N/A';
   const merchantCardNumber = merchantData?.merchant_card_number || 'N/A';
+  
+  // Debug logging
+  console.log('📊 Profile Page - Merchant Data:', {
+    businessName,
+    ownerName,
+    phone: merchantPhone,
+    email: businessEmail,
+    hasMerchantData: !!merchantData?.merchantData
+  });
 
   // Get initials from merchant name
   const getInitials = (name: string) => {
@@ -95,12 +106,13 @@ export default function ProfilePage() {
           <div className="flex flex-col md:flex-row items-center md:items-start gap-6">
             <div className="w-24 h-24 rounded-full bg-main-50 flex items-center justify-center border-4 border-main-100">
               <span className="text-4xl text-main-600 font-bold">
-                {getInitials(merchantName)}
+                {getInitials(businessName)}
               </span>
             </div>
             <div className="flex-1 text-center md:text-left">
-              <h2 className="text-2xl font-bold text-gray-900 mb-2">{merchantName}</h2>
-              <div className="text-lg text-gray-600 mb-4">Merchant Account</div>
+              <h2 className="text-2xl font-bold text-gray-900 mb-2">{businessName}</h2>
+              <div className="text-sm text-gray-600 mb-1">Owner: {ownerName}</div>
+              <div className="text-sm text-gray-500 mb-4">Merchant Account</div>
               <div className="flex items-center justify-center md:justify-start gap-2">
                 <div className={`px-3 py-1 rounded-full text-sm font-medium ${
                   merchantStatus 
@@ -131,24 +143,33 @@ export default function ProfilePage() {
                   {formatPhoneNumber(merchantPhone)}
                 </div>
               </div>
-            </div>
-            <div className="space-y-4">
               <div>
                 <label className="text-sm font-medium text-gray-500 mb-2 flex items-center gap-2">
                   <Building2 className="w-4 h-4" />
                   Business Name
                 </label>
                 <div className="px-4 py-3 rounded-lg bg-gray-50 text-gray-900">
-                  {merchantName}
+                  {businessName}
+                </div>
+              </div>
+            </div>
+            <div className="space-y-4">
+              <div>
+                <label className="text-sm font-medium text-gray-500 mb-2 flex items-center gap-2">
+                  <Mail className="w-4 h-4" />
+                  Business Email
+                </label>
+                <div className="px-4 py-3 rounded-lg bg-gray-50 text-gray-900">
+                  {businessEmail}
                 </div>
               </div>
               <div>
                 <label className="text-sm font-medium text-gray-500 mb-2 flex items-center gap-2">
-                  <Calendar className="w-4 h-4" />
-                  Account Status
+                  <User className="w-4 h-4" />
+                  Owner Name
                 </label>
-                <div className="px-4 py-3 rounded-lg bg-gray-50 text-gray-900 capitalize">
-                  {merchantStatus}
+                <div className="px-4 py-3 rounded-lg bg-gray-50 text-gray-900">
+                  {ownerName}
                 </div>
               </div>
             </div>
@@ -234,3 +255,4 @@ export default function ProfilePage() {
     </div>
   );
 }
+
