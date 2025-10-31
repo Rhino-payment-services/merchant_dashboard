@@ -11,6 +11,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '../../../components/ui
 import { Phone, Mail, Lock, Building2 } from 'lucide-react';
 import Image from 'next/image';
 import { toast } from 'sonner';
+import { API_URL } from '@/lib/config';
 
 function LoginContent() {
   useEffect(() => {
@@ -46,7 +47,8 @@ function LoginContent() {
     
     try {
       // Request OTP from backend
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/auth/merchant/login`, {
+      console.log('🔗 Calling API:', `${API_URL}/auth/merchant/login`);
+      const response = await fetch(`${API_URL}/auth/merchant/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ phoneNumber: ownerData.phoneNumber })
