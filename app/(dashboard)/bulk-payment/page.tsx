@@ -19,7 +19,7 @@ import { processBulkTransactionAsync, validateBulkRecipients, getBulkTransaction
 const TRANSACTION_TYPES = [
   { value: 'WALLET_TO_MNO', label: 'Mobile Money', icon: Phone, color: 'text-blue-600', bg: 'bg-blue-50' },
   { value: 'WALLET_TO_BANK', label: 'Bank Transfer', icon: Building2, color: 'text-purple-600', bg: 'bg-purple-50' },
-  { value: 'WALLET_TO_WALLET', label: 'Wallet Transfer', icon: Wallet, color: 'text-green-600', bg: 'bg-green-50' },
+  { value: 'MERCHANT_TO_WALLET', label: 'Wallet Transfer', icon: Wallet, color: 'text-green-600', bg: 'bg-green-50' },
 ];
 
 const UGANDAN_BANKS = [
@@ -215,8 +215,8 @@ export default function BulkPaymentPage() {
       return;
     }
 
-    if (formData.mode === 'WALLET_TO_WALLET' && !formData.recipientPhone) {
-      toast.error('Recipient phone is required for wallet transfer');
+    if (formData.mode === 'MERCHANT_TO_WALLET' && !formData.recipientPhoneNumber) {
+      toast.error('Recipient phone number is required for merchant to wallet transfer');
       return;
     }
 
@@ -231,8 +231,15 @@ export default function BulkPaymentPage() {
       toast.success('Payment updated');
     } else {
       // Add new payment (always use BUSINESS wallet)
+      // For MERCHANT_TO_WALLET, ensure recipientPhoneNumber is set correctly
+      const paymentData = { ...formData };
+      if (paymentData.mode === 'MERCHANT_TO_WALLET' && paymentData.recipientPhoneNumber) {
+        // Copy recipientPhoneNumber to both fields for backend compatibility
+        (paymentData as any).recipientPhone = paymentData.recipientPhoneNumber;
+      }
+      
       const newPayment: PaymentItem = {
-        ...formData as BulkTransactionItem,
+        ...paymentData as BulkTransactionItem,
         id: `item-${Date.now()}`,
         itemId: `ITEM-${Date.now()}`,
         status: 'pending',
@@ -288,6 +295,8 @@ export default function BulkPaymentPage() {
         accountName: p.accountName,
         bankName: p.bankName,
         recipientPhone: p.recipientPhone,
+        // ✅ Add recipientPhoneNumber for MERCHANT_TO_WALLET
+        recipientPhoneNumber: p.recipientPhoneNumber,
       }));
 
       console.log('🔍 Validating recipients:', items);
@@ -482,26 +491,53 @@ export default function BulkPaymentPage() {
       // Prepare bulk transaction request
       const bulkRequest = {
         userId,
-        transactions: payments.map(p => ({
-          itemId: p.itemId!,
-          mode: p.mode!,
-          amount: p.amount!,
-          currency: p.currency!,
-          description: p.description,
-          reference: p.reference,
-          walletType: 'BUSINESS' as 'BUSINESS', // ✅ Hardcoded to BUSINESS wallet for merchant dashboard
-          phoneNumber: p.phoneNumber,
-          mnoProvider: p.mnoProvider,
-          recipientName: p.recipientName,
-          accountNumber: p.accountNumber,
-          bankSortCode: p.bankSortCode,
-          bankName: p.bankName,
-          accountName: p.accountName,
-          swiftCode: p.swiftCode,
-          recipientPhone: p.recipientPhone,
-          recipientUserId: p.recipientUserId,
-          metadata: p.metadata,
-        })),
+        transactions: payments.map(p => {
+          // Build transaction object based on mode
+          const transaction: any = {
+            itemId: p.itemId!,
+            mode: p.mode!,
+            amount: p.amount!,
+            currency: p.currency!,
+            description: p.description,
+            reference: p.reference,
+            walletType: 'BUSINESS' as 'BUSINESS', // ✅ Hardcoded to BUSINESS wallet for merchant dashboard
+          };
+
+          // Add fields based on mode
+          if (p.mode === 'WALLET_TO_MNO') {
+            transaction.phoneNumber = p.phoneNumber;
+            transaction.mnoProvider = p.mnoProvider;
+            transaction.recipientName = p.recipientName;
+          } else if (p.mode === 'WALLET_TO_BANK') {
+            transaction.accountNumber = p.accountNumber;
+            transaction.bankSortCode = p.bankSortCode;
+            transaction.bankName = p.bankName;
+            transaction.accountName = p.accountName;
+            transaction.swiftCode = p.swiftCode;
+          } else if (p.mode === 'MERCHANT_TO_WALLET') {
+            // For MERCHANT_TO_WALLET, only send recipientPhoneNumber, not recipientPhone
+            transaction.recipientPhoneNumber = p.recipientPhoneNumber || p.recipientPhone;
+            transaction.recipientUserId = p.recipientUserId;
+          } else {
+            // Other modes
+            transaction.phoneNumber = p.phoneNumber;
+            transaction.mnoProvider = p.mnoProvider;
+            transaction.recipientName = p.recipientName;
+            transaction.accountNumber = p.accountNumber;
+            transaction.bankSortCode = p.bankSortCode;
+            transaction.bankName = p.bankName;
+            transaction.accountName = p.accountName;
+            transaction.swiftCode = p.swiftCode;
+            if (p.recipientPhoneNumber) {
+              transaction.recipientPhoneNumber = p.recipientPhoneNumber;
+            }
+            if (p.recipientUserId) {
+              transaction.recipientUserId = p.recipientUserId;
+            }
+          }
+
+          return transaction;
+        }),
         description: bulkDescription || 'Bulk payment',
         reference: bulkReference || `BULK-${Date.now()}`,
         processInParallel: true,
@@ -1021,8 +1057,6 @@ export default function BulkPaymentPage() {
                         <option value="">Select Provider</option>
                         <option value="MTN">MTN</option>
                         <option value="Airtel">Airtel</option>
-                        <option value="UGA_TELECOM">UGA Telecom</option>
-                        <option value="LYCAMOBILE">LycaMobile</option>
                       </select>
                     </div>
                   </div>
@@ -1081,7 +1115,7 @@ export default function BulkPaymentPage() {
                   </div>
                 )}
 
-                {singlePayment.mode === 'WALLET_TO_WALLET' && (
+                {singlePayment.mode === 'MERCHANT_TO_WALLET' && (
                   <div>
                     <label className="block text-sm font-semibold text-gray-700 mb-2">
                       Recipient Phone Number
@@ -1515,17 +1549,20 @@ export default function BulkPaymentPage() {
                 )}
 
                 {/* Wallet Transfer Fields */}
-                {formData.mode === 'WALLET_TO_WALLET' && (
+                {formData.mode === 'MERCHANT_TO_WALLET' && (
                   <>
                     <div>
                       <label className="block text-sm font-semibold text-gray-700 mb-2">
-                        Recipient Phone <span className="text-red-500">*</span>
+                        Recipient Phone Number <span className="text-red-500">*</span>
                       </label>
                       <Input
-                        value={formData.recipientPhone || ''}
-                        onChange={(e) => setFormData(prev => ({ ...prev, recipientPhone: e.target.value }))}
+                        value={formData.recipientPhoneNumber || ''}
+                        onChange={(e) => setFormData(prev => ({ ...prev, recipientPhoneNumber: e.target.value }))}
                         placeholder="256700123456"
                       />
+                      <p className="text-xs text-green-600 mt-1">
+                        💰 FREE! No fees for merchants sending to individuals
+                      </p>
                     </div>
                   </>
                 )}
