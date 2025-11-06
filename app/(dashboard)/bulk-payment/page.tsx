@@ -763,6 +763,7 @@ export default function BulkPaymentPage() {
                 bankName: bankName,
                 accountName: recipientName,
                 recipientPhone: transactionMode === 'WALLET_TO_WALLET' ? accountNumber : '',
+                recipientPhoneNumber: transactionMode === 'MERCHANT_TO_WALLET' ? accountNumber : '', // ✅ FIX: Add recipientPhoneNumber for MERCHANT_TO_WALLET
                 status: 'pending' as const,
               };
             });
@@ -808,6 +809,17 @@ export default function BulkPaymentPage() {
         'Bank Name': 'Stanbic Bank',
         'Bank Sort Code': '040102',
         'Description': 'Bank transfer payment',
+        'Currency': 'UGX',
+      },
+      {
+        'Transaction Mode': 'MERCHANT_TO_WALLET',
+        'Phone Number / Account Number': '256700222222',
+        'Name': 'Bob Wilson',
+        'Amount': 60000,
+        'Network': '',
+        'Bank Name': '',
+        'Bank Sort Code': '',
+        'Description': 'Transfer to RukaPay user wallet',
         'Currency': 'UGX',
       },
       {
