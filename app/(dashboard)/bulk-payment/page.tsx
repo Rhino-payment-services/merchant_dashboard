@@ -20,7 +20,6 @@ const TRANSACTION_TYPES = [
   { value: 'WALLET_TO_MNO', label: 'Mobile Money', icon: Phone, color: 'text-blue-600', bg: 'bg-blue-50' },
   { value: 'WALLET_TO_BANK', label: 'Bank Transfer', icon: Building2, color: 'text-purple-600', bg: 'bg-purple-50' },
   { value: 'MERCHANT_TO_WALLET', label: 'Merchant to Wallet', icon: Wallet, color: 'text-green-600', bg: 'bg-green-50' },
-  { value: 'WALLET_TO_WALLET', label: 'Wallet to Wallet', icon: Users, color: 'text-orange-600', bg: 'bg-orange-50' },
 ];
 
 const UGANDAN_BANKS = [
@@ -488,6 +487,9 @@ export default function BulkPaymentPage() {
 
     setProcessing(true);
 
+    console.log('📋 Payments array before processing:', payments);
+    console.log('📋 MERCHANT_TO_WALLET payments:', payments.filter(p => p.mode === 'MERCHANT_TO_WALLET'));
+
     try {
       // Prepare bulk transaction request
       const bulkRequest = {
@@ -517,7 +519,15 @@ export default function BulkPaymentPage() {
             transaction.swiftCode = p.swiftCode;
           } else if (p.mode === 'MERCHANT_TO_WALLET') {
             // For MERCHANT_TO_WALLET, only send recipientPhoneNumber, not recipientPhone
-            transaction.recipientPhoneNumber = p.recipientPhoneNumber || p.recipientPhone;
+            const phoneNumber = p.recipientPhoneNumber || p.recipientPhone;
+            console.log('🔍 MERCHANT_TO_WALLET payment data:', {
+              recipientPhoneNumber: p.recipientPhoneNumber,
+              recipientPhone: p.recipientPhone,
+              finalPhoneNumber: phoneNumber,
+              recipientUserId: p.recipientUserId,
+              fullPayment: p
+            });
+            transaction.recipientPhoneNumber = phoneNumber;
             transaction.recipientUserId = p.recipientUserId;
           } else {
             // Other modes
@@ -537,6 +547,7 @@ export default function BulkPaymentPage() {
             }
           }
 
+          console.log('📦 Built transaction object:', transaction);
           return transaction;
         }),
         description: bulkDescription || 'Bulk payment',
@@ -546,6 +557,7 @@ export default function BulkPaymentPage() {
       };
 
       console.log('🚀 Processing bulk transaction async:', bulkRequest);
+      console.log('🚀 Transaction items:', JSON.stringify(bulkRequest.transactions, null, 2));
       
       const result = await processBulkTransactionAsync(bulkRequest);
       
@@ -749,24 +761,42 @@ export default function BulkPaymentPage() {
 
               const amount = Number(row['Amount'] || row.amount || 0);
 
-              return {
+              // Build payment object based on transaction mode
+              const payment: any = {
                 id: `upload-${Date.now()}-${index}`,
                 itemId: `ITEM-${Date.now()}-${index}`,
                 mode: transactionMode,
                 amount: amount,
                 currency: currency,
                 description: description,
-                phoneNumber: transactionMode === 'WALLET_TO_MNO' ? accountNumber : '',
-                mnoProvider: getValidMnoProvider(network || row.mnoProvider || row.network),
                 recipientName: recipientName,
-                accountNumber: transactionMode === 'WALLET_TO_BANK' ? accountNumber : '',
-                bankSortCode: bankSortCode,
-                bankName: bankName,
-                accountName: recipientName,
-                recipientPhone: transactionMode === 'WALLET_TO_WALLET' ? accountNumber : '',
-                recipientPhoneNumber: transactionMode === 'MERCHANT_TO_WALLET' ? accountNumber : '', // ✅ FIX: Add recipientPhoneNumber for MERCHANT_TO_WALLET
                 status: 'pending' as const,
               };
+
+              // Add mode-specific fields
+              if (transactionMode === 'WALLET_TO_MNO') {
+                payment.phoneNumber = accountNumber;
+                payment.mnoProvider = getValidMnoProvider(network || row.mnoProvider || row.network);
+              } else if (transactionMode === 'WALLET_TO_BANK') {
+                payment.accountNumber = accountNumber;
+                payment.bankSortCode = bankSortCode;
+                payment.bankName = bankName;
+                payment.accountName = recipientName;
+              } else if (transactionMode === 'MERCHANT_TO_WALLET') {
+                // ✅ FIX: Set BOTH fields like manual entry does
+                payment.recipientPhoneNumber = accountNumber;
+                payment.recipientPhone = accountNumber; // Also set as fallback
+              }
+
+              console.log('📦 Excel row parsed:', {
+                mode: transactionMode,
+                accountNumber,
+                recipientPhoneNumber: payment.recipientPhoneNumber,
+                recipientPhone: payment.recipientPhone,
+                fullPayment: payment
+              });
+
+              return payment;
             });
 
           setPayments(prev => [...prev, ...newPayments]);
@@ -821,17 +851,6 @@ export default function BulkPaymentPage() {
         'Bank Name': '',
         'Bank Sort Code': '',
         'Description': 'Transfer to RukaPay user wallet',
-        'Currency': 'UGX',
-      },
-      {
-        'Transaction Mode': 'WALLET_TO_WALLET',
-        'Phone Number / Account Number': '256700333333',
-        'Name': 'Alice Johnson',
-        'Amount': 75000,
-        'Network': '',
-        'Bank Name': '',
-        'Bank Sort Code': '',
-        'Description': 'Wallet to wallet transfer',
         'Currency': 'UGX',
       },
     ];
@@ -1728,7 +1747,6 @@ export default function BulkPaymentPage() {
                           <p className="text-sm font-medium">
                             {payment.mode === 'WALLET_TO_MNO' && payment.phoneNumber}
                             {payment.mode === 'WALLET_TO_BANK' && payment.accountNumber}
-                            {payment.mode === 'WALLET_TO_WALLET' && payment.recipientPhone}
                             {payment.mode === 'MERCHANT_TO_WALLET' && (payment.recipientPhoneNumber || payment.recipientPhone)}
                           </p>
                           <div className="flex items-center gap-2">
