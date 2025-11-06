@@ -115,16 +115,14 @@ export default function ReportsPage() {
   const exportToExcel = () => {
     setIsExporting(true);
     try {
-      const exportData = filteredTransactions.map(txn => ({
-        'Transaction ID': txn.rdbs_transaction_id,
-        'Date': new Date(txn.rdbs_approval_date).toLocaleDateString(),
-        'Time': new Date(txn.rdbs_approval_date).toLocaleTimeString(),
-        'Customer': txn.rdbs_sender_name,
-        'Type': txn.rdbs_type,
-        'Amount': Number(txn.rdbs_amount),
-        'Status': txn.rdbs_approval_status,
-        'Currency': 'UGX'
-      }));
+      const exportData = filteredTransactions.map(txn => {
+        const transaction = txn as any;
+        return {
+          'Transaction Mode': transaction.mode || transaction.rdbs_type || 'N/A',
+          'Phone Number / Account Number': transaction.phoneNumber || transaction.accountNumber || transaction.recipientPhone || 'N/A',
+          'Name': transaction.rdbs_sender_name || transaction.recipientName || 'N/A',
+        };
+      });
 
       const ws = XLSX.utils.json_to_sheet(exportData);
       const wb = XLSX.utils.book_new();

@@ -17,7 +17,10 @@ import {
   ArrowDown,
   X,
   QrCode,
-  Search
+  Search,
+  Users,
+  Briefcase,
+  CheckCircle
 } from 'lucide-react';
 import Image from 'next/image';
 import { useSession } from 'next-auth/react';
@@ -35,9 +38,12 @@ const navLinks = [
     // { name: 'Payroll', path: '/payroll', icon: FileText },
     { name: 'Payment', path: '/bulk-payment', icon: ArrowRightLeft },
   ]},
-  { section: 'TOOLS', links: [
-    { name: 'Report', path: '/reports', icon: FileBarChart },
-  ]},
+        { section: 'TOOLS', links: [
+          { name: 'Report', path: '/reports', icon: FileBarChart },
+          { name: 'Team Members', path: '/team', icon: Users },
+          { name: 'Payroll', path: '/payroll', icon: Briefcase },
+          { name: 'Payroll Approvals', path: '/payroll/approvals', icon: CheckCircle },
+        ]},
   // { section: 'SUPPORT', links: [
   //   { name: 'Help Center', path: '/help', icon: HelpCircle },
   //   { name: 'Feedback', path: '/feedback', icon: MessageCircle },
@@ -83,7 +89,7 @@ export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
       
       {/* Sidebar */}
       <aside className={`
-        fixed md:static top-0 left-0 h-full w-56 bg-white z-50 md:z-auto
+        fixed md:static top-0 left-0 h-full w-64 bg-white z-50 md:z-auto
         transform transition-transform duration-300 ease-in-out
         ${isOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}
         flex flex-col p-6 border-r border-gray-200
@@ -120,16 +126,16 @@ export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
                     <li key={link.name}>
                       <button
                         onClick={() => handleNavigation(link.path)}
-                        className={`w-full flex items-center px-3 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${
+                        className={`w-full flex items-center px-3 py-2 rounded-lg text-sm font-medium transition-all duration-200 whitespace-nowrap ${
                           active 
                             ? 'bg-main-50 text-main-600 border border-main-200 shadow-sm' 
                             : 'text-gray-700 hover:bg-gray-50 hover:text-gray-900'
                         }`}
                       >
-                        <IconComponent className={`w-5 h-5 mr-3 ${active ? 'text-main-600' : 'text-gray-500'}`} />
-                        {link.name}
+                        <IconComponent className={`w-5 h-5 mr-3 flex-shrink-0 ${active ? 'text-main-600' : 'text-gray-500'}`} />
+                        <span className="truncate">{link.name}</span>
                         {active && (
-                          <div className="ml-auto w-2 h-2 bg-main-600 rounded-full"></div>
+                          <div className="ml-auto w-2 h-2 bg-main-600 rounded-full flex-shrink-0"></div>
                         )}
                       </button>
                     </li>

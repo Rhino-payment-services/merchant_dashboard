@@ -56,6 +56,8 @@ export default function ReceivePaymentPage({ params }: PaymentPageProps) {
   const [isLoading, setIsLoading] = useState(false)
   const [isMerchantLoading, setIsMerchantLoading] = useState(true)
   const [paymentStep, setPaymentStep] = useState<'form' | 'confirm' | 'processing' | 'success' | 'error'>('form')
+  const [transactionRef, setTransactionRef] = useState('')
+  const [errorMessage, setErrorMessage] = useState('')
 
   // Extract merchant code from params
   useEffect(() => {
@@ -94,6 +96,23 @@ export default function ReceivePaymentPage({ params }: PaymentPageProps) {
     fetchMerchantInfo()
   }, [merchantCode])
 
+  const formatPhoneNumber = (phone: string): string => {
+    // Remove all non-digit characters
+    let cleaned = phone.replace(/\D/g, '')
+    
+    // If starts with 0, replace with 256
+    if (cleaned.startsWith('0')) {
+      cleaned = '256' + cleaned.substring(1)
+    }
+    
+    // If doesn't start with 256, add it
+    if (!cleaned.startsWith('256')) {
+      cleaned = '256' + cleaned
+    }
+    
+    return cleaned
+  }
+
   const handlePaymentSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     
@@ -102,25 +121,78 @@ export default function ReceivePaymentPage({ params }: PaymentPageProps) {
       return
     }
 
-    if (parseFloat(amount) <= 0) {
+    const numAmount = parseFloat(amount)
+    if (numAmount <= 0) {
       toast.error('Amount must be greater than 0')
+      return
+    }
+
+    if (numAmount < 500) {
+      toast.error('Minimum payment amount is 500 UGX')
+      return
+    }
+
+    // Format phone number
+    const formattedPhone = formatPhoneNumber(phoneNumber)
+    if (formattedPhone.length !== 12) {
+      toast.error('Please enter a valid phone number')
       return
     }
 
     setPaymentStep('processing')
     setIsLoading(true)
+    setErrorMessage('')
 
     try {
-      // Simulate payment processing
-      await new Promise(resolve => setTimeout(resolve, 2000))
+      const { API_URL } = await import('@/lib/config')
       
-      // Here you would call your actual payment API
-      setPaymentStep('success')
-      toast.success('Payment processed successfully!')
+      const response = await fetch(`${API_URL}/public/merchant-payment/collect`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          merchantCode: merchantCode,
+          phoneNumber: formattedPhone,
+          amount: numAmount
+        })
+      })
+
+      const result = await response.json()
+
+      // Store transaction reference first
+      if (result.transactionReference) {
+        setTransactionRef(result.transactionReference)
+      }
+
+      // Check if payment failed at initiation
+      if (!response.ok || result.status === 'FAILED') {
+        throw new Error(result.error || result.message || 'Payment failed')
+      }
+
+      // Handle different statuses
+      if (result.status === 'PROCESSING' || result.status === 'PENDING') {
+        // Payment initiated successfully - customer needs to confirm on phone
+        // Stay on processing screen - polling will update status
+        toast.success('Payment initiated! Check your phone for USSD prompt.')
+        // Keep in processing state - polling will handle final status
+        
+      } else if (result.status === 'SUCCESS') {
+        // Immediate success (rare)
+        setPaymentStep('success')
+        setIsLoading(false)
+        toast.success('Payment successful!')
+        
+      } else {
+        // Unknown status
+        throw new Error(result.message || 'Payment status unknown')
+      }
+      
     } catch (error) {
+      console.error('Payment error:', error)
       setPaymentStep('error')
-      toast.error('Payment failed. Please try again.')
-    } finally {
+      setErrorMessage(error instanceof Error ? error.message : 'Payment failed. Please try again.')
+      toast.error(error instanceof Error ? error.message : 'Payment failed. Please try again.')
       setIsLoading(false)
     }
   }
@@ -177,24 +249,84 @@ export default function ReceivePaymentPage({ params }: PaymentPageProps) {
     )
   }
 
+  if (paymentStep === 'processing') {
+    return (
+      <div className="min-h-screen flex items-center justify-center p-4">
+        <Card className="max-w-md w-full p-8 text-center">
+          <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-6">
+            <Smartphone className="h-8 w-8 text-blue-600 animate-pulse" />
+          </div>
+          <h2 className="text-2xl font-bold text-gray-900 mb-2">Check Your Phone</h2>
+          <p className="text-gray-600 mb-4">
+            A USSD prompt has been sent to <span className="font-semibold">{phoneNumber}</span>
+          </p>
+          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
+            <p className="text-sm text-blue-800 mb-2 font-medium">
+              📱 Enter your PIN to confirm payment of {formatCurrency(amount)}
+            </p>
+            <p className="text-xs text-blue-700">
+              Transaction Ref: {transactionRef || 'Loading...'}
+            </p>
+          </div>
+          <div className="space-y-3 text-sm text-gray-600 text-left">
+            <div className="flex items-start">
+              <span className="mr-2">1️⃣</span>
+              <span>Check your phone for the USSD prompt</span>
+            </div>
+            <div className="flex items-start">
+              <span className="mr-2">2️⃣</span>
+              <span>Enter your mobile money PIN</span>
+            </div>
+            <div className="flex items-start">
+              <span className="mr-2">3️⃣</span>
+              <span>You'll receive an SMS confirmation</span>
+            </div>
+          </div>
+          <Button 
+            onClick={() => {
+              setPaymentStep('form')
+              setIsLoading(false)
+              setPhoneNumber('')
+              setAmount('')
+            }} 
+            variant="outline" 
+            className="w-full mt-6"
+          >
+            Cancel & Go Back
+          </Button>
+        </Card>
+      </div>
+    )
+  }
+
   if (paymentStep === 'success') {
     return (
       <div className="min-h-screen flex items-center justify-center p-4">
         <Card className="max-w-md w-full p-8 text-center">
           <CheckCircle className="h-16 w-16 text-green-500 mx-auto mb-6" />
           <h2 className="text-2xl font-bold text-gray-900 mb-2">Payment Successful!</h2>
-                <p className="text-gray-600 mb-4">
-                  Your payment of <span className="font-semibold">{formatCurrency(amount)}</span> has been sent to {merchantInfo.displayName || merchantInfo.businessName}.
-                </p>
+          <p className="text-gray-600 mb-4">
+            Your payment of <span className="font-semibold">{formatCurrency(amount)}</span> has been sent to {merchantInfo.displayName || merchantInfo.businessName}.
+          </p>
+          {transactionRef && (
+            <div className="bg-gray-50 rounded-lg p-3 mb-4">
+              <p className="text-xs text-gray-500 mb-1">Transaction Reference</p>
+              <p className="text-sm font-mono text-gray-900">{transactionRef}</p>
+            </div>
+          )}
           <div className="bg-green-50 rounded-lg p-4 mb-6">
             <p className="text-sm text-green-700">
-              You will receive a confirmation SMS shortly
+              ✅ You will receive a confirmation SMS shortly
+            </p>
+            <p className="text-sm text-green-700 mt-1">
+              ✅ Merchant will also receive payment notification
             </p>
           </div>
           <Button onClick={() => {
             setPaymentStep('form')
             setPhoneNumber('')
             setAmount('')
+            setTransactionRef('')
           }} className="w-full">
             Make Another Payment
           </Button>
@@ -213,10 +345,20 @@ export default function ReceivePaymentPage({ params }: PaymentPageProps) {
             </svg>
           </div>
           <h2 className="text-2xl font-bold text-gray-900 mb-2">Payment Failed</h2>
-          <p className="text-gray-600 mb-6">
-            Your payment could not be processed. Please check your details and try again.
+          <p className="text-gray-600 mb-4">
+            {errorMessage || 'Your payment could not be processed. Please check your details and try again.'}
           </p>
-          <Button onClick={() => setPaymentStep('form')} className="w-full">
+          {transactionRef && (
+            <div className="bg-gray-50 rounded-lg p-3 mb-4">
+              <p className="text-xs text-gray-500 mb-1">Transaction Reference</p>
+              <p className="text-sm font-mono text-gray-900">{transactionRef}</p>
+            </div>
+          )}
+          <Button onClick={() => {
+            setPaymentStep('form')
+            setErrorMessage('')
+            setTransactionRef('')
+          }} className="w-full">
             Try Again
           </Button>
         </Card>
@@ -275,18 +417,21 @@ export default function ReceivePaymentPage({ params }: PaymentPageProps) {
                   <Input
                     id="phoneNumber"
                     type="tel"
-                    placeholder="+256 700 000 000"
+                    placeholder="0700 000 000 or 256700000000"
                     value={phoneNumber}
                     onChange={(e) => setPhoneNumber(e.target.value)}
                     className="pl-10"
                     required
                   />
                 </div>
+                <p className="text-xs text-gray-500 mt-1">
+                  Enter your MTN or Airtel number
+                </p>
               </div>
 
               <div>
                 <label htmlFor="amount" className="text-sm font-medium text-gray-700 mb-2 block">
-                  Amount to Pay
+                  Amount to Pay (UGX)
                 </label>
                 <div className="relative">
                   <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
@@ -295,15 +440,18 @@ export default function ReceivePaymentPage({ params }: PaymentPageProps) {
                   <Input
                     id="amount"
                     type="number"
-                    placeholder="0.00"
+                    placeholder="5000"
                     value={amount}
                     onChange={(e) => setAmount(e.target.value)}
                     className="pl-10"
-                    step="0.01"
-                    min="0"
+                    step="100"
+                    min="500"
                     required
                   />
                 </div>
+                <p className="text-xs text-gray-500 mt-1">
+                  Minimum payment: UGX 500
+                </p>
               </div>
 
               <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">

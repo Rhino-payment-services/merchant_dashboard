@@ -1,11 +1,13 @@
 import React, { useEffect, useState } from 'react';
 import { Card, CardContent, CardHeader } from '../../components/ui/card';
 import { useUserProfile } from '../(dashboard)/UserProfileProvider';
-import { RefreshCw } from 'lucide-react';
+import { useSession } from 'next-auth/react';
+import { RefreshCw, Users, AlertCircle } from 'lucide-react';
 import { getWalletBalance, getMyTransactions } from '@/lib/api/wallet.api';
 
 export default function StatCards() {
   const {profile, loading, isRefetching} = useUserProfile()
+  const { data: session } = useSession();
   const [walletBalance, setWalletBalance] = useState<number>(0);
   const [walletLoading, setWalletLoading] = useState(true);
   const [totalTransactions, setTotalTransactions] = useState<number>(0);
@@ -13,18 +15,19 @@ export default function StatCards() {
   const [totalDebit, setTotalDebit] = useState<number>(0);
 
   console.log("profile", profile)
+  console.log("session user", session?.user)
 
   // Fetch wallet balance and transactions
   const fetchWalletData = async () => {
     try {
       setWalletLoading(true);
-      
-      // Fetch wallet balance
+
+      // Fetch wallet balance (works for both owners and team members now)
       const balanceData = await getWalletBalance();
       console.log('Wallet Balance API Response:', balanceData);
       setWalletBalance(balanceData.balance);
 
-      // Fetch transactions to calculate totals
+      // Fetch transactions to calculate totals (only for business owners)
       const transactionsData = await getMyTransactions({ limit: 1000 });
       console.log('Transactions API Response:', transactionsData);
       setTotalTransactions(transactionsData.total || 0);
@@ -54,6 +57,7 @@ export default function StatCards() {
     fetchWalletData();
   }, [isRefetching]);
 
+  // Always show wallet stats (for both owners and team members with access)
   const stats = [
     {
       label: 'Current balance',
@@ -76,7 +80,7 @@ export default function StatCards() {
       changeType: 'down',
       icon: '📦',
     },
-  
+
     {
       label: 'Total Debit',
       value: walletLoading ? '....' : `${totalDebit.toLocaleString()} UGX`,
@@ -115,7 +119,11 @@ export default function StatCards() {
             </CardHeader>
             <CardContent className="flex flex-col gap-1 pt-0">
               <div className="text-2xl font-bold">{stat.value}</div>
-              <div className={`text-xs font-semibold ${stat.changeType === 'up' ? 'text-green-500' : 'text-red-500'}`}>{stat.change}</div>
+              <div className={`text-xs font-semibold ${
+                stat.changeType === 'up' ? 'text-green-500' :
+                stat.changeType === 'down' ? 'text-red-500' :
+                'text-gray-500'
+              }`}>{stat.change}</div>
             </CardContent>
           </Card>
         ))}

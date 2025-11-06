@@ -8,7 +8,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { 
   Upload, Download, Plus, Trash2, Users, CheckCircle2, 
   XCircle, Clock, Send, AlertCircle, Info, Loader2,
-  Wallet, Phone, Building2, Zap, Edit, RefreshCw
+  Wallet, Phone, Building2, Zap, Edit, RefreshCw, AlertTriangle
 } from "lucide-react";
 import { useSession } from "next-auth/react";
 import { toast } from 'sonner';
@@ -72,6 +72,7 @@ export default function BulkPaymentPage() {
     walletType: 'BUSINESS'
   });
   const [singlePaymentLoading, setSinglePaymentLoading] = useState(false);
+  const [validatingTransaction, setValidatingTransaction] = useState(false);
   const [feePreview, setFeePreview] = useState<FeePreviewResponseDto | null>(null);
   const [validationInfo, setValidationInfo] = useState<{
     recipientName?: string;
@@ -93,17 +94,28 @@ export default function BulkPaymentPage() {
       return;
     }
 
+    setValidatingTransaction(true);
     try {
       const validation = await validateTransaction(singlePayment);
       console.log('Validation result:', validation);
       
-      // Store validation info
+      // Store validation info - PRESERVE user-entered name if validation doesn't return one (SAME AS BULK)
+      const recipientName = validation.recipientName || singlePayment.accountName || singlePayment.recipientName;
+      
       setValidationInfo({
-        recipientName: validation.recipientName,
+        recipientName: recipientName,
         partnerCode: validation.partnerCode,
         partnerName: validation.partnerName,
         isValid: validation.isValid
       });
+      
+      // Pre-fill the account holder name field with validated name
+      if (recipientName && singlePayment.mode === 'WALLET_TO_BANK') {
+        setSinglePayment(prev => ({
+          ...prev,
+          accountName: recipientName
+        }));
+      }
       
       if (validation.feePreview) {
         setFeePreview(validation.feePreview);
@@ -112,8 +124,8 @@ export default function BulkPaymentPage() {
         toast.info('Validation completed - no fee preview available');
       }
       
-      if (validation.recipientName) {
-        toast.success(`Recipient validated: ${validation.recipientName}`);
+      if (recipientName) {
+        toast.success(`Recipient validated: ${recipientName}`);
       }
       
       if (validation.errors && validation.errors.length > 0) {
@@ -127,6 +139,8 @@ export default function BulkPaymentPage() {
       console.error('Error validating transaction:', error);
       toast.error('Failed to validate transaction');
       setValidationInfo(null);
+    } finally {
+      setValidatingTransaction(false);
     }
   };
 
@@ -147,7 +161,7 @@ export default function BulkPaymentPage() {
       toast.success('Payment processed successfully!');
       console.log('Single payment result:', result);
       
-      // Reset form
+      // Reset form and validation
       setSinglePayment({
         mode: 'WALLET_TO_MNO',
         amount: 0,
@@ -155,6 +169,7 @@ export default function BulkPaymentPage() {
         walletType: 'BUSINESS'
       });
       setFeePreview(null);
+      setValidationInfo(null);
     } catch (error: any) {
       console.error('Error processing single payment:', error);
       toast.error(error.message || 'Failed to process payment');
@@ -565,18 +580,19 @@ export default function BulkPaymentPage() {
 
       setPayments(updatedPayments);
 
-      // Show summary toast
+      // Show summary toast (only if there are actual results)
       const successCount = result.successfulTransactions || result.successfulItems || 0;
       const failCount = result.failedTransactions || result.failedItems || 0;
       const totalCount = result.totalTransactions || result.totalItems || payments.length;
       
-      if (successCount === totalCount) {
+      if (successCount === totalCount && successCount > 0) {
         toast.success(`🎉 All ${successCount} payments completed successfully!`);
-      } else if (successCount > 0) {
+      } else if (successCount > 0 && failCount > 0) {
         toast.warning(`⚠️ ${successCount} succeeded, ${failCount} failed`);
-      } else {
+      } else if (failCount > 0) {
         toast.error(`❌ All ${failCount} payments failed`);
       }
+      // Don't show toast if both counts are 0 (initial state)
 
     } catch (error: any) {
       console.error('❌ Bulk payment error:', error);
@@ -708,25 +724,48 @@ export default function BulkPaymentPage() {
           const ws = wb.Sheets[wsname];
           const data = XLSX.utils.sheet_to_json(ws);
 
+          console.log('📊 Parsed Excel data:', data);
+          console.log('📋 First row sample:', data[0]);
+
           const newPayments: PaymentItem[] = (data as any[])
-            .filter(row => row.amount && row.description && row.mode)
-            .map((row, index) => ({
-              id: `upload-${Date.now()}-${index}`,
-              itemId: `ITEM-${Date.now()}-${index}`,
-              mode: row.mode || 'WALLET_TO_MNO',
-              amount: Number(row.amount),
-              currency: row.currency || 'UGX',
-              description: row.description,
-              phoneNumber: row.phoneNumber || '',
-              mnoProvider: getValidMnoProvider(row.mnoProvider || row.network),
-              recipientName: row.recipientName || row.name || '',
-              accountNumber: row.accountNumber || '',
-              bankSortCode: row.bankSortCode || '',
-              bankName: row.bankName || '',
-              accountName: row.accountName || '',
-              recipientPhone: row.recipientPhone || '',
-              status: 'pending' as const,
-            }));
+            .filter(row => {
+              // Check for required fields using template column names
+              const hasMode = row['Transaction Mode'] || row.mode;
+              const hasAccount = row['Phone Number / Account Number'] || row.phoneNumber || row.accountNumber;
+              const hasName = row['Name'] || row.recipientName || row.name;
+              return hasMode && hasAccount && hasName;
+            })
+            .map((row, index) => {
+              // Map template columns to payment fields
+              const transactionMode = row['Transaction Mode'] || row.mode || 'WALLET_TO_MNO';
+              const accountNumber = row['Phone Number / Account Number'] || row.phoneNumber || row.accountNumber || '';
+              const recipientName = row['Name'] || row.recipientName || row.name || '';
+              const network = row['Network'] || row.network || row.mnoProvider || '';
+              const bankName = row['Bank Name'] || row.bankName || '';
+              const bankSortCode = row['Bank Sort Code'] || row.bankSortCode || '';
+              const description = row['Description'] || row.description || `Payment to ${recipientName}`;
+              const currency = row['Currency'] || row.currency || 'UGX';
+
+              const amount = Number(row['Amount'] || row.amount || 0);
+
+              return {
+                id: `upload-${Date.now()}-${index}`,
+                itemId: `ITEM-${Date.now()}-${index}`,
+                mode: transactionMode,
+                amount: amount,
+                currency: currency,
+                description: description,
+                phoneNumber: transactionMode === 'WALLET_TO_MNO' ? accountNumber : '',
+                mnoProvider: getValidMnoProvider(network || row.mnoProvider || row.network),
+                recipientName: recipientName,
+                accountNumber: transactionMode === 'WALLET_TO_BANK' ? accountNumber : '',
+                bankSortCode: bankSortCode,
+                bankName: bankName,
+                accountName: recipientName,
+                recipientPhone: transactionMode === 'WALLET_TO_WALLET' ? accountNumber : '',
+                status: 'pending' as const,
+              };
+            });
 
           setPayments(prev => [...prev, ...newPayments]);
           toast.success(`✅ Uploaded ${newPayments.length} payments from Excel`);
@@ -750,36 +789,43 @@ export default function BulkPaymentPage() {
   const downloadTemplate = (format: 'excel' | 'csv' = 'csv') => {
     const templateData = [
       {
-        mode: 'WALLET_TO_MNO',
-        phoneNumber: '256700111111',
-        mnoProvider: 'MTN',
-        recipientName: 'John Doe',
-        amount: 50000,
-        currency: 'UGX',
-        description: 'Salary payment',
+        'Transaction Mode': 'WALLET_TO_MNO',
+        'Phone Number / Account Number': '256700111111',
+        'Name': 'John Doe',
+        'Amount': 50000,
+        'Network': 'MTN',
+        'Bank Name': '',
+        'Bank Sort Code': '',
+        'Description': 'Mobile money payment',
+        'Currency': 'UGX',
       },
       {
-        mode: 'WALLET_TO_BANK',
-        accountNumber: '1234567890',
-        bankSortCode: '040147',
-        bankName: 'Stanbic Bank Ltd',
-        accountName: 'Jane Smith',
-        amount: 100000,
-        currency: 'UGX',
-        description: 'Contractor payment',
+        'Transaction Mode': 'WALLET_TO_BANK',
+        'Phone Number / Account Number': '1234567890',
+        'Name': 'Jane Smith',
+        'Amount': 100000,
+        'Network': '',
+        'Bank Name': 'Stanbic Bank',
+        'Bank Sort Code': '040102',
+        'Description': 'Bank transfer payment',
+        'Currency': 'UGX',
       },
       {
-        mode: 'WALLET_TO_WALLET',
-        recipientPhone: '256700333333',
-        amount: 75000,
-        currency: 'UGX',
-        description: 'Internal transfer',
+        'Transaction Mode': 'WALLET_TO_WALLET',
+        'Phone Number / Account Number': '256700333333',
+        'Name': 'Alice Johnson',
+        'Amount': 75000,
+        'Network': '',
+        'Bank Name': '',
+        'Bank Sort Code': '',
+        'Description': 'Wallet to wallet transfer',
+        'Currency': 'UGX',
       },
     ];
 
     if (format === 'csv') {
       // Generate CSV content
-      const headers = ['mode', 'phoneNumber', 'mnoProvider', 'recipientName', 'accountNumber', 'bankSortCode', 'bankName', 'accountName', 'recipientPhone', 'amount', 'currency', 'description'];
+      const headers = ['Transaction Mode', 'Phone Number / Account Number', 'Name', 'Amount', 'Network', 'Bank Name', 'Bank Sort Code', 'Description', 'Currency'];
       const csvContent = [
         headers.join(','),
         ...templateData.map(row => 
@@ -1017,32 +1063,52 @@ export default function BulkPaymentPage() {
                 )}
 
                 {singlePayment.mode === 'WALLET_TO_BANK' && (
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-sm font-semibold text-gray-700 mb-2">
-                        Bank Name
-                      </label>
-                      <select
-                        value={singlePayment.bankName || ''}
-                        onChange={(e) => handleSinglePaymentChange('bankName', e.target.value)}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-md"
-                      >
-                        <option value="">Select Bank</option>
-                        {UGANDAN_BANKS.map((bank) => (
-                          <option key={bank.bankSortCode} value={bank.bankName}>
-                            {bank.bankName}
-                          </option>
-                        ))}
-                      </select>
+                  <div className="space-y-4">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-sm font-semibold text-gray-700 mb-2">
+                          Bank Name
+                        </label>
+                        <select
+                          value={singlePayment.bankName || ''}
+                          onChange={(e) => {
+                            const selectedBank = UGANDAN_BANKS.find(b => b.bankName === e.target.value);
+                            handleSinglePaymentChange('bankName', e.target.value);
+                            // CRITICAL: Also store bankSortCode when bank is selected
+                            if (selectedBank) {
+                              handleSinglePaymentChange('bankSortCode', selectedBank.bankSortCode);
+                            }
+                          }}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                        >
+                          <option value="">Select Bank</option>
+                          {UGANDAN_BANKS.map((bank) => (
+                            <option key={bank.bankSortCode} value={bank.bankName}>
+                              {bank.bankName}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-sm font-semibold text-gray-700 mb-2">
+                          Account Number
+                        </label>
+                        <Input
+                          value={singlePayment.accountNumber || ''}
+                          onChange={(e) => handleSinglePaymentChange('accountNumber', e.target.value)}
+                          placeholder="Enter account number"
+                          className="w-full"
+                        />
+                      </div>
                     </div>
                     <div>
                       <label className="block text-sm font-semibold text-gray-700 mb-2">
-                        Account Number
+                        Account Holder Name
                       </label>
                       <Input
-                        value={singlePayment.accountNumber || ''}
-                        onChange={(e) => handleSinglePaymentChange('accountNumber', e.target.value)}
-                        placeholder="Enter account number"
+                        value={singlePayment.accountName || ''}
+                        onChange={(e) => handleSinglePaymentChange('accountName', e.target.value)}
+                        placeholder="Enter account holder name"
                         className="w-full"
                       />
                     </div>
@@ -1137,19 +1203,35 @@ export default function BulkPaymentPage() {
                   <Button
                     onClick={previewSinglePaymentFees}
                     variant="outline"
-                    disabled={!singlePayment.amount || singlePayment.amount <= 0}
+                    disabled={!singlePayment.amount || singlePayment.amount <= 0 || singlePaymentLoading || validatingTransaction}
+                    className="border-orange-600 text-orange-600 hover:bg-orange-50"
                   >
-                    Validate Transaction
+                    {validatingTransaction ? (
+                      <>
+                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                        Validating...
+                      </>
+                    ) : (
+                      <>
+                        <CheckCircle2 className="w-4 h-4 mr-2" />
+                        Validate Transaction
+                      </>
+                    )}
                   </Button>
                   <Button
                     onClick={processSinglePaymentTransaction}
-                    disabled={singlePaymentLoading || !singlePayment.amount || singlePayment.amount <= 0}
-                    className="flex items-center gap-2"
+                    disabled={!validationInfo?.isValid || singlePaymentLoading || !singlePayment.amount || singlePayment.amount <= 0}
+                    className={`flex items-center gap-2 ${!validationInfo?.isValid ? 'opacity-50 cursor-not-allowed' : 'bg-green-600 hover:bg-green-700'}`}
                   >
                     {singlePaymentLoading ? (
                       <>
                         <Loader2 className="w-4 h-4 animate-spin" />
                         Processing...
+                      </>
+                    ) : !validationInfo?.isValid ? (
+                      <>
+                        <AlertTriangle className="w-4 h-4" />
+                        Validate First
                       </>
                     ) : (
                       <>
@@ -1312,14 +1394,24 @@ export default function BulkPaymentPage() {
 
             <Button
               onClick={handleProcessBulk}
-              disabled={payments.length === 0 || processing || validating}
-              className="bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800"
+              disabled={
+                payments.length === 0 || 
+                processing || 
+                validating || 
+                !payments.every(p => p.validated) // ✅ Disable until all are validated
+              }
+              className="bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 disabled:opacity-50 disabled:cursor-not-allowed"
               size="lg"
             >
               {processing ? (
                 <>
                   <Loader2 className="w-5 h-5 mr-2 animate-spin" />
                   Processing {payments.length} Payments...
+                </>
+              ) : !payments.every(p => p.validated) && payments.length > 0 ? (
+                <>
+                  <AlertTriangle className="w-5 h-5 mr-2" />
+                  Validate First ({payments.filter(p => !p.validated).length} unvalidated)
                 </>
               ) : (
                 <>

@@ -145,21 +145,21 @@ export default function TransactionsPage() {
       console.log('No session found, skipping bulk transaction load');
       return;
     }
-    
+
     setBulkLoading(true);
     try {
       console.log('Loading bulk transactions for user:', (session.user as any).id);
       console.log('Session data:', session);
-      
+
       const response = await viewBulkTransactions({
         page: 1,
         limit: 50
       });
-      
+
       console.log('Bulk transactions response:', response);
       console.log('Response type:', typeof response);
       console.log('Response keys:', Object.keys(response || {}));
-      
+
       if (response && response.bulkTransactions) {
         setBulkTransactions(response.bulkTransactions);
         console.log('Set bulk transactions:', response.bulkTransactions.length);
@@ -167,7 +167,7 @@ export default function TransactionsPage() {
         console.log('No bulkTransactions in response, setting empty array');
         setBulkTransactions([]);
       }
-      
+
       if (response?.bulkTransactions?.length === 0) {
         console.log('No bulk transactions found for user');
       }
@@ -395,6 +395,8 @@ export default function TransactionsPage() {
               <TableHeader>
                 <TableRow>
                   <TableHead>Reference ID</TableHead>
+                  <TableHead>Sender</TableHead>
+                  <TableHead>Receiver</TableHead>
                   <TableHead>Amount</TableHead>
                   <TableHead>Charges</TableHead>
                   <TableHead>Type</TableHead>
@@ -406,7 +408,7 @@ export default function TransactionsPage() {
               <TableBody>
                 {isLoading ? (
                   <TableRow>
-                    <TableCell colSpan={6} className="text-center py-8">
+                    <TableCell colSpan={9} className="text-center py-8">
                       <div className="flex items-center justify-center">
                         <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
                         <span className="ml-2">Loading transactions...</span>
@@ -415,60 +417,86 @@ export default function TransactionsPage() {
                   </TableRow>
                 ) : filteredTransactions.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={6} className="text-center py-8">
+                    <TableCell colSpan={9} className="text-center py-8">
                       <div className="text-gray-500">No transactions found</div>
                     </TableCell>
                   </TableRow>
                 ) : (
-                  filteredTransactions.map((transaction) => (
-                    <TableRow key={transaction.id}>
-                      <TableCell className="font-mono text-sm">
-                        {transaction.reference || 'N/A'}
-                      </TableCell>
-                      <TableCell>
-                        <div className="font-[25px]">
-                          <span className='text-[12px]'>
-                            UGX &nbsp;
+                  filteredTransactions.map((transaction) => {
+                    // Extract sender and receiver information
+                    const txn = transaction as any;
+                    const sender = txn.direction === 'DEBIT' 
+                      ? (txn.user?.profile?.firstName && txn.user?.profile?.lastName 
+                          ? `${txn.user.profile.firstName} ${txn.user.profile.lastName}`
+                          : txn.user?.phone || txn.user?.email || 'Merchant')
+                      : (txn.metadata?.counterpartyInfo?.name || txn.metadata?.phoneNumber || txn.metadata?.userName || 'External');
+                    
+                    const receiver = txn.direction === 'DEBIT'
+                      ? (txn.metadata?.counterpartyInfo?.name || txn.metadata?.phoneNumber || txn.metadata?.accountNumber || txn.metadata?.userName || 'External')
+                      : (txn.user?.profile?.firstName && txn.user?.profile?.lastName 
+                          ? `${txn.user.profile.firstName} ${txn.user.profile.lastName}`
+                          : txn.user?.phone || txn.user?.email || 'Merchant');
+
+                    return (
+                      <TableRow key={transaction.id}>
+                        <TableCell className="font-mono text-sm">
+                          {transaction.reference || 'N/A'}
+                        </TableCell>
+                        <TableCell className="text-sm">
+                          <div className="max-w-[150px] truncate" title={sender}>
+                            {sender}
+                          </div>
+                        </TableCell>
+                        <TableCell className="text-sm">
+                          <div className="max-w-[150px] truncate" title={receiver}>
+                            {receiver}
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <div className="font-[25px]">
+                            <span className='text-[12px]'>
+                              UGX &nbsp;
+                            </span>
+                           {Number(transaction.amount).toLocaleString()}
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <div className="font-[25px]">
+                            <span className='text-[12px]'>
+                             {transaction.metadata?.revenue?.currency ?? ""} &nbsp;
+                            </span>
+                           {transaction.metadata?.revenue?.amount?.toLocaleString() ?? "N/A"}
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
+                            transaction.direction === 'CREDIT' 
+                              ? 'bg-green-100 text-green-800' 
+                              : 'bg-red-100 text-red-800'
+                          }`}>
+                            {transaction.direction || 'N/A'}
                           </span>
-                         {Number(transaction.amount).toLocaleString()}
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <div className="font-[25px]">
-                          <span className='text-[12px]'>
-                           {transaction.metadata?.revenue?.currency ?? ""} &nbsp;
+                        </TableCell>
+                        <TableCell>
+                          <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${statusColor[transaction.status as StatusType]}`}>
+                            {transaction.status}
                           </span>
-                         {transaction.metadata?.revenue?.amount?.toLocaleString() ?? "N/A"}
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
-                          transaction.direction === 'CREDIT' 
-                            ? 'bg-green-100 text-green-800' 
-                            : 'bg-red-100 text-red-800'
-                        }`}>
-                          {transaction.direction || 'N/A'}
-                        </span>
-                      </TableCell>
-                      <TableCell>
-                        <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${statusColor[transaction.status as StatusType]}`}>
-                          {transaction.status}
-                        </span>
-                      </TableCell>
-                      <TableCell className="max-w-xs truncate">
-                        {transaction.description || transaction.reference || '-'}
-                      </TableCell>
-                      <TableCell className="text-sm">
-                        {new Date(transaction.createdAt).toLocaleString('en-UG', {
-                          year: 'numeric',
-                          month: 'short',
-                          day: 'numeric',
-                          hour: '2-digit',
-                          minute: '2-digit'
-                        })}
-                      </TableCell>
-                    </TableRow>
-                  ))
+                        </TableCell>
+                        <TableCell className="max-w-xs truncate">
+                          {transaction.description || transaction.reference || '-'}
+                        </TableCell>
+                        <TableCell className="text-sm">
+                          {new Date(transaction.createdAt).toLocaleString('en-UG', {
+                            year: 'numeric',
+                            month: 'short',
+                            day: 'numeric',
+                            hour: '2-digit',
+                            minute: '2-digit'
+                          })}
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })
                 )}
               </TableBody>
             </Table>

@@ -9,13 +9,16 @@ import RecentTransactions from "@/app/components/RecentTransactions";
 import TopLocationMap from "@/app/components/TopLocationMap";
 import QRCodeButton from "@/app/components/QRCodeButton";
 import { useUserProfile } from "../UserProfileProvider";
+import { useSession } from "next-auth/react";
 import { RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { getMyTransactions, Transaction } from "@/lib/api/wallet.api";
+import DebugWallet from "../debug-wallet";
 
 export default function Home() {
   const router = useRouter();
+  const { data: session } = useSession();
   const { profile, loading, error, refetch, isRefetching } = useUserProfile();
   const [recentTransactions, setRecentTransactions] = useState<Transaction[]>([]);
   const [transactionsLoading, setTransactionsLoading] = useState(true);
@@ -107,14 +110,15 @@ export default function Home() {
               </div>
             </div>
           )}
+          {process.env.NODE_ENV === 'development' && <DebugWallet />}
           <StatCards />
         </div>
-        <div className="grid grid-cols-1  gap-6">
-          {/* Stats Overview Chart */}
+        {/* Merchant Monthly Summary - Disabled for now */}
+        {/* <div className="grid grid-cols-1  gap-6">
           <div className="lg:col-span-2 bg-white rounded-xl shadow p-4">
             <StatsOverviewChart />
           </div>
-        </div>
+        </div> */}
         <div className="grid grid-cols-1 gap-6">
           {/* Recent Transactions */}
           <div className="lg:col-span-2 bg-white rounded-xl shadow p-4">

@@ -111,6 +111,8 @@ export default function RecentTransactions({ transactions, isNewFormat = false }
           <TableHeader>
               <TableRow>
                 <TableHead>Reference ID</TableHead>
+                <TableHead>Sender</TableHead>
+                <TableHead>Receiver</TableHead>
                 <TableHead>Amount</TableHead>
                 <TableHead>Charges</TableHead>
                 <TableHead>Type</TableHead>
@@ -121,10 +123,33 @@ export default function RecentTransactions({ transactions, isNewFormat = false }
             </TableHeader>
             <TableBody>
               {sortedTransactions?.map((txn:any, idx: number) => {
+                // Extract sender and receiver information
+                const sender = txn.direction === 'DEBIT' 
+                  ? (txn.user?.profile?.firstName && txn.user?.profile?.lastName 
+                      ? `${txn.user.profile.firstName} ${txn.user.profile.lastName}`
+                      : txn.user?.phone || txn.user?.email || 'Merchant')
+                  : (txn.metadata?.counterpartyInfo?.name || txn.metadata?.phoneNumber || 'External');
+                
+                const receiver = txn.direction === 'DEBIT'
+                  ? (txn.metadata?.counterpartyInfo?.name || txn.metadata?.phoneNumber || txn.metadata?.accountNumber || 'External')
+                  : (txn.user?.profile?.firstName && txn.user?.profile?.lastName 
+                      ? `${txn.user.profile.firstName} ${txn.user.profile.lastName}`
+                      : txn.user?.phone || txn.user?.email || 'Merchant');
+
                 return (
                   <TableRow key={isNewFormat ? txn.id : txn.rdbs_transaction_id || idx} className="hover:bg-gray-50 transition">
                     <TableCell className="font-mono text-sm">
                       {isNewFormat ? txn.reference : txn.rdbs_transaction_id}
+                    </TableCell>
+                    <TableCell className="text-sm">
+                      <div className="max-w-[150px] truncate" title={sender}>
+                        {sender}
+                      </div>
+                    </TableCell>
+                    <TableCell className="text-sm">
+                      <div className="max-w-[150px] truncate" title={receiver}>
+                        {receiver}
+                      </div>
                     </TableCell>
                     <TableCell>
                       <div className="font-[25px]">
