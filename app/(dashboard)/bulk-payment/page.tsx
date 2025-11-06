@@ -19,7 +19,8 @@ import { processBulkTransactionAsync, validateBulkRecipients, getBulkTransaction
 const TRANSACTION_TYPES = [
   { value: 'WALLET_TO_MNO', label: 'Mobile Money', icon: Phone, color: 'text-blue-600', bg: 'bg-blue-50' },
   { value: 'WALLET_TO_BANK', label: 'Bank Transfer', icon: Building2, color: 'text-purple-600', bg: 'bg-purple-50' },
-  { value: 'MERCHANT_TO_WALLET', label: 'Wallet Transfer', icon: Wallet, color: 'text-green-600', bg: 'bg-green-50' },
+  { value: 'MERCHANT_TO_WALLET', label: 'Merchant to Wallet', icon: Wallet, color: 'text-green-600', bg: 'bg-green-50' },
+  { value: 'WALLET_TO_WALLET', label: 'Wallet to Wallet', icon: Users, color: 'text-orange-600', bg: 'bg-orange-50' },
 ];
 
 const UGANDAN_BANKS = [
@@ -1728,6 +1729,7 @@ export default function BulkPaymentPage() {
                             {payment.mode === 'WALLET_TO_MNO' && payment.phoneNumber}
                             {payment.mode === 'WALLET_TO_BANK' && payment.accountNumber}
                             {payment.mode === 'WALLET_TO_WALLET' && payment.recipientPhone}
+                            {payment.mode === 'MERCHANT_TO_WALLET' && (payment.recipientPhoneNumber || payment.recipientPhone)}
                           </p>
                           <div className="flex items-center gap-2">
                             <p className="text-xs text-gray-500">{payment.recipientName || payment.accountName}</p>
@@ -1741,7 +1743,7 @@ export default function BulkPaymentPage() {
                         <div>
                           <p className="text-xs text-gray-500">Amount</p>
                           <p className="text-sm font-bold">{payment.amount?.toLocaleString()} UGX</p>
-                          <p className="text-xs text-gray-500">{payment.description}</p>
+                          <p className="text-xs text-gray-500">{typeInfo?.label || payment.mode}</p>
                         </div>
                         <div className="flex items-center justify-between">
                           <div>
