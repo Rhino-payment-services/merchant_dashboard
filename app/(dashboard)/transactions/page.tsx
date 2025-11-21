@@ -7,12 +7,14 @@ import { Button } from '@/components/ui/button';
 import { Input } from '../../../components/ui/input';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useMyTransactions, TransactionFilter } from '@/lib/api/transactions.api';
-import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, RefreshCw, Activity, BarChart3, Clock, CheckCircle, XCircle, AlertCircle, TrendingUp, TrendingDown, DollarSign, Eye, Search } from 'lucide-react';
+import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, RefreshCw, Activity, BarChart3, Clock, CheckCircle, XCircle, AlertCircle, TrendingUp, TrendingDown, DollarSign, Eye, Search, Printer } from 'lucide-react';
 import { toast } from 'sonner';
 import { useSession } from 'next-auth/react';
 import { getBulkTransactionStatus, getBulkTransactionList, viewBulkTransactions } from '@/lib/api/bulk-payment.api';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Badge } from '@/components/ui/badge';
+import TransactionReceipt from '@/components/TransactionReceipt';
+import { useUserProfile } from '../UserProfileProvider';
 
 type StatusType = 'COMPLETED' | 'PENDING' | 'PROCESSING' | 'FAILED' | 'CANCELLED' | 'REFUNDED' | "SUCCESS";
 const statusColor: Record<StatusType, string> = {
@@ -44,12 +46,17 @@ interface BulkTransaction {
 
 export default function TransactionsPage() {
   const { data: session } = useSession();
+  const { profile } = useUserProfile();
   const [search, setSearch] = useState('');
   const [from, setFrom] = useState<string>("");
   const [to, setTo] = useState<string>("");
   const [status, setStatus] = useState<string>("");
   const [currentPage, setCurrentPage] = useState(1);
   const [currentLimit, setCurrentLimit] = useState(10);
+
+  // Receipt state
+  const [selectedTransaction, setSelectedTransaction] = useState<any>(null);
+  const [isReceiptOpen, setIsReceiptOpen] = useState(false);
 
   // Bulk transaction state
   const [bulkTransactions, setBulkTransactions] = useState<BulkTransaction[]>([]);
@@ -128,7 +135,85 @@ export default function TransactionsPage() {
     );
   }, [transactions, search]);
 
+  // Calculate total pages based on API pagination (not filtered results)
   const totalPages = paginationInfo?.totalPages || 1;
+
+  // Helper function to get merchant business name
+  const getMerchantName = () => {
+    return profile?.merchantBusinessTradeName || 
+           profile?.businessTradeName || 
+           profile?.merchant_names || 
+           profile?.owner_name || 
+           'Merchant Business';
+  };
+
+  // Helper function to format sender info with details
+  const getSenderInfo = (txn: any) => {
+    if (txn.direction === 'DEBIT') {
+      // Merchant is sending
+      const merchantName = getMerchantName();
+      return {
+        name: merchantName,
+        contact: profile?.merchant_phone || profile?.ownerPhone || ''
+      };
+    } else {
+      // Someone else is sending to merchant
+      const senderName = txn.metadata?.counterpartyInfo?.name || 
+                        txn.metadata?.senderName ||
+                        txn.metadata?.userName || 
+                        txn.metadata?.phoneNumber || 
+                        'External';
+      const senderContact = txn.metadata?.counterpartyInfo?.phone || 
+                           txn.metadata?.phoneNumber || 
+                           txn.metadata?.counterpartyInfo?.accountNumber || 
+                           '';
+      return {
+        name: senderName,
+        contact: senderContact
+      };
+    }
+  };
+
+  // Helper function to format receiver info with details
+  const getReceiverInfo = (txn: any) => {
+    if (txn.direction === 'CREDIT') {
+      // Merchant is receiving
+      const merchantName = getMerchantName();
+      return {
+        name: merchantName,
+        contact: profile?.merchant_phone || profile?.ownerPhone || ''
+      };
+    } else {
+      // Merchant is sending to someone
+      const receiverName = txn.metadata?.counterpartyInfo?.name || 
+                          txn.metadata?.recipientName ||
+                          txn.metadata?.beneficiaryName ||
+                          txn.metadata?.accountName ||
+                          txn.metadata?.phoneNumber || 
+                          txn.metadata?.accountNumber || 
+                          'Recipient';
+      
+      // Get contact (phone or account number)
+      let receiverContact = '';
+      if (txn.type?.includes('BANK') || txn.type?.includes('WALLET_TO_BANK')) {
+        // Bank transfer - show account number
+        receiverContact = txn.metadata?.accountNumber || 
+                         txn.metadata?.counterpartyInfo?.accountNumber || 
+                         txn.metadata?.bankAccountNumber || '';
+      } else {
+        // Mobile money or wallet - show phone number
+        receiverContact = txn.metadata?.counterpartyInfo?.phone || 
+                         txn.metadata?.phoneNumber || 
+                         txn.metadata?.recipientPhone || 
+                         txn.metadata?.counterpartyInfo?.accountNumber || '';
+      }
+      
+      return {
+        name: receiverName,
+        contact: receiverContact
+      };
+    }
+  };
 
   const handleRefresh = async () => {
     try {
@@ -403,6 +488,7 @@ export default function TransactionsPage() {
                   <TableHead>Status</TableHead>
                   <TableHead>Description</TableHead>
                   <TableHead>Created At</TableHead>
+                  <TableHead>Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -423,19 +509,10 @@ export default function TransactionsPage() {
                   </TableRow>
                 ) : (
                   filteredTransactions.map((transaction) => {
-                    // Extract sender and receiver information
+                    // Extract sender and receiver information with contact details
                     const txn = transaction as any;
-                    const sender = txn.direction === 'DEBIT' 
-                      ? (txn.user?.profile?.firstName && txn.user?.profile?.lastName 
-                          ? `${txn.user.profile.firstName} ${txn.user.profile.lastName}`
-                          : txn.user?.phone || txn.user?.email || 'Merchant')
-                      : (txn.metadata?.counterpartyInfo?.name || txn.metadata?.phoneNumber || txn.metadata?.userName || 'External');
-                    
-                    const receiver = txn.direction === 'DEBIT'
-                      ? (txn.metadata?.counterpartyInfo?.name || txn.metadata?.phoneNumber || txn.metadata?.accountNumber || txn.metadata?.userName || 'External')
-                      : (txn.user?.profile?.firstName && txn.user?.profile?.lastName 
-                          ? `${txn.user.profile.firstName} ${txn.user.profile.lastName}`
-                          : txn.user?.phone || txn.user?.email || 'Merchant');
+                    const senderInfo = getSenderInfo(txn);
+                    const receiverInfo = getReceiverInfo(txn);
 
                     return (
                       <TableRow key={transaction.id}>
@@ -443,13 +520,27 @@ export default function TransactionsPage() {
                           {transaction.reference || 'N/A'}
                         </TableCell>
                         <TableCell className="text-sm">
-                          <div className="max-w-[150px] truncate" title={sender}>
-                            {sender}
+                          <div className="flex flex-col">
+                            <div className="font-medium truncate max-w-[150px]" title={senderInfo.name}>
+                              {senderInfo.name}
+                            </div>
+                            {senderInfo.contact && (
+                              <div className="text-xs text-gray-500 truncate max-w-[150px]" title={senderInfo.contact}>
+                                {senderInfo.contact}
+                              </div>
+                            )}
                           </div>
                         </TableCell>
                         <TableCell className="text-sm">
-                          <div className="max-w-[150px] truncate" title={receiver}>
-                            {receiver}
+                          <div className="flex flex-col">
+                            <div className="font-medium truncate max-w-[150px]" title={receiverInfo.name}>
+                              {receiverInfo.name}
+                            </div>
+                            {receiverInfo.contact && (
+                              <div className="text-xs text-gray-500 truncate max-w-[150px]" title={receiverInfo.contact}>
+                                {receiverInfo.contact}
+                              </div>
+                            )}
                           </div>
                         </TableCell>
                         <TableCell>
@@ -494,6 +585,20 @@ export default function TransactionsPage() {
                             minute: '2-digit'
                           })}
                         </TableCell>
+                        <TableCell>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => {
+                              setSelectedTransaction(transaction);
+                              setIsReceiptOpen(true);
+                            }}
+                            className="flex items-center gap-1"
+                          >
+                            <Printer className="h-4 w-4" />
+                            Print
+                          </Button>
+                        </TableCell>
                       </TableRow>
                     );
                   })
@@ -512,15 +617,15 @@ export default function TransactionsPage() {
                 variant="outline"
                 size="sm"
                 onClick={() => setCurrentPage(1)}
-                disabled={currentPage === 1}
+                disabled={currentPage <= 1 || isLoading}
               >
                 <ChevronsLeft className="w-4 h-4" />
               </Button>
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() => setCurrentPage(currentPage - 1)}
-                disabled={currentPage === 1}
+                onClick={() => setCurrentPage(Math.max(currentPage - 1, 1))}
+                disabled={currentPage <= 1 || isLoading}
               >
                 <ChevronLeft className="w-4 h-4" />
               </Button>
@@ -530,8 +635,8 @@ export default function TransactionsPage() {
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() => setCurrentPage(currentPage + 1)}
-                disabled={currentPage === totalPages}
+                onClick={() => setCurrentPage(Math.min(currentPage + 1, totalPages))}
+                disabled={currentPage >= totalPages || isLoading}
               >
                 <ChevronRight className="w-4 h-4" />
               </Button>
@@ -539,7 +644,7 @@ export default function TransactionsPage() {
                 variant="outline"
                 size="sm"
                 onClick={() => setCurrentPage(totalPages)}
-                disabled={currentPage === totalPages}
+                disabled={currentPage >= totalPages || isLoading}
               >
                 <ChevronsRight className="w-4 h-4" />
               </Button>
@@ -898,6 +1003,27 @@ export default function TransactionsPage() {
                 </div>
               </div>
             </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Transaction Receipt Dialog */}
+      <Dialog open={isReceiptOpen} onOpenChange={setIsReceiptOpen}>
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Transaction Receipt</DialogTitle>
+          </DialogHeader>
+          {selectedTransaction && (
+            <TransactionReceipt
+              transaction={selectedTransaction}
+              merchantInfo={{
+                businessName: profile?.merchantBusinessTradeName || profile?.businessTradeName || 'Merchant',
+                merchantCode: profile?.merchantCode,
+                phone: profile?.ownerPhone || profile?.phone,
+                email: profile?.ownerEmail || profile?.email,
+                address: profile?.businessAddress || undefined,
+              }}
+            />
           )}
         </DialogContent>
       </Dialog>
