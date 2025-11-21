@@ -102,9 +102,9 @@ export default function TransactionReceipt({ transaction, merchantInfo }: Transa
                         transaction.metadata?.phoneNumber || 
                         'Customer';
       const senderContact = transaction.metadata?.counterpartyInfo?.phone || 
-                           transaction.metadata?.phoneNumber || 
-                           transaction.metadata?.counterpartyInfo?.accountNumber || 
-                           '';
+                            transaction.metadata?.phoneNumber || 
+                            (transaction.metadata?.counterpartyInfo as any)?.accountNumber || 
+                            '';
       return {
         name: senderName,
         contact: senderContact
@@ -134,14 +134,14 @@ export default function TransactionReceipt({ transaction, merchantInfo }: Transa
       if (transaction.type?.includes('BANK') || transaction.type?.includes('WALLET_TO_BANK')) {
         // Bank transfer - show account number
         receiverContact = transaction.metadata?.accountNumber || 
-                         transaction.metadata?.counterpartyInfo?.accountNumber || 
+                         (transaction.metadata?.counterpartyInfo as any)?.accountNumber || 
                          transaction.metadata?.bankAccountNumber || '';
       } else {
         // Mobile money or wallet - show phone number
         receiverContact = transaction.metadata?.counterpartyInfo?.phone || 
                          transaction.metadata?.phoneNumber || 
                          transaction.metadata?.recipientPhone || 
-                         transaction.metadata?.counterpartyInfo?.accountNumber || '';
+                         (transaction.metadata?.counterpartyInfo as any)?.accountNumber || '';
       }
       
       return {
