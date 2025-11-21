@@ -22,10 +22,10 @@ export default function StatsOverviewChart() {
   });
 
   // Filter transactions by date range
-  const filteredTransactions = profile?.profile?.merchant_transactions?.filter((txn: any) => {
+  const filteredTransactions = profile?.merchant_transactions?.filter((txn: any) => {
     const date = new Date(txn.rdbs_approval_date);
     return date >= new Date(from) && date <= new Date(to);
-  }).sort((a, b) => new Date(b.rdbs_approval_date).getTime() - new Date(a.rdbs_approval_date).getTime()) || [];
+  }).sort((a: any, b: any) => new Date(b.rdbs_approval_date).getTime() - new Date(a.rdbs_approval_date).getTime()) || [];
 
   let totalIncome = 0;
   let totalExpense = 0;
@@ -39,7 +39,7 @@ export default function StatsOverviewChart() {
         const day = d.toLocaleString('default', { weekday: 'short', day: 'numeric', month: 'short' });
         weekMap[day] = { income: 0, expense: 0 };
       }
-      filteredTransactions.forEach(txn => {
+      filteredTransactions.forEach((txn: any) => {
         const date = new Date(txn.rdbs_approval_date);
         const day = date.toLocaleString('default', { weekday: 'short', day: 'numeric', month: 'short' });
         if (!weekMap[day]) weekMap[day] = { income: 0, expense: 0 };
@@ -66,7 +66,7 @@ export default function StatsOverviewChart() {
         monthMap[month] = { income: 0, expense: 0 };
         d.setMonth(d.getMonth() + 1);
       }
-      filteredTransactions.forEach(txn => {
+      filteredTransactions.forEach((txn: any) => {
         const date = new Date(txn.rdbs_approval_date);
         const month = date.toLocaleString('default', { month: 'short', year: 'numeric' });
         if (!monthMap[month]) monthMap[month] = { income: 0, expense: 0 };

@@ -50,9 +50,9 @@ interface transactionType {
   isNewFormat?: boolean;
 }
 
-export default function RecentTransactions({ transactions, isNewFormat = false }: transactionType) {
+export default function RecentTransactions({ transactions, isNewFormat = false, merchantName }: transactionType & { merchantName?: string }) {
   const router = useRouter();
-  const { isRefetching } = useUserProfile();
+  const { isRefetching, profile } = useUserProfile();
 
   // Sort transactions - handle both old and new formats
   const sortedTransactions = useMemo(() => {
@@ -64,6 +64,70 @@ export default function RecentTransactions({ transactions, isNewFormat = false }
       return new Date(b.rdbs_approval_date).getTime() - new Date(a.rdbs_approval_date).getTime();
     });
   }, [transactions, isNewFormat]);
+
+  // Get merchant business name
+  const getMerchantName = () => {
+    return merchantName || 
+           profile?.merchantBusinessTradeName || 
+           profile?.businessTradeName || 
+           profile?.merchant_names || 
+           'Merchant Business';
+  };
+
+  // Helper functions for consistent display
+  const getSenderInfo = (txn: any) => {
+    if (txn.direction === 'DEBIT') {
+      // Merchant is sending
+      return {
+        name: getMerchantName(),
+        contact: ''
+      };
+    } else {
+      // Someone else is sending to merchant
+      const senderName = txn.metadata?.counterpartyInfo?.name || 
+                        txn.metadata?.senderName ||
+                        txn.metadata?.userName || 
+                        txn.metadata?.phoneNumber || 
+                        'External';
+      const senderContact = txn.metadata?.counterpartyInfo?.phone || 
+                           txn.metadata?.phoneNumber || 
+                           '';
+      return {
+        name: senderName,
+        contact: senderContact
+      };
+    }
+  };
+
+  const getReceiverInfo = (txn: any) => {
+    if (txn.direction === 'CREDIT') {
+      // Merchant is receiving
+      return {
+        name: getMerchantName(),
+        contact: ''
+      };
+    } else {
+      // Merchant is sending to someone
+      const receiverName = txn.metadata?.counterpartyInfo?.name || 
+                          txn.metadata?.recipientName ||
+                          txn.metadata?.accountName ||
+                          txn.metadata?.phoneNumber || 
+                          'Recipient';
+      
+      let receiverContact = '';
+      if (txn.type?.includes('BANK')) {
+        receiverContact = txn.metadata?.accountNumber || '';
+      } else {
+        receiverContact = txn.metadata?.counterpartyInfo?.phone || 
+                         txn.metadata?.phoneNumber || '';
+      }
+      
+      return {
+        name: receiverName,
+        contact: receiverContact
+      };
+    }
+  };
 
   const handleViewAll = () => {
     router.push("/transactions");
@@ -123,18 +187,9 @@ export default function RecentTransactions({ transactions, isNewFormat = false }
             </TableHeader>
             <TableBody>
               {sortedTransactions?.map((txn:any, idx: number) => {
-                // Extract sender and receiver information
-                const sender = txn.direction === 'DEBIT' 
-                  ? (txn.user?.profile?.firstName && txn.user?.profile?.lastName 
-                      ? `${txn.user.profile.firstName} ${txn.user.profile.lastName}`
-                      : txn.user?.phone || txn.user?.email || 'Merchant')
-                  : (txn.metadata?.counterpartyInfo?.name || txn.metadata?.phoneNumber || 'External');
-                
-                const receiver = txn.direction === 'DEBIT'
-                  ? (txn.metadata?.counterpartyInfo?.name || txn.metadata?.phoneNumber || txn.metadata?.accountNumber || 'External')
-                  : (txn.user?.profile?.firstName && txn.user?.profile?.lastName 
-                      ? `${txn.user.profile.firstName} ${txn.user.profile.lastName}`
-                      : txn.user?.phone || txn.user?.email || 'Merchant');
+                // Extract sender and receiver information with contact details
+                const senderInfo = getSenderInfo(txn);
+                const receiverInfo = getReceiverInfo(txn);
 
                 return (
                   <TableRow key={isNewFormat ? txn.id : txn.rdbs_transaction_id || idx} className="hover:bg-gray-50 transition">
@@ -142,13 +197,27 @@ export default function RecentTransactions({ transactions, isNewFormat = false }
                       {isNewFormat ? txn.reference : txn.rdbs_transaction_id}
                     </TableCell>
                     <TableCell className="text-sm">
-                      <div className="max-w-[150px] truncate" title={sender}>
-                        {sender}
+                      <div className="flex flex-col">
+                        <div className="font-medium truncate max-w-[150px]" title={senderInfo.name}>
+                          {senderInfo.name}
+                        </div>
+                        {senderInfo.contact && (
+                          <div className="text-xs text-gray-500 truncate max-w-[150px]" title={senderInfo.contact}>
+                            {senderInfo.contact}
+                          </div>
+                        )}
                       </div>
                     </TableCell>
                     <TableCell className="text-sm">
-                      <div className="max-w-[150px] truncate" title={receiver}>
-                        {receiver}
+                      <div className="flex flex-col">
+                        <div className="font-medium truncate max-w-[150px]" title={receiverInfo.name}>
+                          {receiverInfo.name}
+                        </div>
+                        {receiverInfo.contact && (
+                          <div className="text-xs text-gray-500 truncate max-w-[150px]" title={receiverInfo.contact}>
+                            {receiverInfo.contact}
+                          </div>
+                        )}
                       </div>
                     </TableCell>
                     <TableCell>

@@ -7,7 +7,6 @@ import axios from "axios";
 import { getAccessibleWallets } from "@/lib/api/wallet-team.api";
 
 type UserProfile = {
-  profile: {
   merchantId: string;
   merchant_balance: any;
   merchant_card: string;
@@ -28,10 +27,17 @@ type UserProfile = {
   primaryWallet?: any;
   userType?: string;
   role?: string;
+  // Merchant business name properties (various field names for compatibility)
+  merchantBusinessTradeName?: string;
+  businessTradeName?: string;
+  ownerPhone?: string;
+  ownerEmail?: string;
+  merchantCode?: string;
+  phone?: string;
+  email?: string;
+  businessAddress?: string;
   // Make type extensible for any additional properties
   [key: string]: any;
-  }
-  // Add other fields as needed
 };
 
 type UserProfileContextType = {
@@ -166,38 +172,45 @@ export function UserProfileProvider({
       });
       
       const profileData = {
-        profile: {
-          merchantId: businessWallet?.merchantId || userData?.id || '',
-          merchant_names: businessName || 'N/A',
-          merchant_code: merchantCode || merchantData?.merchantCode || (userData?.merchant?.merchantCode) || '',
-          owner_name: ownerName,
-          merchant_phone: businessPhone,
-          business_email: businessEmail,
-          merchant_balance: businessWallet?.balance || 0,
-          merchant_card: '',
-          merchant_card_exp: '',
-          merchant_card_number: '',
-          merchant_status: userData?.status || 'ACTIVE',
-          merchant_transactions: [],
-          // Wallet data
-          businessWallet,
-          userType,
-          role: userRole,
-          isTeamMember,
-          // NEW: Flag to identify original wallet owner vs team members
-          // Original owner: Wallet.userId === user.id (isTeamMember = false)
-          // Team member: Has WalletTeamMember record (isTeamMember = true)
-          isWalletOwner: !isTeamMember && !!businessWallet,
-          // Keep raw merchant data for reference
-          merchantData: merchantData
-        }
+        merchantId: businessWallet?.merchantId || userData?.id || '',
+        merchant_names: businessName || 'N/A',
+        merchant_code: merchantCode || merchantData?.merchantCode || (userData?.merchant?.merchantCode) || '',
+        owner_name: ownerName,
+        merchant_phone: businessPhone,
+        business_email: businessEmail,
+        merchant_balance: businessWallet?.balance || 0,
+        merchant_card: '',
+        merchant_card_exp: '',
+        merchant_card_number: '',
+        merchant_status: userData?.status || 'ACTIVE',
+        merchant_transactions: [],
+        // Wallet data
+        businessWallet,
+        userType,
+        role: userRole,
+        isTeamMember,
+        // NEW: Flag to identify original wallet owner vs team members
+        // Original owner: Wallet.userId === user.id (isTeamMember = false)
+        // Team member: Has WalletTeamMember record (isTeamMember = true)
+        isWalletOwner: !isTeamMember && !!businessWallet,
+        // Keep raw merchant data for reference
+        merchantData: merchantData,
+        // Additional merchant name fields for compatibility
+        merchantBusinessTradeName: merchantData?.businessTradeName,
+        businessTradeName: merchantData?.businessTradeName,
+        ownerPhone: businessPhone,
+        ownerEmail: businessEmail,
+        merchantCode: merchantCode || merchantData?.merchantCode,
+        phone: businessPhone,
+        email: businessEmail,
+        businessAddress: merchantData?.businessAddress
       };
 
       console.log('📊 UserProfile - Final profile data:', {
         ...profileData,
-        merchant_code: profileData.profile.merchant_code,
-        merchant_names: profileData.profile.merchant_names,
-        merchant_balance: profileData.profile.merchant_balance
+        merchant_code: profileData.merchant_code,
+        merchant_names: profileData.merchant_names,
+        merchant_balance: profileData.merchant_balance
       });
       return profileData;
     },

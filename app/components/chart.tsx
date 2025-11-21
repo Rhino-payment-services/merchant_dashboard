@@ -87,13 +87,13 @@ const chartConfig = {
 
 export function Chart({ period = "Monthly", from, to }: { period?: "Monthly" | "Weekly", from?: string, to?: string }) {
   const { profile } = useUserProfile();
-  const transactions = profile?.profile?.merchant_transactions || [];
+  const transactions = profile?.merchant_transactions || [];
   const filteredTransactions = useMemo(() => {
-    if (!from || !to) return transactions.sort((a, b) => new Date(b.rdbs_approval_date).getTime() - new Date(a.rdbs_approval_date).getTime());
+    if (!from || !to) return transactions.sort((a: any, b: any) => new Date(b.rdbs_approval_date).getTime() - new Date(a.rdbs_approval_date).getTime());
     return transactions.filter((txn: any) => {
       const date = new Date(txn.rdbs_approval_date);
       return date >= new Date(from) && date <= new Date(to);
-    }).sort((a, b) => new Date(b.rdbs_approval_date).getTime() - new Date(a.rdbs_approval_date).getTime());
+    }).sort((a: any, b: any) => new Date(b.rdbs_approval_date).getTime() - new Date(a.rdbs_approval_date).getTime());
   }, [transactions, from, to]);
 
   const chartData = useMemo(() => {
