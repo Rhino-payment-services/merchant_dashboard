@@ -230,15 +230,63 @@ export default function TransactionReceipt({ transaction, merchantInfo }: Transa
             clonedElement.style.backgroundColor = '#ffffff';
             clonedElement.style.color = '#1f2937';
             clonedElement.style.fontFamily = 'Arial, sans-serif';
+            clonedElement.style.padding = '32px';
+            clonedElement.style.borderRadius = '8px';
             
-            // Add a style tag with explicit hex colors to override any oklch
+            // Add comprehensive style tag with all Tailwind utilities converted to hex
             const styleTag = clonedDoc.createElement('style');
             styleTag.textContent = `
               * {
-                background-color: inherit !important;
-                color: inherit !important;
-                border-color: inherit !important;
+                box-sizing: border-box;
               }
+              body {
+                margin: 0;
+                padding: 0;
+                background: #ffffff;
+                font-family: Arial, sans-serif;
+              }
+              /* Layout */
+              .w-full { width: 100%; }
+              .flex { display: flex; }
+              .grid { display: grid; }
+              .grid-cols-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+              .gap-2 { gap: 0.5rem; }
+              .gap-4 { gap: 1rem; }
+              .items-center { align-items: center; }
+              .items-start { align-items: flex-start; }
+              .justify-between { justify-content: space-between; }
+              .text-center { text-align: center; }
+              .text-right { text-align: right; }
+              /* Spacing */
+              .p-4 { padding: 1rem; }
+              .p-8 { padding: 2rem; }
+              .px-3 { padding-left: 0.75rem; padding-right: 0.75rem; }
+              .py-1 { padding-top: 0.25rem; padding-bottom: 0.25rem; }
+              .pb-2 { padding-bottom: 0.5rem; }
+              .pb-4 { padding-bottom: 1rem; }
+              .pt-2 { padding-top: 0.5rem; }
+              .pt-4 { padding-top: 1rem; }
+              .mb-1 { margin-bottom: 0.25rem; }
+              .mb-2 { margin-bottom: 0.5rem; }
+              .mb-4 { margin-bottom: 1rem; }
+              .mb-6 { margin-bottom: 1.5rem; }
+              .mt-2 { margin-top: 0.5rem; }
+              .mt-6 { margin-top: 1.5rem; }
+              .my-4 { margin-top: 1rem; margin-bottom: 1rem; }
+              .space-y-2 > * + * { margin-top: 0.5rem; }
+              .space-y-4 > * + * { margin-top: 1rem; }
+              /* Typography */
+              .text-xs { font-size: 0.75rem; line-height: 1rem; }
+              .text-sm { font-size: 0.875rem; line-height: 1.25rem; }
+              .text-base { font-size: 1rem; line-height: 1.5rem; }
+              .text-lg { font-size: 1.125rem; line-height: 1.75rem; }
+              .text-3xl { font-size: 1.875rem; line-height: 2.25rem; }
+              .font-medium { font-weight: 500; }
+              .font-semibold { font-weight: 600; }
+              .font-bold { font-weight: 700; }
+              .uppercase { text-transform: uppercase; }
+              .font-mono { font-family: ui-monospace, monospace; }
+              /* Colors - Background */
               .bg-white { background-color: #ffffff !important; }
               .bg-gray-50 { background-color: #f9fafb !important; }
               .bg-gray-100 { background-color: #f3f4f6 !important; }
@@ -246,6 +294,7 @@ export default function TransactionReceipt({ transaction, merchantInfo }: Transa
               .bg-yellow-100 { background-color: #fef3c7 !important; }
               .bg-blue-100 { background-color: #dbeafe !important; }
               .bg-red-100 { background-color: #fee2e2 !important; }
+              /* Colors - Text */
               .text-gray-500 { color: #6b7280 !important; }
               .text-gray-600 { color: #4b5563 !important; }
               .text-gray-700 { color: #374151 !important; }
@@ -254,8 +303,19 @@ export default function TransactionReceipt({ transaction, merchantInfo }: Transa
               .text-yellow-700 { color: #a16207 !important; }
               .text-blue-700 { color: #1d4ed8 !important; }
               .text-red-700 { color: #b91c1c !important; }
+              /* Borders */
+              .border { border-width: 1px; }
+              .border-b { border-bottom-width: 1px; }
+              .border-b-2 { border-bottom-width: 2px; }
+              .border-t-2 { border-top-width: 2px; }
               .border-gray-200 { border-color: #e5e7eb !important; }
               .border-gray-300 { border-color: #d1d5db !important; }
+              .rounded-lg { border-radius: 0.5rem; }
+              .rounded-full { border-radius: 9999px; }
+              /* Sizing */
+              .max-w-xs { max-width: 20rem; }
+              .max-w-2xl { max-width: 42rem; }
+              .mx-auto { margin-left: auto; margin-right: auto; }
             `;
             clonedDoc.head.appendChild(styleTag);
           }
