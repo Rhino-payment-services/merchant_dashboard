@@ -76,7 +76,7 @@ export default function PayrollApprovalsPage() {
   const userSession: UserSession = {
     role: (session as any)?.user?.role || profile?.role,
     userType: (session as any)?.user?.userType || profile?.userType,
-    userData: (session as any)?.userData || {},
+    userData: (session as any)?.userData || profile?.walletPermissions || {},
     isWalletOwner: profile?.isWalletOwner || false
   };
 
@@ -90,7 +90,8 @@ export default function PayrollApprovalsPage() {
     isWalletOwner: profile?.isWalletOwner,
     isTeamMember: profile?.isTeamMember,
     role: userSession.role,
-    permissions: userSession.userData
+    permissions: userSession.userData,
+    businessWallet: profile?.businessWallet
   });
 
   useEffect(() => {
@@ -107,27 +108,28 @@ export default function PayrollApprovalsPage() {
         }
       });
 
-      if (!response.ok) throw new Error('Failed to fetch pending payrolls');
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || 'Failed to fetch pending payrolls');
+      }
 
       const data = await response.json();
-      setPendingPayrolls(data);
+      console.log('📊 Pending payrolls data:', data);
+      
+      // Ensure all IDs are valid UUIDs
+      const validPayrolls = Array.isArray(data) ? data.filter(p => {
+        const isValid = p.id && typeof p.id === 'string' && p.id.length > 10;
+        if (!isValid) {
+          console.warn('⚠️ Invalid payroll ID found:', p.id);
+        }
+        return isValid;
+      }) : [];
+      
+      setPendingPayrolls(validPayrolls);
     } catch (error: any) {
       console.error('Error fetching payrolls:', error);
-      // Mock data for development
-      setPendingPayrolls([
-        {
-          id: '1',
-          paymentMonth: '2025-10',
-          totalEmployees: 50,
-          totalGross: 150000000,
-          totalDeductions: 20000000,
-          totalNet: 130000000,
-          status: 'PENDING',
-          initiatedBy: 'John Maker',
-          initiatedAt: new Date().toISOString(),
-          employees: []
-        }
-      ]);
+      toast.error(error.message || 'Failed to fetch pending payrolls');
+      setPendingPayrolls([]);
     } finally {
       setLoading(false);
     }
@@ -136,21 +138,36 @@ export default function PayrollApprovalsPage() {
   const handleApprove = async () => {
     if (!selectedPayroll) return;
     
+    // Validate that we have a valid UUID
+    if (!selectedPayroll.id || typeof selectedPayroll.id !== 'string' || selectedPayroll.id.length < 10) {
+      toast.error('Invalid payroll batch ID. Please refresh the page and try again.');
+      console.error('Invalid payroll ID:', selectedPayroll.id);
+      return;
+    }
+    
     setLoading(true);
     try {
+      const payload = {
+        payrollBatchId: selectedPayroll.id,
+        notes: approvalNotes || ''
+      };
+      
+      console.log('📤 Approving payroll with payload:', payload);
+      
       const response = await fetch('/api/payroll/approve', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${(session as any)?.accessToken}`
         },
-        body: JSON.stringify({
-          payrollBatchId: selectedPayroll.id,
-          notes: approvalNotes
-        })
+        body: JSON.stringify(payload)
       });
 
-      if (!response.ok) throw new Error('Failed to approve payroll');
+      const responseData = await response.json();
+      
+      if (!response.ok) {
+        throw new Error(responseData.error || responseData.message || 'Failed to approve payroll');
+      }
 
       toast.success(`✅ Payroll approved for ${selectedPayroll.totalEmployees} employees`);
       setShowApproveDialog(false);
@@ -158,6 +175,7 @@ export default function PayrollApprovalsPage() {
       setSelectedPayroll(null);
       fetchPendingPayrolls();
     } catch (error: any) {
+      console.error('Error approving payroll:', error);
       toast.error(error.message || 'Failed to approve payroll');
     } finally {
       setLoading(false);

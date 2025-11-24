@@ -103,10 +103,26 @@ export default function PayrollEmployeesPage() {
   const handleAddEmployee = async () => {
     setLoading(true);
     try {
-      await addPayrollEmployee({
-        ...formData,
-        grossSalary: Number(formData.baseSalary)
-      } as any);
+      // Build clean payload without baseSalary - only send fields expected by backend
+      const payload: any = {
+        firstName: formData.firstName,
+        lastName: formData.lastName,
+        email: formData.email || undefined,
+        phoneNumber: formData.phoneNumber,
+        employeeNumber: formData.employeeNumber || undefined,
+        paymentMethod: formData.paymentMethod,
+        grossSalary: Number(formData.baseSalary),
+        employmentType: formData.employmentType,
+      };
+
+      // Add bank details only if payment method is BANK_TRANSFER
+      if (formData.paymentMethod === 'BANK_TRANSFER') {
+        if (formData.bankName) payload.bankName = formData.bankName;
+        if (formData.accountNumber) payload.accountNumber = formData.accountNumber;
+        if (formData.accountName) payload.accountName = formData.accountName;
+      }
+
+      await addPayrollEmployee(payload);
 
       toast.success('✅ Employee added successfully');
       setShowAddDialog(false);
@@ -124,10 +140,26 @@ export default function PayrollEmployeesPage() {
     
     setLoading(true);
     try {
-      await updatePayrollEmployee(selectedEmployee.id, {
-        ...formData,
-        grossSalary: Number(formData.baseSalary)
-      } as any);
+      // Build clean payload without baseSalary - only send fields expected by backend
+      const payload: any = {
+        firstName: formData.firstName,
+        lastName: formData.lastName,
+        email: formData.email || undefined,
+        phoneNumber: formData.phoneNumber,
+        employeeNumber: formData.employeeNumber || undefined,
+        paymentMethod: formData.paymentMethod,
+        grossSalary: Number(formData.baseSalary),
+        employmentType: formData.employmentType,
+      };
+
+      // Add bank details only if payment method is BANK_TRANSFER
+      if (formData.paymentMethod === 'BANK_TRANSFER') {
+        if (formData.bankName) payload.bankName = formData.bankName;
+        if (formData.accountNumber) payload.accountNumber = formData.accountNumber;
+        if (formData.accountName) payload.accountName = formData.accountName;
+      }
+
+      await updatePayrollEmployee(selectedEmployee.id, payload);
 
       toast.success('✅ Employee updated successfully');
       setShowEditDialog(false);

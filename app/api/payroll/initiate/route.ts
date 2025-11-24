@@ -18,22 +18,28 @@ export async function POST(request: NextRequest) {
 
     const accessToken = (session as any).accessToken;
     const body = await request.json();
-    const { payrollBatchId, reason } = body;
+    const { cycleId, paymentMonth } = body;
 
-    if (!payrollBatchId || !reason) {
+    if (!paymentMonth) {
       return NextResponse.json(
-        { error: 'Payroll batch ID and reason are required' },
+        { error: 'Payment month is required' },
         { status: 400 }
       );
     }
 
-    // Reject payroll batch via backend
+    // Initiate payroll batch via backend
+    // If cycleId is not provided or is 'default-cycle-id', don't send it (backend will create/use default)
+    const payload: any = {
+      paymentMonth
+    };
+    
+    if (cycleId && cycleId !== 'default-cycle-id') {
+      payload.cycleId = cycleId;
+    }
+
     const response = await axios.post(
-      `${API_URL}/payroll/reject`,
-      { 
-        payrollBatchId,
-        reason 
-      },
+      `${API_URL}/payroll/initiate`,
+      payload,
       {
         headers: {
           'Authorization': `Bearer ${accessToken}`,
@@ -44,12 +50,12 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json(response.data, { status: 200 });
   } catch (error: any) {
-    console.error('Error rejecting payroll:', error);
+    console.error('Error initiating payroll:', error);
     
     // Return appropriate error response
     if (error.response) {
       return NextResponse.json(
-        { error: error.response.data?.message || 'Failed to reject payroll' },
+        { error: error.response.data?.message || 'Failed to initiate payroll' },
         { status: error.response.status }
       );
     }

@@ -126,7 +126,7 @@ export default function PayrollDashboard() {
       </div>
 
       {/* Quick Actions */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
         <Button
           className="h-20 bg-blue-600 hover:bg-blue-700"
           onClick={() => router.push('/payroll/employees')}
@@ -141,6 +141,14 @@ export default function PayrollDashboard() {
         >
           <Play className="h-5 w-5 mr-2" />
           Run Payroll
+        </Button>
+
+        <Button
+          className="h-20 bg-yellow-600 hover:bg-yellow-700"
+          onClick={() => router.push('/payroll/approvals')}
+        >
+          <CheckCircle className="h-5 w-5 mr-2" />
+          Approvals
         </Button>
 
         <Button

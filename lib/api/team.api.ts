@@ -33,6 +33,7 @@ export interface InviteTeamMemberDto {
   email: string;
   firstName: string;
   lastName: string;
+  phoneNumber?: string;
   role: 'ADMIN' | 'ACCOUNTANT' | 'MEMBER' | 'VIEWER';
   canViewBalance?: boolean;
   canViewTransactions?: boolean;
@@ -47,6 +48,7 @@ export interface AddTeamMemberDirectDto {
   password: string; // Temporary password - user will change via email setup
   firstName: string;
   lastName: string;
+  phoneNumber?: string; // Optional phone number
   role: 'ADMIN' | 'ACCOUNTANT' | 'MEMBER' | 'VIEWER';
   permissions?: {
     canViewBalance?: boolean;
@@ -69,7 +71,8 @@ export interface UpdateTeamMemberDto {
 
 export interface TransferOwnershipDto {
   newOwnerUserId: string;
-  password: string;
+  password?: string;
+  otp?: string;
 }
 
 /**
@@ -124,6 +127,16 @@ export async function updateTeamMember(
  */
 export async function removeTeamMember(memberId: string): Promise<{ success: boolean }> {
   const response = await apiClient.delete(`/wallet/team/${memberId}`);
+  return response.data;
+}
+
+/**
+ * Request OTP for wallet ownership transfer (for merchants)
+ */
+export async function requestTransferOwnershipOtp(
+  walletId: string
+): Promise<{ success: boolean; message: string; expiresIn?: number }> {
+  const response = await apiClient.post(`/wallet/${walletId}/transfer-ownership/request-otp`);
   return response.data;
 }
 

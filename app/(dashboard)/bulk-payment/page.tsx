@@ -741,63 +741,24 @@ export default function BulkPaymentPage() {
           console.log('📋 First row sample:', data[0]);
 
           const newPayments: PaymentItem[] = (data as any[])
-            .filter(row => {
-              // Check for required fields using template column names
-              const hasMode = row['Transaction Mode'] || row.mode;
-              const hasAccount = row['Phone Number / Account Number'] || row.phoneNumber || row.accountNumber;
-              const hasName = row['Name'] || row.recipientName || row.name;
-              return hasMode && hasAccount && hasName;
-            })
-            .map((row, index) => {
-              // Map template columns to payment fields
-              const transactionMode = row['Transaction Mode'] || row.mode || 'WALLET_TO_MNO';
-              const accountNumber = row['Phone Number / Account Number'] || row.phoneNumber || row.accountNumber || '';
-              const recipientName = row['Name'] || row.recipientName || row.name || '';
-              const network = row['Network'] || row.network || row.mnoProvider || '';
-              const bankName = row['Bank Name'] || row.bankName || '';
-              const bankSortCode = row['Bank Sort Code'] || row.bankSortCode || '';
-              const description = row['Description'] || row.description || `Payment to ${recipientName}`;
-              const currency = row['Currency'] || row.currency || 'UGX';
-
-              const amount = Number(row['Amount'] || row.amount || 0);
-
-              // Build payment object based on transaction mode
-              const payment: any = {
-                id: `upload-${Date.now()}-${index}`,
-                itemId: `ITEM-${Date.now()}-${index}`,
-                mode: transactionMode,
-                amount: amount,
-                currency: currency,
-                description: description,
-                recipientName: recipientName,
-                status: 'pending' as const,
-              };
-
-              // Add mode-specific fields
-              if (transactionMode === 'WALLET_TO_MNO') {
-                payment.phoneNumber = accountNumber;
-                payment.mnoProvider = getValidMnoProvider(network || row.mnoProvider || row.network);
-              } else if (transactionMode === 'WALLET_TO_BANK') {
-                payment.accountNumber = accountNumber;
-                payment.bankSortCode = bankSortCode;
-                payment.bankName = bankName;
-                payment.accountName = recipientName;
-              } else if (transactionMode === 'MERCHANT_TO_WALLET') {
-                // ✅ FIX: Set BOTH fields like manual entry does
-                payment.recipientPhoneNumber = accountNumber;
-                payment.recipientPhone = accountNumber; // Also set as fallback
-              }
-
-              console.log('📦 Excel row parsed:', {
-                mode: transactionMode,
-                accountNumber,
-                recipientPhoneNumber: payment.recipientPhoneNumber,
-                recipientPhone: payment.recipientPhone,
-                fullPayment: payment
-              });
-
-              return payment;
-            });
+            .filter(row => row.amount && row.description && row.mode)
+            .map((row, index) => ({
+              id: `upload-${Date.now()}-${index}`,
+              itemId: `ITEM-${Date.now()}-${index}`,
+              mode: row.mode || 'WALLET_TO_MNO',
+              amount: Number(row.amount),
+              currency: row.currency || 'UGX',
+              description: row.description,
+              phoneNumber: row.phoneNumber || '',
+              mnoProvider: getValidMnoProvider(row.mnoProvider || row.network),
+              recipientName: row.recipientName || row.name || '',
+              accountNumber: row.accountNumber || '',
+              bankSortCode: row.bankSortCode || '',
+              bankName: row.bankName || '',
+              accountName: row.accountName || '',
+              recipientPhone: row.recipientPhone || '',
+              status: 'pending' as const,
+            }));
 
           setPayments(prev => [...prev, ...newPayments]);
           toast.success(`✅ Uploaded ${newPayments.length} payments from Excel`);
@@ -843,15 +804,9 @@ export default function BulkPaymentPage() {
         'Currency': 'UGX',
       },
       {
-        'Transaction Mode': 'MERCHANT_TO_WALLET',
-        'Phone Number / Account Number': '256700222222',
-        'Name': 'Bob Wilson',
-        'Amount': 60000,
-        'Network': '',
-        'Bank Name': '',
-        'Bank Sort Code': '',
-        'Description': 'Transfer to RukaPay user wallet',
-        'Currency': 'UGX',
+        'Transaction Mode': 'WALLET_TO_WALLET',
+        'Phone Number / Account Number': '256700333333',
+        'Name': 'Alice Johnson',
       },
     ];
 

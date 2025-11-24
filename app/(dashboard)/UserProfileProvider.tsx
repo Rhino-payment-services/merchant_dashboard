@@ -171,6 +171,14 @@ export function UserProfileProvider({
         walletId: businessWallet?.id
       });
       
+      // Get wallet team member role if user is a team member
+      // The wallet API now returns accessRole and permissions for team members
+      const walletTeamRole = businessWallet?.accessRole || (isTeamMember ? null : undefined);
+      const walletPermissions = businessWallet?.permissions;
+      
+      // Use wallet team role if available, otherwise use base user role
+      const effectiveRole = walletTeamRole || userRole;
+
       const profileData = {
         merchantId: businessWallet?.merchantId || userData?.id || '',
         merchant_names: businessName || 'N/A',
@@ -187,12 +195,14 @@ export function UserProfileProvider({
         // Wallet data
         businessWallet,
         userType,
-        role: userRole,
+        role: effectiveRole, // Use wallet team role if available
         isTeamMember,
         // NEW: Flag to identify original wallet owner vs team members
         // Original owner: Wallet.userId === user.id (isTeamMember = false)
         // Team member: Has WalletTeamMember record (isTeamMember = true)
         isWalletOwner: !isTeamMember && !!businessWallet,
+        // Include wallet team permissions if available
+        walletPermissions: walletPermissions,
         // Keep raw merchant data for reference
         merchantData: merchantData,
         // Additional merchant name fields for compatibility
