@@ -72,7 +72,7 @@ export default function TransactionReceipt({ transaction, merchantInfo }: Transa
         return;
       }
 
-      const printContent = receiptRef.current.innerHTML;
+      const printContent = receiptRef.current.outerHTML;
       const printStyles = `
         <style>
           * {
@@ -86,6 +86,69 @@ export default function TransactionReceipt({ transaction, merchantInfo }: Transa
             background: white;
             color: #000;
           }
+          /* Utility classes */
+          .bg-white { background-color: #ffffff; }
+          .bg-gray-50 { background-color: #f9fafb; }
+          .bg-gray-100 { background-color: #f3f4f6; }
+          .bg-gray-300 { background-color: #d1d5db; }
+          .bg-green-100 { background-color: #dcfce7; }
+          .bg-yellow-100 { background-color: #fef3c7; }
+          .bg-blue-100 { background-color: #dbeafe; }
+          .bg-red-100 { background-color: #fee2e2; }
+          .text-gray-500 { color: #6b7280; }
+          .text-gray-600 { color: #4b5563; }
+          .text-gray-700 { color: #374151; }
+          .text-gray-800 { color: #1f2937; }
+          .text-green-700 { color: #15803d; }
+          .text-yellow-700 { color: #a16207; }
+          .text-blue-700 { color: #1d4ed8; }
+          .text-red-700 { color: #b91c1c; }
+          .border { border-width: 1px; }
+          .border-b { border-bottom-width: 1px; }
+          .border-b-2 { border-bottom-width: 2px; }
+          .border-t-2 { border-top-width: 2px; }
+          .border-gray-200 { border-color: #e5e7eb; }
+          .border-gray-300 { border-color: #d1d5db; }
+          .rounded-lg { border-radius: 0.5rem; }
+          .rounded-full { border-radius: 9999px; }
+          .p-4 { padding: 1rem; }
+          .p-8 { padding: 2rem; }
+          .px-3 { padding-left: 0.75rem; padding-right: 0.75rem; }
+          .py-1 { padding-top: 0.25rem; padding-bottom: 0.25rem; }
+          .pb-2 { padding-bottom: 0.5rem; }
+          .pb-4 { padding-bottom: 1rem; }
+          .pt-2 { padding-top: 0.5rem; }
+          .pt-4 { padding-top: 1rem; }
+          .mb-1 { margin-bottom: 0.25rem; }
+          .mb-2 { margin-bottom: 0.5rem; }
+          .mb-6 { margin-bottom: 1.5rem; }
+          .mt-2 { margin-top: 0.5rem; }
+          .mt-6 { margin-top: 1.5rem; }
+          .my-4 { margin-top: 1rem; margin-bottom: 1rem; }
+          .space-y-2 > * + * { margin-top: 0.5rem; }
+          .space-y-4 > * + * { margin-top: 1rem; }
+          .flex { display: flex; }
+          .grid { display: grid; }
+          .grid-cols-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+          .gap-4 { gap: 1rem; }
+          .items-center { align-items: center; }
+          .items-start { align-items: flex-start; }
+          .justify-between { justify-content: space-between; }
+          .text-center { text-align: center; }
+          .text-right { text-align: right; }
+          .text-xs { font-size: 0.75rem; line-height: 1rem; }
+          .text-sm { font-size: 0.875rem; line-height: 1.25rem; }
+          .text-base { font-size: 1rem; line-height: 1.5rem; }
+          .text-lg { font-size: 1.125rem; line-height: 1.75rem; }
+          .text-3xl { font-size: 1.875rem; line-height: 2.25rem; }
+          .font-medium { font-weight: 500; }
+          .font-semibold { font-weight: 600; }
+          .font-bold { font-weight: 700; }
+          .uppercase { text-transform: uppercase; }
+          .max-w-xs { max-width: 20rem; }
+          .max-w-2xl { max-width: 42rem; }
+          .mx-auto { margin-left: auto; margin-right: auto; }
+          .font-mono { font-family: ui-monospace, monospace; }
           @media print {
             @page {
               margin: 10mm;
@@ -106,15 +169,18 @@ export default function TransactionReceipt({ transaction, merchantInfo }: Transa
         <html>
           <head>
             <title>Transaction Receipt - ${transaction.reference || transaction.id}</title>
+            <meta charset="UTF-8">
             ${printStyles}
           </head>
           <body>
-            ${printContent}
+            <div style="max-width: 800px; margin: 0 auto;">
+              ${printContent}
+            </div>
             <script>
               window.onload = function() {
                 setTimeout(function() {
                   window.print();
-                }, 250);
+                }, 300);
               };
             </script>
           </body>
@@ -136,16 +202,27 @@ export default function TransactionReceipt({ transaction, merchantInfo }: Transa
     }
 
     setIsGeneratingPDF(true);
+    const toastId = toast.loading('Generating PDF...');
+    
     try {
-      toast.info('Generating PDF...');
+      // Wait a bit to ensure all content is rendered
+      await new Promise(resolve => setTimeout(resolve, 100));
       
       const canvas = await html2canvas(receiptRef.current, {
-        scale: 2,
-        logging: false,
+        scale: 3,
+        logging: true,
         useCORS: true,
+        allowTaint: true,
         backgroundColor: '#ffffff',
-        width: receiptRef.current.offsetWidth,
-        height: receiptRef.current.offsetHeight,
+        windowWidth: receiptRef.current.scrollWidth,
+        windowHeight: receiptRef.current.scrollHeight,
+        onclone: (clonedDoc) => {
+          const clonedElement = clonedDoc.getElementById('receipt-content');
+          if (clonedElement) {
+            clonedElement.style.maxWidth = '800px';
+            clonedElement.style.margin = '0 auto';
+          }
+        }
       });
 
       const imgData = canvas.toDataURL('image/png', 1.0);
@@ -153,22 +230,35 @@ export default function TransactionReceipt({ transaction, merchantInfo }: Transa
         orientation: 'portrait',
         unit: 'mm',
         format: 'a4',
+        compress: true
       });
 
       const imgWidth = 210; // A4 width in mm
+      const pageHeight = 297; // A4 height in mm
       const imgHeight = (canvas.height * imgWidth) / canvas.width;
+      let heightLeft = imgHeight;
+      let position = 0;
 
-      // Add image to PDF
-      pdf.addImage(imgData, 'PNG', 0, 0, imgWidth, imgHeight);
+      // Add first page
+      pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight, undefined, 'FAST');
+      heightLeft -= pageHeight;
+
+      // Add additional pages if content is too long
+      while (heightLeft >= 0) {
+        position = heightLeft - imgHeight;
+        pdf.addPage();
+        pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight, undefined, 'FAST');
+        heightLeft -= pageHeight;
+      }
       
       // Save PDF
       const fileName = `receipt-${transaction.reference || transaction.id}.pdf`;
       pdf.save(fileName);
       
-      toast.success('PDF downloaded successfully');
-    } catch (error) {
+      toast.success('PDF downloaded successfully', { id: toastId });
+    } catch (error: any) {
       console.error('Error generating PDF:', error);
-      toast.error('Failed to generate PDF. Please try again.');
+      toast.error(`Failed to generate PDF: ${error?.message || 'Unknown error'}`, { id: toastId });
     } finally {
       setIsGeneratingPDF(false);
     }
