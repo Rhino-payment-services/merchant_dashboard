@@ -95,7 +95,30 @@ const getMyTransactions = async (filter: TransactionFilter = {}): Promise<Transa
   // This ensures that ONLY business wallet transactions are shown in merchant dashboard
   // Personal wallet transactions will NEVER appear here
   const response = await apiClient.get(`/wallet/me/business/transactions?${params.toString()}`)
-  return response.data
+  
+  // Transform backend response to match frontend expected format
+  const backendData = response.data
+  const page = backendData.page || filter.page || 1
+  const limit = backendData.limit || filter.limit || 20
+  const total = backendData.total || 0
+  const totalPages = total > 0 ? Math.ceil(total / limit) : 1
+  
+  return {
+    transactions: backendData.transactions || [],
+    pagination: {
+      page,
+      limit,
+      total,
+      totalPages
+    },
+    summary: {
+      totalAmount: 0,
+      totalFee: 0,
+      completedCount: 0,
+      pendingCount: 0,
+      failedCount: 0
+    }
+  }
 }
 
 const getTransactionById = async (transactionId: string): Promise<Transaction> => {
