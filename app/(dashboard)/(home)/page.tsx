@@ -92,7 +92,7 @@ export default function Home() {
               </Button>
               {!loading && (profile?.merchant_names || profile?.merchantBusinessTradeName) && (
                 <QRCodeButton
-                  merchantCode={profile?.merchantCode || profile?.merchant_code}
+                  merchantCode={profile?.merchantCode || profile?.merchant_code || ''}
                   merchantName={profile?.merchant_names || profile?.merchantBusinessTradeName || 'Merchant'}
                 />
               )}
