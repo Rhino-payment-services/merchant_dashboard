@@ -74,58 +74,138 @@ export default function RecentTransactions({ transactions, isNewFormat = false, 
            'Merchant Business';
   };
 
-  // Helper functions for consistent display
+  // Helper functions for consistent display - matching transactions page logic
   const getSenderInfo = (txn: any) => {
+    // Check for admin-funded deposits first
+    if (txn.type === 'DEPOSIT' && txn.metadata?.fundedByAdmin) {
+      // Admin is funding the merchant's wallet
+      return {
+        name: txn.metadata?.adminName || 'Admin User',
+        contact: txn.metadata?.adminPhone || txn.metadata?.adminEmail || 'Admin'
+      };
+    }
+    
     if (txn.direction === 'DEBIT') {
-      // Merchant is sending
+      // Merchant is sending - sender is the merchant (wallet owner)
       return {
         name: getMerchantName(),
-        contact: ''
+        contact: profile?.merchant_phone || profile?.ownerPhone || profile?.phone || ''
       };
     } else {
-      // Someone else is sending to merchant
-      const senderName = txn.metadata?.counterpartyInfo?.name || 
-                        txn.metadata?.senderName ||
-                        txn.metadata?.userName || 
-                        txn.metadata?.phoneNumber || 
-                        'External';
-      const senderContact = txn.metadata?.counterpartyInfo?.phone || 
-                           txn.metadata?.phoneNumber || 
-                           '';
-      return {
-        name: senderName,
-        contact: senderContact
-      };
+      // CREDIT direction - someone else is sending to merchant
+      // Extract sender info based on transaction type (matching transactions page logic)
+      if (txn.type === 'MERCHANT_TO_WALLET' || txn.type === 'MERCHANT_TO_INTERNAL_WALLET' || txn.type?.includes('MERCHANT_TO_WALLET') || txn.type?.includes('MERCHANT_TO_INTERNAL_WALLET')) {
+        // Merchant sending to wallet
+        return {
+          name: txn.metadata?.merchantName || txn.metadata?.counterpartyInfo?.name || 'Merchant',
+          contact: txn.metadata?.merchantCode || txn.metadata?.accountNumber || ''
+        };
+      } else if (txn.type === 'MNO_TO_WALLET' || txn.type?.includes('MNO_TO_WALLET')) {
+        // Mobile Money sending to wallet
+        if (txn.metadata?.mnoProvider) {
+          return {
+            name: txn.metadata?.userName || `${txn.metadata.mnoProvider} Mobile Money`,
+            contact: txn.metadata?.phoneNumber || ''
+          };
+        } else if (txn.metadata?.phoneNumber) {
+          return {
+            name: txn.metadata?.userName || 'Mobile Money User',
+            contact: txn.metadata?.phoneNumber || ''
+          };
+        } else {
+          return {
+            name: 'External',
+            contact: ''
+          };
+        }
+      } else if (txn.type === 'WALLET_TO_WALLET' || txn.counterpartyId || txn.counterpartyUser) {
+        // P2P - Wallet to Wallet - sender is another RukaPay user
+        const senderName = txn.counterpartyUser?.profile?.firstName && txn.counterpartyUser?.profile?.lastName
+          ? `${txn.counterpartyUser.profile.firstName} ${txn.counterpartyUser.profile.lastName}`
+          : txn.metadata?.counterpartyInfo?.name || txn.metadata?.userName || 'RukaPay User';
+        return {
+          name: senderName,
+          contact: txn.counterpartyUser?.phone || txn.counterpartyId || ''
+        };
+      } else if (txn.metadata?.counterpartyInfo) {
+        return {
+          name: txn.metadata.counterpartyInfo.name,
+          contact: txn.metadata.counterpartyInfo.phone || (txn.metadata.counterpartyInfo as any)?.accountNumber || ''
+        };
+      } else {
+        // Fallback - extract from metadata
+        return {
+          name: txn.metadata?.userName || txn.metadata?.phoneNumber || 'External',
+          contact: txn.metadata?.phoneNumber || txn.metadata?.accountNumber || ''
+        };
+      }
     }
   };
 
   const getReceiverInfo = (txn: any) => {
-    if (txn.direction === 'CREDIT') {
-      // Merchant is receiving
+    // Check for admin-funded deposits first
+    if (txn.type === 'DEPOSIT' && txn.metadata?.fundedByAdmin) {
+      // Merchant is receiving funds from admin
       return {
         name: getMerchantName(),
-        contact: ''
+        contact: profile?.merchant_phone || profile?.ownerPhone || profile?.phone || ''
+      };
+    }
+    
+    if (txn.direction === 'CREDIT') {
+      // Merchant is receiving - receiver is the merchant (wallet owner)
+      return {
+        name: getMerchantName(),
+        contact: profile?.merchant_phone || profile?.ownerPhone || profile?.phone || ''
       };
     } else {
-      // Merchant is sending to someone
-      const receiverName = txn.metadata?.counterpartyInfo?.name || 
-                          txn.metadata?.recipientName ||
-                          txn.metadata?.accountName ||
-                          txn.metadata?.phoneNumber || 
-                          'Recipient';
-      
-      let receiverContact = '';
-      if (txn.type?.includes('BANK')) {
-        receiverContact = txn.metadata?.accountNumber || '';
+      // DEBIT direction - merchant is sending to someone
+      // Extract receiver info based on transaction type (matching transactions page logic)
+      if (txn.type === 'WALLET_TO_WALLET' || txn.counterpartyId || txn.counterpartyUser) {
+        // P2P - Wallet to Wallet - receiver is another RukaPay user
+        const receiverName = txn.counterpartyUser?.profile?.firstName && txn.counterpartyUser?.profile?.lastName
+          ? `${txn.counterpartyUser.profile.firstName} ${txn.counterpartyUser.profile.lastName}`
+          : txn.metadata?.counterpartyInfo?.name || txn.metadata?.userName || 'RukaPay User';
+        return {
+          name: receiverName,
+          contact: txn.counterpartyUser?.phone || txn.counterpartyId || ''
+        };
+      } else if (txn.type === 'WALLET_TO_MERCHANT' || txn.type === 'WALLET_TO_INTERNAL_MERCHANT' || txn.type?.includes('MERCHANT') || txn.metadata?.merchantName) {
+        // Wallet to Merchant - receiver is merchant
+        return {
+          name: txn.metadata?.merchantName || txn.metadata?.counterpartyInfo?.name || txn.metadata?.userName || 'Merchant',
+          contact: txn.metadata?.merchantCode || txn.metadata?.accountNumber || ''
+        };
+      } else if (txn.metadata?.counterpartyInfo) {
+        return {
+          name: txn.metadata.counterpartyInfo.name,
+          contact: txn.metadata.counterpartyInfo.phone || (txn.metadata.counterpartyInfo as any)?.accountNumber || ''
+        };
+      } else if (txn.metadata?.mnoProvider) {
+        // External Mobile Money - show recipient name if available
+        return {
+          name: txn.metadata?.userName || txn.metadata?.recipientName || `${txn.metadata.mnoProvider} Mobile Money`,
+          contact: txn.metadata?.phoneNumber || ''
+        };
+      } else if (txn.metadata?.phoneNumber) {
+        // External Mobile Money (no provider specified)
+        return {
+          name: txn.metadata?.userName || txn.metadata?.recipientName || 'Mobile Money User',
+          contact: txn.metadata?.phoneNumber || ''
+        };
+      } else if (txn.metadata?.accountNumber) {
+        // Bank/Utility/Other External Account
+        return {
+          name: txn.metadata?.userName || txn.metadata?.recipientName || 'External Account',
+          contact: txn.metadata?.accountNumber || ''
+        };
       } else {
-        receiverContact = txn.metadata?.counterpartyInfo?.phone || 
-                         txn.metadata?.phoneNumber || '';
+        // Fallback
+        return {
+          name: txn.metadata?.recipientName || txn.metadata?.userName || 'Recipient',
+          contact: txn.metadata?.phoneNumber || txn.metadata?.accountNumber || ''
+        };
       }
-      
-      return {
-        name: receiverName,
-        contact: receiverContact
-      };
     }
   };
 
