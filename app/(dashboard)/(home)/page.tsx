@@ -70,7 +70,7 @@ export default function Home() {
               <h1 className="text-3xl font-bold text-[#08163d] mb-2">Dashboard</h1>
               <div className="flex flex-row gap-[10px] items-center">
                 <span className="font-[600] text-[16px] text-gray-600">Welcome back, </span>
-                <span className="font-[600] text-[16px] text-[#08163d]">{profile?.profile.merchant_names}</span>
+                <span className="font-[600] text-[16px] text-[#08163d]">{profile?.merchant_names || profile?.merchantBusinessTradeName || 'Merchant'}</span>
                 {isRefetching && (
                   <span className="text-xs text-blue-600 bg-blue-50 px-2 py-1 rounded-full flex items-center gap-1">
                     <RefreshCw className="h-3 w-3 animate-spin" />
@@ -90,10 +90,10 @@ export default function Home() {
                 <RefreshCw className={`h-4 w-4 ${isRefetching ? 'animate-spin' : ''}`} />
                 {loading ? 'Loading...' : isRefetching ? 'Refreshing...' : 'Refresh'}
               </Button>
-              {!loading && profile?.profile?.merchant_names && (
+              {!loading && (profile?.merchant_names || profile?.merchantBusinessTradeName) && (
                 <QRCodeButton
-                  merchantCode={profile.profile.merchantId}
-                  merchantName={profile.profile.merchant_names}
+                  merchantCode={profile?.merchantCode || profile?.merchant_code}
+                  merchantName={profile?.merchant_names || profile?.merchantBusinessTradeName || 'Merchant'}
                 />
               )}
             </div>

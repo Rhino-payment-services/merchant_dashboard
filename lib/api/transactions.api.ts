@@ -99,9 +99,26 @@ const getMyTransactions = async (filter: TransactionFilter = {}): Promise<Transa
   // Transform backend response to match frontend expected format
   const backendData = response.data
   const page = backendData.page || filter.page || 1
-  const limit = backendData.limit || filter.limit || 20
+  // Use the limit from filter (what we requested) if backend limit seems wrong (too high)
+  // Otherwise use backend limit (what was actually used)
+  const requestedLimit = filter.limit || 20
+  const backendLimit = backendData.limit || requestedLimit
+  // If backend limit is unreasonably high (>100), use the requested limit instead
+  const limit = backendLimit > 100 ? requestedLimit : backendLimit
   const total = backendData.total || 0
   const totalPages = total > 0 ? Math.ceil(total / limit) : 1
+  
+  // Debug logging
+  if (process.env.NODE_ENV === 'development') {
+    console.log('Pagination Debug:', {
+      requestedLimit,
+      backendLimit,
+      usedLimit: limit,
+      total,
+      totalPages,
+      page
+    })
+  }
   
   return {
     transactions: backendData.transactions || [],
