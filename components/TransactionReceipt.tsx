@@ -321,7 +321,7 @@ export default function TransactionReceipt({ transaction, merchantInfo }: Transa
       } else if (transaction.metadata?.counterpartyInfo) {
         return {
           name: transaction.metadata.counterpartyInfo.name,
-          contact: transaction.metadata.counterpartyInfo.phone || transaction.metadata.counterpartyInfo.accountNumber || ''
+          contact: transaction.metadata.counterpartyInfo.phone || (transaction.metadata.counterpartyInfo as any)?.accountNumber || ''
         };
       } else {
         // Fallback - extract from metadata
@@ -371,7 +371,7 @@ export default function TransactionReceipt({ transaction, merchantInfo }: Transa
       } else if (transaction.metadata?.counterpartyInfo) {
         return {
           name: transaction.metadata.counterpartyInfo.name,
-          contact: transaction.metadata.counterpartyInfo.phone || transaction.metadata.counterpartyInfo.accountNumber || ''
+          contact: transaction.metadata.counterpartyInfo.phone || (transaction.metadata.counterpartyInfo as any)?.accountNumber || ''
         };
       } else if (transaction.metadata?.mnoProvider) {
         // External Mobile Money - show recipient name if available
