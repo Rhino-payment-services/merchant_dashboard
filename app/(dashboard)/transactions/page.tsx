@@ -149,6 +149,15 @@ export default function TransactionsPage() {
 
   // Helper function to format sender info with details
   const getSenderInfo = (txn: any) => {
+    // Check for admin-funded deposits first
+    if (txn.type === 'DEPOSIT' && txn.metadata?.fundedByAdmin) {
+      // Admin is funding the merchant's wallet
+      return {
+        name: txn.metadata?.adminName || 'Admin User',
+        contact: txn.metadata?.adminPhone || txn.metadata?.adminEmail || 'Admin'
+      };
+    }
+    
     if (txn.direction === 'DEBIT') {
       // Merchant is sending
       const merchantName = getMerchantName();
@@ -176,12 +185,22 @@ export default function TransactionsPage() {
 
   // Helper function to format receiver info with details
   const getReceiverInfo = (txn: any) => {
+    // Check for admin-funded deposits first
+    if (txn.type === 'DEPOSIT' && txn.metadata?.fundedByAdmin) {
+      // Merchant is receiving funds from admin
+      const merchantName = getMerchantName();
+      return {
+        name: merchantName,
+        contact: profile?.merchant_phone || profile?.ownerPhone || profile?.phone || ''
+      };
+    }
+    
     if (txn.direction === 'CREDIT') {
       // Merchant is receiving
       const merchantName = getMerchantName();
       return {
         name: merchantName,
-        contact: profile?.merchant_phone || profile?.ownerPhone || ''
+        contact: profile?.merchant_phone || profile?.ownerPhone || profile?.phone || ''
       };
     } else {
       // Merchant is sending to someone
@@ -189,6 +208,7 @@ export default function TransactionsPage() {
                           txn.metadata?.recipientName ||
                           txn.metadata?.beneficiaryName ||
                           txn.metadata?.accountName ||
+                          txn.metadata?.userName ||
                           txn.metadata?.phoneNumber || 
                           txn.metadata?.accountNumber || 
                           'Recipient';
