@@ -210,17 +210,54 @@ export default function TransactionReceipt({ transaction, merchantInfo }: Transa
       
       const canvas = await html2canvas(receiptRef.current, {
         scale: 3,
-        logging: true,
+        logging: false,
         useCORS: true,
         allowTaint: true,
         backgroundColor: '#ffffff',
         windowWidth: receiptRef.current.scrollWidth,
         windowHeight: receiptRef.current.scrollHeight,
         onclone: (clonedDoc) => {
+          // Remove all stylesheets that might contain oklch
+          const stylesheets = Array.from(clonedDoc.querySelectorAll('style, link[rel="stylesheet"]'));
+          stylesheets.forEach(sheet => sheet.remove());
+          
+          // Get the cloned receipt element
           const clonedElement = clonedDoc.getElementById('receipt-content');
           if (clonedElement) {
+            // Apply base styles
             clonedElement.style.maxWidth = '800px';
             clonedElement.style.margin = '0 auto';
+            clonedElement.style.backgroundColor = '#ffffff';
+            clonedElement.style.color = '#1f2937';
+            clonedElement.style.fontFamily = 'Arial, sans-serif';
+            
+            // Add a style tag with explicit hex colors to override any oklch
+            const styleTag = clonedDoc.createElement('style');
+            styleTag.textContent = `
+              * {
+                background-color: inherit !important;
+                color: inherit !important;
+                border-color: inherit !important;
+              }
+              .bg-white { background-color: #ffffff !important; }
+              .bg-gray-50 { background-color: #f9fafb !important; }
+              .bg-gray-100 { background-color: #f3f4f6 !important; }
+              .bg-green-100 { background-color: #dcfce7 !important; }
+              .bg-yellow-100 { background-color: #fef3c7 !important; }
+              .bg-blue-100 { background-color: #dbeafe !important; }
+              .bg-red-100 { background-color: #fee2e2 !important; }
+              .text-gray-500 { color: #6b7280 !important; }
+              .text-gray-600 { color: #4b5563 !important; }
+              .text-gray-700 { color: #374151 !important; }
+              .text-gray-800 { color: #1f2937 !important; }
+              .text-green-700 { color: #15803d !important; }
+              .text-yellow-700 { color: #a16207 !important; }
+              .text-blue-700 { color: #1d4ed8 !important; }
+              .text-red-700 { color: #b91c1c !important; }
+              .border-gray-200 { border-color: #e5e7eb !important; }
+              .border-gray-300 { border-color: #d1d5db !important; }
+            `;
+            clonedDoc.head.appendChild(styleTag);
           }
         }
       });
