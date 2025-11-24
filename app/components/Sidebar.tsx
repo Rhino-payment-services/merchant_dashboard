@@ -150,10 +150,19 @@ export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
         <div className="mt-auto pt-6 border-t border-gray-200">
           <div className="flex items-center gap-3 p-3 rounded-lg bg-gray-50">
             <div className="w-8 h-8 rounded-full bg-main-600 flex items-center justify-center">
-              <span className="text-white text-sm font-semibold uppercase">{profile?.profile?.merchant_names?.charAt(0)} {profile?.profile?.merchant_names?.split(" ")[1]?.charAt(0)}</span>
+              <span className="text-white text-sm font-semibold uppercase">
+                {(() => {
+                  const merchantName = profile?.merchant_names || profile?.merchantBusinessTradeName || profile?.businessTradeName || '';
+                  const firstInitial = merchantName?.charAt(0) || 'M';
+                  const secondInitial = merchantName?.split(" ")[1]?.charAt(0) || merchantName?.split(" ")[0]?.charAt(1) || 'M';
+                  return `${firstInitial}${secondInitial}`;
+                })()}
+              </span>
             </div>
             <div className="flex-1">
-              <div className="text-sm font-medium text-gray-900">{profile?.profile?.merchant_names}</div>
+              <div className="text-sm font-medium text-gray-900">
+                {profile?.merchant_names || profile?.merchantBusinessTradeName || profile?.businessTradeName || 'Merchant'}
+              </div>
               <div className="text-xs text-gray-500">Merchant</div>
             </div>
           </div>

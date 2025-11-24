@@ -62,25 +62,25 @@ export default function DebugWallet() {
           <strong>Loading Profile:</strong> {loading ? 'Yes' : 'No'}
         </div>
         <div>
-          <strong>Profile Merchant ID:</strong> {profile?.profile?.merchantId || 'N/A'}
+          <strong>Profile Merchant ID:</strong> {profile?.merchantId || 'N/A'}
         </div>
         <div>
-          <strong>Profile Merchant Name:</strong> {profile?.profile?.merchant_names || 'N/A'}
+          <strong>Profile Merchant Name:</strong> {profile?.merchant_names || profile?.merchantBusinessTradeName || profile?.businessTradeName || 'N/A'}
         </div>
         <div>
-          <strong>Profile Balance:</strong> {profile?.profile?.merchant_balance || 0}
+          <strong>Profile Balance:</strong> {profile?.merchant_balance || 0}
         </div>
         <div>
-          <strong>Has Business Wallet:</strong> {(profile?.profile as any)?.businessWallet ? 'Yes' : 'No'}
+          <strong>Has Business Wallet:</strong> {profile?.businessWallet ? 'Yes' : 'No'}
         </div>
         <div>
-          <strong>Is Team Member:</strong> {(profile?.profile as any)?.isTeamMember ? 'Yes' : 'No'}
+          <strong>Is Team Member:</strong> {profile?.isTeamMember ? 'Yes' : 'No'}
         </div>
-        {(profile?.profile as any)?.businessWallet && profile?.profile && (
+        {profile?.businessWallet && profile && (
           <div className="mt-2">
             <strong>Business Wallet:</strong>
             <pre className="bg-gray-100 p-2 rounded text-xs overflow-auto max-h-48">
-              {JSON.stringify((profile.profile as any).businessWallet, null, 2)}
+              {JSON.stringify(profile.businessWallet, null, 2)}
             </pre>
           </div>
         )}

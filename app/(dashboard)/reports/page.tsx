@@ -53,7 +53,7 @@ export default function ReportsPage() {
   const [searchTerm, setSearchTerm] = useState('');
   const [isExporting, setIsExporting] = useState(false);
 
-  const transactions: Transaction[] = profile?.profile?.merchant_transactions || [];
+  const transactions: Transaction[] = profile?.merchant_transactions || [];
 
   // Filter transactions based on criteria
   const filteredTransactions = useMemo(() => {
@@ -163,7 +163,7 @@ export default function ReportsPage() {
       const contentWidth = pageWidth - (2 * margin);
       
       // Get merchant name from profile
-      const merchantName = profile?.profile?.merchant_names || 'Unknown Merchant';
+      const merchantName = profile?.merchant_names || profile?.merchantBusinessTradeName || profile?.businessTradeName || 'Unknown Merchant';
       
       // Add title with merchant name
       pdf.setFontSize(24);

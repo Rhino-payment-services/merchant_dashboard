@@ -38,24 +38,26 @@ export default function ProfilePage() {
     );
   }
 
-  const merchantData = profile?.profile as any;
-  const businessName = merchantData?.merchant_names || 'N/A';
-  const ownerName = merchantData?.owner_name || merchantData?.merchant_names || 'N/A';
-  const merchantPhone = merchantData?.merchant_phone || (session?.user as any)?.phone || (session?.user as any)?.phoneNumber || 'N/A';
-  const businessEmail = merchantData?.business_email || session?.user?.email || 'N/A';
-  const merchantBalance = merchantData?.merchant_balance || 0;
-  const merchantStatus = merchantData?.merchant_status || 'N/A';
-  const merchantCard = merchantData?.merchant_card || 'N/A';
-  const merchantCardExp = merchantData?.merchant_card_exp || 'N/A';
-  const merchantCardNumber = merchantData?.merchant_card_number || 'N/A';
+  // Access profile fields directly (not nested under profile.profile)
+  const businessName = profile?.merchant_names || profile?.merchantBusinessTradeName || profile?.businessTradeName || 'N/A';
+  const ownerName = profile?.owner_name || profile?.ownerName || businessName || 'N/A';
+  const merchantPhone = profile?.merchant_phone || profile?.ownerPhone || profile?.phone || (session?.user as any)?.phone || (session?.user as any)?.phoneNumber || 'N/A';
+  const businessEmail = profile?.business_email || profile?.ownerEmail || profile?.email || session?.user?.email || 'N/A';
+  const merchantBalance = profile?.merchant_balance || profile?.businessWallet?.balance || 0;
+  const merchantStatus = profile?.merchant_status || (profile?.businessWallet?.isActive ? 'Active' : 'Inactive') || 'N/A';
+  const merchantCard = profile?.merchant_card || 'N/A';
+  const merchantCardExp = profile?.merchant_card_exp || 'N/A';
+  const merchantCardNumber = profile?.merchant_card_number || 'N/A';
   
   // Debug logging
   console.log('📊 Profile Page - Merchant Data:', {
+    profile,
     businessName,
     ownerName,
     phone: merchantPhone,
     email: businessEmail,
-    hasMerchantData: !!merchantData?.merchantData
+    balance: merchantBalance,
+    hasProfile: !!profile
   });
 
   // Get initials from merchant name
@@ -223,7 +225,7 @@ export default function ProfilePage() {
         </div>
 
         {/* Transaction Summary */}
-        {merchantData?.merchant_transactions && merchantData.merchant_transactions.length > 0 && (
+        {profile?.merchant_transactions && profile.merchant_transactions.length > 0 && (
           <div className="bg-white rounded-2xl shadow-md p-8">
             <h2 className="text-xl font-semibold text-gray-900 mb-6 flex items-center gap-2">
               <CreditCard className="w-5 h-5 text-main-600" />
@@ -232,19 +234,19 @@ export default function ProfilePage() {
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
               <div className="text-center p-4 bg-blue-50 rounded-lg">
                 <div className="text-2xl font-bold text-blue-600">
-                  {merchantData.merchant_transactions.length}
+                  {profile.merchant_transactions.length}
                 </div>
                 <div className="text-sm text-blue-800">Total Transactions</div>
               </div>
               <div className="text-center p-4 bg-green-50 rounded-lg">
                 <div className="text-2xl font-bold text-green-600">
-                  {merchantData.merchant_transactions.filter((tx: any) => tx.rdbs_status === 'successful').length}
+                  {profile.merchant_transactions.filter((tx: any) => tx.rdbs_status === 'successful').length}
                 </div>
                 <div className="text-sm text-green-800">Successful</div>
               </div>
               <div className="text-center p-4 bg-orange-50 rounded-lg">
                 <div className="text-2xl font-bold text-orange-600">
-                  {merchantData.merchant_transactions.filter((tx: any) => tx.rdbs_status === 'pending').length}
+                  {profile.merchant_transactions.filter((tx: any) => tx.rdbs_status === 'pending').length}
                 </div>
                 <div className="text-sm text-orange-800">Pending</div>
               </div>

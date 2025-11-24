@@ -227,7 +227,7 @@ export default function TransferPage() {
           formData: {
             ...validationData,
             reason: mobileMoneyForm.reason,
-            merchantId: profile?.profile?.merchantId
+            merchantId: profile?.merchantId
           }
         });
         setShowSuccessPopup(true);
@@ -271,7 +271,7 @@ export default function TransferPage() {
           customerPhoneNumber: validationSuccess.formData.customerPhone, // Customer phone number without country code
           narration: validationSuccess.formData.reason, // Send reason as narration
           merchantId: merchantId,
-          merchantName: profile?.profile?.merchant_names
+          merchantName: profile?.merchant_names || profile?.merchantBusinessTradeName || profile?.businessTradeName
         };
         
         console.log("Bank Payment Data:", bankPaymentData);
@@ -299,7 +299,7 @@ export default function TransferPage() {
           amount: validationSuccess.formData.amount,
           narration: validationSuccess.formData.reason || "Payment",
           merchantId: merchantId,
-          merchantName: profile?.profile?.merchant_names
+          merchantName: profile?.merchant_names || profile?.merchantBusinessTradeName || profile?.businessTradeName
         };
         
         console.log("Mobile Money Payment Data:", mobileMoneyPaymentData);
@@ -587,7 +587,7 @@ export default function TransferPage() {
                 Wallet Balance
               </div>
               <div className="text-2xl font-bold text-gray-900">
-                UGX {profile?.profile?.merchant_balance ? Number(profile.profile.merchant_balance).toLocaleString() : '0'}
+                UGX {profile?.merchant_balance ? Number(profile.merchant_balance).toLocaleString() : '0'}
               </div>
             </div>
           </div>

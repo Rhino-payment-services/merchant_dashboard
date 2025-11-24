@@ -64,7 +64,7 @@ export default function PayslipPage() {
   const payrollIdFromQuery = searchParams?.get('payrollId');
 
   const merchant_id = session?.user?.merchantId;
-  const merchantName = profile?.profile?.merchant_names || "RUKAPAY MERCHANT";
+  const merchantName = profile?.merchant_names || profile?.merchantBusinessTradeName || profile?.businessTradeName || "RUKAPAY MERCHANT";
 
   // Fetch payrolls
   const fetchPayrolls = async () => {

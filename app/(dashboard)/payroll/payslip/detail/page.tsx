@@ -61,7 +61,7 @@ export default function PayslipDetailPage() {
   const payrollId = searchParams?.get('payrollId');
   const employeeId = searchParams?.get('employeeId');
   const merchant_id = session?.user?.merchantId;
-  const merchantName = profile?.profile?.merchant_names || "RUKAPAY MERCHANT";
+  const merchantName = profile?.merchant_names || profile?.merchantBusinessTradeName || profile?.businessTradeName || "RUKAPAY MERCHANT";
 
   // Generate payslip data
   const generatePayslipData = (payroll: any, employee: any): PayslipData => {

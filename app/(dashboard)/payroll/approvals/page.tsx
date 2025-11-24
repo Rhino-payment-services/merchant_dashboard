@@ -74,10 +74,10 @@ export default function PayrollApprovalsPage() {
   
   // Build user session with isWalletOwner flag
   const userSession: UserSession = {
-    role: (session as any)?.user?.role || profile?.profile?.role,
-    userType: (session as any)?.user?.userType || profile?.profile?.userType,
+    role: (session as any)?.user?.role || profile?.role,
+    userType: (session as any)?.user?.userType || profile?.userType,
     userData: (session as any)?.userData || {},
-    isWalletOwner: profile?.profile?.isWalletOwner || false
+    isWalletOwner: profile?.isWalletOwner || false
   };
 
   // Check if user can approve payroll using utility function
@@ -87,8 +87,8 @@ export default function PayrollApprovalsPage() {
   console.log('🧐 Payroll Approval Permissions Check:', {
     userSession,
     isChecker,
-    isWalletOwner: profile?.profile?.isWalletOwner,
-    isTeamMember: profile?.profile?.isTeamMember,
+    isWalletOwner: profile?.isWalletOwner,
+    isTeamMember: profile?.isTeamMember,
     role: userSession.role,
     permissions: userSession.userData
   });

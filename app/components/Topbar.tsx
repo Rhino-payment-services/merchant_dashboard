@@ -128,9 +128,12 @@ export default function Topbar({ onMenuToggle, isMenuOpen }: TopbarProps) {
                 <span className="font-medium text-gray-700 uppercase">
                   {loading 
                     ? '...' 
-                    : `${profile?.profile?.merchant_names?.split(" ")[0]?.[0] || user?.profile?.firstName?.[0] || "M"}${
-                        profile?.profile?.merchant_names?.split(" ")[1]?.[0] || user?.profile?.lastName?.[0] || "M"
-                      }`
+                    : (() => {
+                        const merchantName = profile?.merchant_names || profile?.merchantBusinessTradeName || profile?.businessTradeName || '';
+                        const firstInitial = merchantName?.split(" ")[0]?.[0] || user?.profile?.firstName?.[0] || "M";
+                        const secondInitial = merchantName?.split(" ")[1]?.[0] || user?.profile?.lastName?.[0] || merchantName?.split(" ")[0]?.[1] || "M";
+                        return `${firstInitial}${secondInitial}`;
+                      })()
                   }
                 </span>
               </span>

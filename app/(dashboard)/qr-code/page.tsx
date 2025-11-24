@@ -28,8 +28,8 @@ export default function QRCodePage() {
   const { data: session, status } = useSession();
   const { profile } = useUserProfile();
 
-  const merchantCode = (profile?.profile as any)?.merchant_code || (session?.user as any)?.merchantCode || "";
-  const merchantName = (profile?.profile as any)?.merchant_names || "Your Business";
+  const merchantCode = profile?.merchant_code || profile?.merchantCode || (session?.user as any)?.merchantCode || "";
+  const merchantName = profile?.merchant_names || profile?.merchantBusinessTradeName || profile?.businessTradeName || "Your Business";
   const baseUrl = API_CONFIG.PAYMENT_PAGE_URL || (typeof window !== 'undefined' ? window.location.origin : '');
   const paymentUrl = `${baseUrl}/receive_payment/${merchantCode}`;
   const loading = status === "loading";
@@ -41,7 +41,7 @@ export default function QRCodePage() {
     merchantCode,
     merchantName,
     paymentUrl,
-    merchantCodeFromProfile: profile?.profile?.merchant_code,
+    merchantCodeFromProfile: profile?.merchant_code || profile?.merchantCode,
     merchantCodeFromSession: (session?.user as any)?.merchantCode,
     API_CONFIG: API_CONFIG
   });
