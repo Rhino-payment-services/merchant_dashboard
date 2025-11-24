@@ -15,7 +15,7 @@ import {
   DialogTitle,
   DialogTrigger 
 } from '@/components/ui/dialog';
-import {
+import { 
   AlertDialog,
   AlertDialogAction,
   AlertDialogCancel,
@@ -24,7 +24,6 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-  AlertDialogTrigger,
 } from '@/components/ui/alert-dialog';
 import { 
   Select,
