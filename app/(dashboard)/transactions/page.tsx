@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '../../../components/ui/input';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useMyTransactions, TransactionFilter } from '@/lib/api/transactions.api';
-import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, RefreshCw, Activity, BarChart3, Clock, CheckCircle, XCircle, AlertCircle, TrendingUp, TrendingDown, DollarSign, Eye, Search, Printer } from 'lucide-react';
+import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, RefreshCw, Activity, BarChart3, Clock, CheckCircle, XCircle, AlertCircle, TrendingUp, TrendingDown, DollarSign, Eye, Search, Printer, CreditCard, Info, Users, AlertTriangle } from 'lucide-react';
 import { toast } from 'sonner';
 import { useSession } from 'next-auth/react';
 import { getBulkTransactionStatus, getBulkTransactionList, viewBulkTransactions } from '@/lib/api/bulk-payment.api';
@@ -57,6 +57,10 @@ export default function TransactionsPage() {
   // Receipt state
   const [selectedTransaction, setSelectedTransaction] = useState<any>(null);
   const [isReceiptOpen, setIsReceiptOpen] = useState(false);
+  
+  // Transaction details modal state
+  const [isTransactionDetailsOpen, setIsTransactionDetailsOpen] = useState(false);
+  const [selectedTransactionForDetails, setSelectedTransactionForDetails] = useState<any>(null);
 
   // Bulk transaction state
   const [bulkTransactions, setBulkTransactions] = useState<BulkTransaction[]>([]);
@@ -159,27 +163,60 @@ export default function TransactionsPage() {
     }
     
     if (txn.direction === 'DEBIT') {
-      // Merchant is sending
+      // Merchant is sending - sender is the merchant (wallet owner)
       const merchantName = getMerchantName();
       return {
         name: merchantName,
-        contact: profile?.merchant_phone || profile?.ownerPhone || ''
+        contact: profile?.merchant_phone || profile?.ownerPhone || profile?.phone || ''
       };
     } else {
-      // Someone else is sending to merchant
-      const senderName = txn.metadata?.counterpartyInfo?.name || 
-                        txn.metadata?.senderName ||
-                        txn.metadata?.userName || 
-                        txn.metadata?.phoneNumber || 
-                        'External';
-      const senderContact = txn.metadata?.counterpartyInfo?.phone || 
-                           txn.metadata?.phoneNumber || 
-                           txn.metadata?.counterpartyInfo?.accountNumber || 
-                           '';
-      return {
-        name: senderName,
-        contact: senderContact
-      };
+      // CREDIT direction - someone else is sending to merchant
+      // Extract sender info based on transaction type (matching admin dashboard logic)
+      if (txn.type === 'MERCHANT_TO_WALLET' || txn.type === 'MERCHANT_TO_INTERNAL_WALLET' || txn.type?.includes('MERCHANT_TO_WALLET') || txn.type?.includes('MERCHANT_TO_INTERNAL_WALLET')) {
+        // Merchant sending to wallet
+        return {
+          name: txn.metadata?.merchantName || txn.metadata?.counterpartyInfo?.name || 'Merchant',
+          contact: txn.metadata?.merchantCode || txn.metadata?.accountNumber || ''
+        };
+      } else if (txn.type === 'MNO_TO_WALLET' || txn.type?.includes('MNO_TO_WALLET')) {
+        // Mobile Money sending to wallet
+        if (txn.metadata?.mnoProvider) {
+          return {
+            name: txn.metadata?.userName || `${txn.metadata.mnoProvider} Mobile Money`,
+            contact: txn.metadata?.phoneNumber || ''
+          };
+        } else if (txn.metadata?.phoneNumber) {
+          return {
+            name: txn.metadata?.userName || 'Mobile Money User',
+            contact: txn.metadata?.phoneNumber || ''
+          };
+        } else {
+          return {
+            name: 'External',
+            contact: ''
+          };
+        }
+      } else if (txn.type === 'WALLET_TO_WALLET' || txn.counterpartyId || txn.counterpartyUser) {
+        // P2P - Wallet to Wallet - sender is another RukaPay user
+        const senderName = txn.counterpartyUser?.profile?.firstName && txn.counterpartyUser?.profile?.lastName
+          ? `${txn.counterpartyUser.profile.firstName} ${txn.counterpartyUser.profile.lastName}`
+          : txn.metadata?.counterpartyInfo?.name || txn.metadata?.userName || 'RukaPay User';
+        return {
+          name: senderName,
+          contact: txn.counterpartyUser?.phone || txn.counterpartyId || ''
+        };
+      } else if (txn.metadata?.counterpartyInfo) {
+        return {
+          name: txn.metadata.counterpartyInfo.name,
+          contact: txn.metadata.counterpartyInfo.phone || txn.metadata.counterpartyInfo.accountNumber || ''
+        };
+      } else {
+        // Fallback - extract from metadata
+        return {
+          name: txn.metadata?.userName || txn.metadata?.phoneNumber || 'External',
+          contact: txn.metadata?.phoneNumber || txn.metadata?.accountNumber || ''
+        };
+      }
     }
   };
 
@@ -196,42 +233,60 @@ export default function TransactionsPage() {
     }
     
     if (txn.direction === 'CREDIT') {
-      // Merchant is receiving
+      // Merchant is receiving - receiver is the merchant (wallet owner)
       const merchantName = getMerchantName();
       return {
         name: merchantName,
         contact: profile?.merchant_phone || profile?.ownerPhone || profile?.phone || ''
       };
     } else {
-      // Merchant is sending to someone
-      const receiverName = txn.metadata?.counterpartyInfo?.name || 
-                          txn.metadata?.recipientName ||
-                          txn.metadata?.beneficiaryName ||
-                          txn.metadata?.accountName ||
-                          txn.metadata?.userName ||
-                          txn.metadata?.phoneNumber || 
-                          txn.metadata?.accountNumber || 
-                          'Recipient';
-      
-      // Get contact (phone or account number)
-      let receiverContact = '';
-      if (txn.type?.includes('BANK') || txn.type?.includes('WALLET_TO_BANK')) {
-        // Bank transfer - show account number
-        receiverContact = txn.metadata?.accountNumber || 
-                         txn.metadata?.counterpartyInfo?.accountNumber || 
-                         txn.metadata?.bankAccountNumber || '';
+      // DEBIT direction - merchant is sending to someone
+      // Extract receiver info based on transaction type (matching admin dashboard logic)
+      if (txn.type === 'WALLET_TO_WALLET' || txn.counterpartyId || txn.counterpartyUser) {
+        // P2P - Wallet to Wallet - receiver is another RukaPay user
+        const receiverName = txn.counterpartyUser?.profile?.firstName && txn.counterpartyUser?.profile?.lastName
+          ? `${txn.counterpartyUser.profile.firstName} ${txn.counterpartyUser.profile.lastName}`
+          : txn.metadata?.counterpartyInfo?.name || txn.metadata?.userName || 'RukaPay User';
+        return {
+          name: receiverName,
+          contact: txn.counterpartyUser?.phone || txn.counterpartyId || ''
+        };
+      } else if (txn.type === 'WALLET_TO_MERCHANT' || txn.type === 'WALLET_TO_INTERNAL_MERCHANT' || txn.type?.includes('MERCHANT') || txn.metadata?.merchantName) {
+        // Wallet to Merchant - receiver is merchant
+        return {
+          name: txn.metadata?.merchantName || txn.metadata?.counterpartyInfo?.name || txn.metadata?.userName || 'Merchant',
+          contact: txn.metadata?.merchantCode || txn.metadata?.accountNumber || ''
+        };
+      } else if (txn.metadata?.counterpartyInfo) {
+        return {
+          name: txn.metadata.counterpartyInfo.name,
+          contact: txn.metadata.counterpartyInfo.phone || txn.metadata.counterpartyInfo.accountNumber || ''
+        };
+      } else if (txn.metadata?.mnoProvider) {
+        // External Mobile Money - show recipient name if available
+        return {
+          name: txn.metadata?.userName || txn.metadata?.recipientName || `${txn.metadata.mnoProvider} Mobile Money`,
+          contact: txn.metadata?.phoneNumber || ''
+        };
+      } else if (txn.metadata?.phoneNumber) {
+        // External Mobile Money (no provider specified)
+        return {
+          name: txn.metadata?.userName || txn.metadata?.recipientName || 'Mobile Money User',
+          contact: txn.metadata?.phoneNumber || ''
+        };
+      } else if (txn.metadata?.accountNumber) {
+        // Bank/Utility/Other External Account
+        return {
+          name: txn.metadata?.userName || txn.metadata?.recipientName || 'External Account',
+          contact: txn.metadata?.accountNumber || ''
+        };
       } else {
-        // Mobile money or wallet - show phone number
-        receiverContact = txn.metadata?.counterpartyInfo?.phone || 
-                         txn.metadata?.phoneNumber || 
-                         txn.metadata?.recipientPhone || 
-                         txn.metadata?.counterpartyInfo?.accountNumber || '';
+        // Fallback
+        return {
+          name: txn.metadata?.recipientName || txn.metadata?.userName || 'Recipient',
+          contact: txn.metadata?.phoneNumber || txn.metadata?.accountNumber || ''
+        };
       }
-      
-      return {
-        name: receiverName,
-        contact: receiverContact
-      };
     }
   };
 
@@ -606,18 +661,32 @@ export default function TransactionsPage() {
                           })}
                         </TableCell>
                         <TableCell>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => {
-                              setSelectedTransaction(transaction);
-                              setIsReceiptOpen(true);
-                            }}
-                            className="flex items-center gap-1"
-                          >
-                            <Printer className="h-4 w-4" />
-                            Print
-                          </Button>
+                          <div className="flex items-center gap-1">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => {
+                                setSelectedTransactionForDetails(transaction);
+                                setIsTransactionDetailsOpen(true);
+                              }}
+                              title="View Details"
+                              className="h-8 w-8 p-0"
+                            >
+                              <Eye className="h-4 w-4" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => {
+                                setSelectedTransaction(transaction);
+                                setIsReceiptOpen(true);
+                              }}
+                              title="Print Receipt"
+                              className="h-8 w-8 p-0"
+                            >
+                              <Printer className="h-4 w-4" />
+                            </Button>
+                          </div>
                         </TableCell>
                       </TableRow>
                     );
@@ -1024,6 +1093,236 @@ export default function TransactionsPage() {
               </div>
             </div>
           )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Transaction Details Modal */}
+      <Dialog open={isTransactionDetailsOpen} onOpenChange={setIsTransactionDetailsOpen}>
+        <DialogContent className="w-full max-w-3xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <CreditCard className="h-5 w-5" />
+              Transaction Details
+            </DialogTitle>
+          </DialogHeader>
+
+          {selectedTransactionForDetails && (() => {
+            const txn = selectedTransactionForDetails;
+            const senderInfo = getSenderInfo(txn);
+            const receiverInfo = getReceiverInfo(txn);
+            const formatAmount = (amount: number) => {
+              return new Intl.NumberFormat('en-UG', {
+                style: 'currency',
+                currency: txn.currency || 'UGX',
+                minimumFractionDigits: 0,
+                maximumFractionDigits: 0,
+              }).format(amount);
+            };
+            const formatDate = (date: string | Date) => {
+              return new Date(date).toLocaleString('en-US', {
+                year: 'numeric',
+                month: 'short',
+                day: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit',
+              });
+            };
+            const getStatusBadge = (status: string) => {
+              const statusColors: Record<string, string> = {
+                SUCCESS: 'bg-green-100 text-green-800 border-green-200',
+                COMPLETED: 'bg-green-100 text-green-800 border-green-200',
+                FAILED: 'bg-red-100 text-red-800 border-red-200',
+                PENDING: 'bg-yellow-100 text-yellow-800 border-yellow-200',
+                PROCESSING: 'bg-blue-100 text-blue-800 border-blue-200',
+              };
+              return (
+                <Badge className={statusColors[status] || 'bg-gray-100 text-gray-800 border-gray-200'}>
+                  {status}
+                </Badge>
+              );
+            };
+
+            return (
+              <div className="space-y-6">
+                {/* Status Banner */}
+                <div className={`p-4 rounded-lg border-2 ${
+                  txn.status === 'SUCCESS' || txn.status === 'COMPLETED'
+                    ? 'bg-green-50 border-green-200'
+                    : txn.status === 'FAILED'
+                    ? 'bg-red-50 border-red-200'
+                    : txn.status === 'PENDING' || txn.status === 'PROCESSING'
+                    ? 'bg-yellow-50 border-yellow-200'
+                    : 'bg-gray-50 border-gray-200'
+                }`}>
+                  <div className="flex items-center gap-3">
+                    {txn.status === 'SUCCESS' || txn.status === 'COMPLETED' ? (
+                      <CheckCircle className="h-8 w-8 text-green-600" />
+                    ) : txn.status === 'FAILED' ? (
+                      <XCircle className="h-8 w-8 text-red-600" />
+                    ) : (
+                      <Clock className="h-8 w-8 text-yellow-600" />
+                    )}
+                    <div className="flex-1">
+                      <h3 className={`text-lg font-bold ${
+                        txn.status === 'SUCCESS' || txn.status === 'COMPLETED'
+                          ? 'text-green-900'
+                          : txn.status === 'FAILED'
+                          ? 'text-red-900'
+                          : 'text-yellow-900'
+                      }`}>
+                        Transaction {txn.status === 'SUCCESS' || txn.status === 'COMPLETED' ? 'Completed' : txn.status === 'FAILED' ? 'Failed' : txn.status}
+                      </h3>
+                      <p className={`text-sm ${
+                        txn.status === 'SUCCESS' || txn.status === 'COMPLETED'
+                          ? 'text-green-700'
+                          : txn.status === 'FAILED'
+                          ? 'text-red-700'
+                          : 'text-yellow-700'
+                      }`}>
+                        {txn.status === 'SUCCESS' || txn.status === 'COMPLETED'
+                          ? 'This transaction was processed successfully'
+                          : txn.status === 'FAILED'
+                          ? 'This transaction could not be completed'
+                          : 'This transaction is being processed'}
+                      </p>
+                    </div>
+                    {getStatusBadge(txn.status)}
+                  </div>
+
+                  {/* Failure Reason */}
+                  {txn.status === 'FAILED' && (
+                    <div className="mt-4 p-3 bg-red-100 border border-red-300 rounded">
+                      <div className="flex items-start gap-2">
+                        <AlertTriangle className="h-5 w-5 text-red-600 mt-0.5" />
+                        <div className="flex-1">
+                          <p className="font-semibold text-red-900 text-sm">Failure Reason:</p>
+                          <p className="text-red-800 text-sm mt-1 font-medium">
+                            {txn.errorMessage || txn.metadata?.errorMessage || txn.failureReason || txn.metadata?.failureReason || 'Transaction failed due to processing error. Please contact support for more details.'}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Transaction Information */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-3">
+                    <h4 className="font-semibold text-gray-900 flex items-center gap-2 border-b pb-2">
+                      <Info className="h-4 w-4" />
+                      Basic Information
+                    </h4>
+                    <div className="space-y-2 text-sm">
+                      <div className="flex justify-between">
+                        <span className="text-gray-600">Transaction ID:</span>
+                        <span className="font-mono font-medium text-gray-900 text-xs">
+                          {txn.reference || txn.id}
+                        </span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-gray-600">Type:</span>
+                        <span className="font-medium text-gray-900">{txn.type || 'N/A'}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-gray-600">Date & Time:</span>
+                        <span className="font-medium text-gray-900">{formatDate(txn.createdAt)}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-gray-600">Direction:</span>
+                        <span className="font-medium text-gray-900">
+                          {txn.direction === 'DEBIT' ? '📤 Outgoing' : '📥 Incoming'}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="space-y-3">
+                    <h4 className="font-semibold text-gray-900 flex items-center gap-2 border-b pb-2">
+                      <DollarSign className="h-4 w-4" />
+                      Amount Breakdown
+                    </h4>
+                    <div className="space-y-2 text-sm">
+                      <div className="flex justify-between">
+                        <span className="text-gray-600">Transaction Amount:</span>
+                        <span className="font-bold text-gray-900">{formatAmount(Number(txn.amount || 0))}</span>
+                      </div>
+                      {txn.fee !== undefined && txn.fee > 0 && (
+                        <div className="flex justify-between border-t pt-2">
+                          <span className="text-blue-600">Transaction Fee:</span>
+                          <span className="font-medium text-blue-600">
+                            {formatAmount(Number(txn.fee || 0))}
+                          </span>
+                        </div>
+                      )}
+                      <div className="flex justify-between border-t-2 pt-2 mt-2">
+                        <span className="text-green-600 font-bold">Net Amount:</span>
+                        <span className="font-bold text-green-600 text-lg">
+                          {formatAmount(Number(txn.netAmount || txn.amount || 0))}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Sender & Receiver Information */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {/* Sender */}
+                  <div className="space-y-3 p-4 bg-blue-50 rounded-lg border border-blue-200">
+                    <h4 className="font-semibold text-blue-900 flex items-center gap-2">
+                      <Users className="h-4 w-4" />
+                      Sender
+                    </h4>
+                    <div className="space-y-2 text-sm">
+                      <div>
+                        <span className="text-blue-700 font-medium">{senderInfo.name}</span>
+                      </div>
+                      {senderInfo.contact && (
+                        <div className="text-blue-600">
+                          📱 {senderInfo.contact}
+                        </div>
+                      )}
+                      {txn.type === 'DEPOSIT' && txn.metadata?.fundedByAdmin && (
+                        <div className="text-xs text-purple-600 font-medium mt-1">
+                          👨‍💼 Admin Funding
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Receiver */}
+                  <div className="space-y-3 p-4 bg-green-50 rounded-lg border border-green-200">
+                    <h4 className="font-semibold text-green-900 flex items-center gap-2">
+                      <Users className="h-4 w-4" />
+                      Receiver
+                    </h4>
+                    <div className="space-y-2 text-sm">
+                      <div>
+                        <span className="text-green-700 font-medium">{receiverInfo.name}</span>
+                      </div>
+                      {receiverInfo.contact && (
+                        <div className="text-green-600">
+                          📱 {receiverInfo.contact}
+                        </div>
+                      )}
+                      {txn.type === 'DEPOSIT' && txn.metadata?.fundedByAdmin && (
+                        <div className="text-xs text-green-600 font-medium mt-1">
+                          💰 Wallet Credit
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Description */}
+                {txn.description && (
+                  <div className="p-4 bg-gray-50 rounded-lg border border-gray-200">
+                    <h4 className="font-semibold text-gray-900 mb-2">Description</h4>
+                    <p className="text-sm text-gray-700">{txn.description}</p>
+                  </div>
+                )}
+              </div>
+            );
+          })()}
         </DialogContent>
       </Dialog>
 
