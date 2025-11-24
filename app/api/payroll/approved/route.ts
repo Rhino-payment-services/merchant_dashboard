@@ -18,10 +18,11 @@ export async function GET(request: NextRequest) {
 
     const accessToken = (session as any).accessToken;
     
-    // Get merchantId from business wallet
+    // Get merchantId from business wallet first
     let merchantId = null;
     
     try {
+      // Fetch business wallet to get merchantId
       const walletResponse = await axios.get(`${API_URL}/wallet/me/business`, {
         headers: {
           'Authorization': `Bearer ${accessToken}`,
@@ -29,10 +30,12 @@ export async function GET(request: NextRequest) {
       });
       
       merchantId = walletResponse.data?.merchantId || walletResponse.data?.merchant?.id;
+      
+      console.log('📊 Payroll API - Got merchantId from wallet:', merchantId);
     } catch (walletError: any) {
       console.error('Error fetching business wallet:', walletError.response?.data);
       return NextResponse.json(
-        { error: 'Unable to access business wallet' },
+        { error: 'Unable to access business wallet. Please ensure you have a business wallet.' },
         { status: 400 }
       );
     }
@@ -44,8 +47,8 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Fetch payroll summary from backend
-      const response = await axios.get(`${API_URL}/payroll/summary`, {
+    // Fetch approved payrolls from backend
+    const response = await axios.get(`${API_URL}/payroll/payments/approved`, {
       headers: {
         'Authorization': `Bearer ${accessToken}`,
       },
@@ -56,12 +59,12 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json(response.data, { status: 200 });
   } catch (error: any) {
-    console.error('Error fetching payroll summary:', error.response?.data || error.message);
+    console.error('Error fetching approved payrolls:', error.response?.data || error.message);
     
     // Return appropriate error response
     if (error.response) {
       return NextResponse.json(
-        { error: error.response.data?.message || 'Failed to fetch payroll summary' },
+        { error: error.response.data?.message || 'Failed to fetch approved payrolls' },
         { status: error.response.status }
       );
     }

@@ -36,6 +36,8 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Textarea } from '@/components/ui/textarea';
+import { canInitiatePayments, canApprovePayroll, UserSession } from '@/lib/utils/permissions';
+import { useUserProfile } from '../../UserProfileProvider';
 
 // Transaction limits - ALL payment methods use 3.5M limit
 const TRANSACTION_LIMIT = 3500000; // 3.5M UGX for all methods
@@ -84,6 +86,7 @@ const generateDefaultTranches = (amount: number, employeeId: string) => {
 
 export default function RunPayrollPage() {
   const { data: session } = useSession();
+  const { profile } = useUserProfile();
   const [payrollData, setPayrollData] = useState<any>(null);
   const [selectedMonth, setSelectedMonth] = useState('');
   const [loading, setLoading] = useState(false);
@@ -91,14 +94,27 @@ export default function RunPayrollPage() {
   const [showApproveConfirm, setShowApproveConfirm] = useState(false);
   const [showRejectDialog, setShowRejectDialog] = useState(false);
   const [rejectionReason, setRejectionReason] = useState('');
+  const [approvedPayrolls, setApprovedPayrolls] = useState<any[]>([]);
+  const [loadingApproved, setLoadingApproved] = useState(false);
   
   // Tranche editing state
   const [editingTranches, setEditingTranches] = useState<Record<string, any[]>>({});
   const [showTrancheEditor, setShowTrancheEditor] = useState<string | null>(null);
   
-  const userRole = (session as any)?.user?.role;
-  const isMaker = true; // Check permissions
-  const isChecker = true; // Check permissions
+  // Build user session with isWalletOwner flag for permission checks
+  // Use wallet team permissions if available (for team members)
+  const walletPermissions = profile?.walletPermissions || profile?.businessWallet?.permissions;
+  const userSession: UserSession = {
+    role: (session as any)?.user?.role || profile?.role,
+    userType: (session as any)?.user?.userType || profile?.userType,
+    userData: walletPermissions || (session as any)?.userData || {},
+    isWalletOwner: profile?.isWalletOwner || false
+  };
+
+  // Check permissions using utility functions
+  const isMaker = canInitiatePayments(userSession);
+  const isChecker = canApprovePayroll(userSession);
+  const canProcess = canInitiatePayments(userSession); // Account users can process after owner approval
 
   useEffect(() => {
     // Set current month
@@ -106,6 +122,70 @@ export default function RunPayrollPage() {
     const month = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
     setSelectedMonth(month);
   }, []);
+
+  // Fetch approved payrolls on mount
+  useEffect(() => {
+    const fetchApprovedPayrolls = async () => {
+      try {
+        setLoadingApproved(true);
+        const response = await fetch('/api/payroll/approved', {
+          headers: {
+            'Authorization': `Bearer ${(session as any)?.accessToken}`
+          }
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          setApprovedPayrolls(Array.isArray(data) ? data : []);
+        } else {
+          setApprovedPayrolls([]);
+        }
+      } catch (error: any) {
+        console.error('Error fetching approved payrolls:', error);
+        setApprovedPayrolls([]);
+      } finally {
+        setLoadingApproved(false);
+      }
+    };
+
+    if (session) {
+      fetchApprovedPayrolls();
+    }
+  }, [session]);
+
+  // Fetch payroll data when month changes
+  useEffect(() => {
+    if (!selectedMonth) return;
+
+    const fetchPayrollByMonth = async () => {
+      try {
+        setLoading(true);
+        const response = await fetch(`/api/payroll/month/${selectedMonth}`, {
+          headers: {
+            'Authorization': `Bearer ${(session as any)?.accessToken}`
+          }
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          if (data) {
+            setPayrollData(data);
+          } else {
+            setPayrollData(null); // No payroll for this month
+          }
+        } else if (response.status === 404) {
+          setPayrollData(null); // No payroll found
+        }
+      } catch (error: any) {
+        console.error('Error fetching payroll:', error);
+        setPayrollData(null);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchPayrollByMonth();
+  }, [selectedMonth, session]);
 
   const handleInitiatePayroll = async () => {
     setLoading(true);
@@ -129,6 +209,19 @@ export default function RunPayrollPage() {
       setPayrollData(data);
       toast.success(`Payroll initiated for ${data.totalEmployees} employees`);
       setShowInitiateConfirm(false);
+      
+      // Refetch to ensure data is up to date
+      const refetchResponse = await fetch(`/api/payroll/month/${selectedMonth}`, {
+        headers: {
+          'Authorization': `Bearer ${(session as any)?.accessToken}`
+        }
+      });
+      if (refetchResponse.ok) {
+        const refetchData = await refetchResponse.json();
+        if (refetchData) {
+          setPayrollData(refetchData);
+        }
+      }
     } catch (error: any) {
       toast.error(error.message || 'Failed to initiate payroll');
     } finally {
@@ -155,8 +248,31 @@ export default function RunPayrollPage() {
       if (!response.ok) throw new Error('Failed to approve payroll');
 
       toast.success('Payroll approved successfully');
-      setPayrollData({ ...payrollData, status: 'APPROVED' });
       setShowApproveConfirm(false);
+      
+      // Refetch approved payrolls to show the newly approved one
+      const approvedResponse = await fetch('/api/payroll/approved', {
+        headers: {
+          'Authorization': `Bearer ${(session as any)?.accessToken}`
+        }
+      });
+      if (approvedResponse.ok) {
+        const approvedData = await approvedResponse.json();
+        setApprovedPayrolls(Array.isArray(approvedData) ? approvedData : []);
+      }
+      
+      // Refetch to get updated data
+      const refetchResponse = await fetch(`/api/payroll/month/${selectedMonth}`, {
+        headers: {
+          'Authorization': `Bearer ${(session as any)?.accessToken}`
+        }
+      });
+      if (refetchResponse.ok) {
+        const refetchData = await refetchResponse.json();
+        if (refetchData) {
+          setPayrollData(refetchData);
+        }
+      }
     } catch (error: any) {
       toast.error(error.message || 'Failed to approve payroll');
     } finally {
@@ -188,9 +304,23 @@ export default function RunPayrollPage() {
       if (!response.ok) throw new Error('Failed to reject payroll');
 
       toast.success('Payroll rejected');
-      setPayrollData({ ...payrollData, status: 'REJECTED' });
       setShowRejectDialog(false);
       setRejectionReason('');
+      
+      // Refetch to get updated data
+      const refetchResponse = await fetch(`/api/payroll/month/${selectedMonth}`, {
+        headers: {
+          'Authorization': `Bearer ${(session as any)?.accessToken}`
+        }
+      });
+      if (refetchResponse.ok) {
+        const refetchData = await refetchResponse.json();
+        if (refetchData) {
+          setPayrollData(refetchData);
+        } else {
+          setPayrollData(null);
+        }
+      }
     } catch (error: any) {
       toast.error(error.message || 'Failed to reject payroll');
     } finally {
@@ -198,35 +328,81 @@ export default function RunPayrollPage() {
     }
   };
 
-  const handleProcess = async () => {
+  const handleProcess = async (batchId?: string) => {
+    const payrollId = batchId || payrollData?.id;
+    if (!payrollId) {
+      toast.error('Payroll batch ID is required');
+      return;
+    }
+
     setLoading(true);
     
     try {
-      const response = await fetch(`/api/payroll/process/${payrollData.id}`, {
+      const response = await fetch(`/api/payroll/process/${payrollId}`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${(session as any)?.accessToken}`
         }
       });
 
-      if (!response.ok) throw new Error('Failed to process payroll');
+      const responseData = await response.json();
 
-      const result = await response.json();
-      toast.success(`Payroll processing started - Bulk Transaction: ${result.bulkTransactionId}`);
-      setPayrollData({ ...payrollData, status: 'PROCESSING' });
+      if (!response.ok) {
+        throw new Error(responseData.error || responseData.message || 'Failed to process payroll');
+      }
+
+      toast.success(`Payroll processing started - Bulk Transaction: ${responseData.bulkTransactionId || 'N/A'}`);
+      
+      // Refetch approved payrolls to remove the processed one
+      const approvedResponse = await fetch('/api/payroll/approved', {
+        headers: {
+          'Authorization': `Bearer ${(session as any)?.accessToken}`
+        }
+      });
+      if (approvedResponse.ok) {
+        const approvedData = await approvedResponse.json();
+        setApprovedPayrolls(Array.isArray(approvedData) ? approvedData : []);
+      }
+      
+      // If processing the current month's payroll, refetch it
+      if (!batchId && selectedMonth) {
+        const refetchResponse = await fetch(`/api/payroll/month/${selectedMonth}`, {
+          headers: {
+            'Authorization': `Bearer ${(session as any)?.accessToken}`
+          }
+        });
+        if (refetchResponse.ok) {
+          const refetchData = await refetchResponse.json();
+          if (refetchData) {
+            setPayrollData(refetchData);
+          }
+        }
+      }
     } catch (error: any) {
+      console.error('Error processing payroll:', error);
       toast.error(error.message || 'Failed to process payroll');
     } finally {
       setLoading(false);
     }
   };
 
-  const formatCurrency = (amount: number) => {
+  const formatCurrency = (amount: number | string | undefined | null) => {
+    // Handle null, undefined, or invalid values
+    if (amount === null || amount === undefined || amount === '' || isNaN(Number(amount))) {
+      return 'UGX 0';
+    }
+    
+    const numAmount = typeof amount === 'string' ? parseFloat(amount) : amount;
+    
+    if (isNaN(numAmount)) {
+      return 'UGX 0';
+    }
+    
     return new Intl.NumberFormat('en-UG', {
       style: 'currency',
       currency: 'UGX',
       minimumFractionDigits: 0
-    }).format(amount);
+    }).format(numAmount);
   };
 
   const getStatusBadge = (status: string) => {
@@ -247,7 +423,121 @@ export default function RunPayrollPage() {
       <div className="mb-8">
         <h1 className="text-3xl font-bold">Run Payroll</h1>
         <p className="text-gray-600 mt-2">Initiate, approve, and process employee salaries</p>
+        
+        {/* Permission Status */}
+        <div className="mt-4 p-4 bg-gray-50 rounded-lg border">
+          <div className="flex items-center gap-4 text-sm">
+            <div className="flex items-center gap-2">
+              <span className="font-medium text-gray-700">Account Type:</span>
+              <span className={`px-2 py-1 text-xs font-medium rounded ${
+                userSession.isWalletOwner ? 'bg-purple-100 text-purple-800' :
+                userSession.role === 'OWNER' ? 'bg-purple-100 text-purple-800' :
+                userSession.role === 'ADMIN' ? 'bg-blue-100 text-blue-800' :
+                'bg-gray-100 text-gray-800'
+              }`}>
+                {userSession.isWalletOwner ? 'Account Owner' : (userSession.role || 'Team Member')}
+              </span>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="font-medium text-gray-700">Can Initiate:</span>
+              <span className={`px-2 py-1 text-xs font-medium rounded ${
+                isMaker ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
+              }`}>
+                {isMaker ? 'Yes' : 'No'}
+              </span>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="font-medium text-gray-700">Can Approve:</span>
+              <span className={`px-2 py-1 text-xs font-medium rounded ${
+                isChecker ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
+              }`}>
+                {isChecker ? 'Yes' : 'No'}
+              </span>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="font-medium text-gray-700">Can Process:</span>
+              <span className={`px-2 py-1 text-xs font-medium rounded ${
+                canProcess ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
+              }`}>
+                {canProcess ? 'Yes' : 'No'}
+              </span>
+            </div>
+          </div>
+        </div>
       </div>
+
+      {/* Approved Payrolls Ready to Process */}
+      {approvedPayrolls.length > 0 && (
+        <Card className="mb-6 border-green-200 bg-green-50">
+          <CardHeader>
+            <CardTitle className="text-green-900">Approved Payrolls Ready to Pay</CardTitle>
+            <CardDescription>
+              These payrolls have been approved and are ready for payment processing
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-4">
+              {approvedPayrolls.map((payroll: any) => (
+                <div
+                  key={payroll.id}
+                  className="bg-white p-4 rounded-lg border border-green-200"
+                >
+                  <div className="flex items-center justify-between">
+                    <div className="flex-1">
+                      <div className="flex items-center gap-3 mb-2">
+                        <h3 className="font-semibold text-lg">
+                          Payroll - {new Date(payroll.paymentMonth + '-01').toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
+                        </h3>
+                        <Badge className="bg-green-600">APPROVED</Badge>
+                      </div>
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                        <div>
+                          <span className="text-gray-600">Employees:</span>
+                          <p className="font-semibold">{payroll.totalEmployees}</p>
+                        </div>
+                        <div>
+                          <span className="text-gray-600">Gross:</span>
+                          <p className="font-semibold">{formatCurrency(payroll.totalGross)}</p>
+                        </div>
+                        <div>
+                          <span className="text-gray-600">Deductions:</span>
+                          <p className="font-semibold">{formatCurrency(payroll.totalDeductions)}</p>
+                        </div>
+                        <div>
+                          <span className="text-gray-600">Net Payable:</span>
+                          <p className="font-semibold text-green-700">{formatCurrency(payroll.totalNet)}</p>
+                        </div>
+                      </div>
+                      <div className="mt-2 text-xs text-gray-500">
+                        Initiated by: {payroll.initiatedBy} | Approved by: {payroll.approvedBy || 'N/A'}
+                      </div>
+                    </div>
+                    <div className="ml-4">
+                      <Button
+                        onClick={() => handleProcess(payroll.id)}
+                        className="bg-blue-600 hover:bg-blue-700"
+                        disabled={loading}
+                      >
+                        {loading ? (
+                          <>
+                            <Clock className="h-4 w-4 mr-2 animate-spin" />
+                            Processing...
+                          </>
+                        ) : (
+                          <>
+                            <DollarSign className="h-4 w-4 mr-2" />
+                            Pay Now
+                          </>
+                        )}
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Month Selection */}
       <Card className="mb-6">
@@ -268,11 +558,16 @@ export default function RunPayrollPage() {
             <Button
               onClick={() => setShowInitiateConfirm(true)}
               className="bg-blue-600"
-              disabled={!selectedMonth || payrollData?.status === 'PENDING'}
+              disabled={!selectedMonth || payrollData?.status === 'PENDING' || !isMaker}
             >
               <Send className="h-4 w-4 mr-2" />
               Initiate Payroll
             </Button>
+            {!isMaker && (
+              <p className="text-xs text-gray-500 mt-1">
+                You don't have permission to initiate payroll
+              </p>
+            )}
           </div>
         </CardContent>
       </Card>
@@ -298,25 +593,25 @@ export default function RunPayrollPage() {
                 <div className="p-4 bg-blue-50 rounded-lg">
                   <p className="text-sm text-blue-600 font-medium">Total Gross</p>
                   <p className="text-2xl font-bold text-blue-900">
-                    {formatCurrency(payrollData.totalGross)}
+                    {formatCurrency(payrollData?.totalGross ?? 0)}
                   </p>
                 </div>
                 <div className="p-4 bg-red-50 rounded-lg">
                   <p className="text-sm text-red-600 font-medium">Total Deductions</p>
                   <p className="text-2xl font-bold text-red-900">
-                    {formatCurrency(payrollData.totalDeductions)}
+                    {formatCurrency(payrollData?.totalDeductions ?? 0)}
                   </p>
                 </div>
                 <div className="p-4 bg-green-50 rounded-lg">
                   <p className="text-sm text-green-600 font-medium">Net Payable</p>
                   <p className="text-2xl font-bold text-green-900">
-                    {formatCurrency(payrollData.totalNet)}
+                    {formatCurrency(payrollData?.totalNet ?? 0)}
                   </p>
                 </div>
                 <div className="p-4 bg-purple-50 rounded-lg">
                   <p className="text-sm text-purple-600 font-medium">Employees</p>
                   <p className="text-2xl font-bold text-purple-900">
-                    {payrollData.totalEmployees}
+                    {payrollData?.totalEmployees ?? 0}
                   </p>
                 </div>
               </div>
@@ -343,13 +638,22 @@ export default function RunPayrollPage() {
                   </div>
                 )}
 
-                {payrollData.status === 'APPROVED' && (
+                {payrollData.status === 'APPROVED' && canProcess && (
                   <Button
-                    onClick={handleProcess}
+                    onClick={() => handleProcess()}
                     className="w-full bg-blue-600 hover:bg-blue-700"
+                    disabled={loading}
                   >
-                    Process Payment
+                    {loading ? 'Processing...' : 'Process Payment'}
                   </Button>
+                )}
+                
+                {payrollData.status === 'APPROVED' && !canProcess && (
+                  <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+                    <p className="text-yellow-800 text-sm">
+                      You don't have permission to process payments. Please contact your account owner.
+                    </p>
+                  </div>
                 )}
 
                 {payrollData.status === 'REJECTED' && (

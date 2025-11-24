@@ -29,7 +29,7 @@ export async function POST(request: NextRequest) {
 
     // Approve payroll batch via backend
     const response = await axios.post(
-      `${API_URL}/v1/payroll/approve`,
+      `${API_URL}/payroll/approve`,
       { 
         payrollBatchId,
         notes 

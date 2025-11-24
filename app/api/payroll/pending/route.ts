@@ -23,7 +23,7 @@ export async function GET(request: NextRequest) {
     
     try {
       // Fetch business wallet to get merchantId
-      const walletResponse = await axios.get(`${API_URL}/v1/wallet/me/business`, {
+      const walletResponse = await axios.get(`${API_URL}/wallet/me/business`, {
         headers: {
           'Authorization': `Bearer ${accessToken}`,
         }
@@ -48,7 +48,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Fetch pending payrolls from backend
-    const response = await axios.get(`${API_URL}/v1/payroll/payments/pending`, {
+    const response = await axios.get(`${API_URL}/payroll/payments/pending`, {
       headers: {
         'Authorization': `Bearer ${accessToken}`,
       },

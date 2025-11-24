@@ -59,9 +59,11 @@ import {
   inviteTeamMember,
   addTeamMemberDirect,
   removeTeamMember,
-  transferOwnership
+  transferOwnership,
+  requestTransferOwnershipOtp
 } from '@/lib/api/team.api';
 import type { TeamMember } from '@/lib/api/team.api';
+import { useUserProfile } from '../UserProfileProvider';
 
 export default function TeamManagementPage() {
   const { data: session } = useSession();
@@ -75,6 +77,7 @@ export default function TeamManagementPage() {
     email: '',
     firstName: '',
     lastName: '',
+    phoneNumber: '',
     role: 'MEMBER' as 'ADMIN' | 'ACCOUNTANT' | 'MEMBER' | 'VIEWER'
   });
 
@@ -82,20 +85,29 @@ export default function TeamManagementPage() {
     email: string;
     firstName: string;
     lastName: string;
+    phoneNumber: string;
     role: 'ADMIN' | 'ACCOUNTANT' | 'MEMBER' | 'VIEWER';
     password: string;
   }>({
     email: '',
     firstName: '',
     lastName: '',
+    phoneNumber: '',
     role: 'MEMBER',
     password: '' // Temporary password - user will change via email
   });
 
   const [transferForm, setTransferForm] = useState({
     newOwnerUserId: '',
-    password: ''
+    password: '',
+    otp: ''
   });
+  const [isRequestingOtp, setIsRequestingOtp] = useState(false);
+  const [otpSent, setOtpSent] = useState(false);
+  
+  // Get user profile to check if user is a merchant
+  const { profile } = useUserProfile();
+  const isMerchant = !!(profile?.merchantCode || profile?.merchant_code);
 
   // Get merchant's business wallet directly
   const { data: businessWallet, isLoading: walletLoading, error: walletError } = useMyBusinessWallet();
@@ -167,7 +179,7 @@ export default function TeamManagementPage() {
       queryClient.invalidateQueries({ queryKey: teamQueryKeys.walletTeam(businessWalletId) });
       toast.success('Team member invited successfully! They will receive an email with instructions to set up their account.');
       setShowInviteDialog(false);
-      setInviteForm({ email: '', firstName: '', lastName: '', role: 'MEMBER' });
+      setInviteForm({ email: '', firstName: '', lastName: '', phoneNumber: '', role: 'MEMBER' });
     } catch (error: any) {
       console.error('Error inviting team member:', error);
       toast.error(error.response?.data?.message || 'Failed to invite team member');
@@ -209,7 +221,7 @@ export default function TeamManagementPage() {
       queryClient.invalidateQueries({ queryKey: teamQueryKeys.walletTeam(businessWalletId) });
       toast.success('Team member added successfully! Login credentials have been sent to their email.');
       setShowAddDirectDialog(false);
-      setAddDirectForm({ email: '', firstName: '', lastName: '', role: 'MEMBER', password: '' });
+      setAddDirectForm({ email: '', firstName: '', lastName: '', phoneNumber: '', role: 'MEMBER', password: '' });
     } catch (error: any) {
       console.error('Error adding team member:', error);
       toast.error(error.response?.data?.message || 'Failed to add team member');
@@ -227,11 +239,41 @@ export default function TeamManagementPage() {
     }
   };
 
+  const handleRequestOtp = async () => {
+    if (!businessWalletId) {
+      toast.error('No business wallet found');
+      return;
+    }
+
+    setIsRequestingOtp(true);
+    try {
+      const result = await requestTransferOwnershipOtp(businessWalletId);
+      toast.success(result.message || 'OTP sent successfully to your phone number');
+      setOtpSent(true);
+    } catch (error: any) {
+      console.error('Error requesting OTP:', error);
+      toast.error(error.response?.data?.message || 'Failed to send OTP');
+    } finally {
+      setIsRequestingOtp(false);
+    }
+  };
+
   const handleTransferOwnership = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    if (!transferForm.newOwnerUserId || !transferForm.password) {
-      toast.error('New owner and password are required');
+    if (!transferForm.newOwnerUserId) {
+      toast.error('New owner is required');
+      return;
+    }
+
+    // For merchants, require OTP; for others, require password
+    if (isMerchant && !transferForm.otp) {
+      toast.error('OTP is required for merchant accounts');
+      return;
+    }
+
+    if (!isMerchant && !transferForm.password) {
+      toast.error('Password is required');
       return;
     }
 
@@ -241,11 +283,24 @@ export default function TeamManagementPage() {
     }
 
     try {
-      const result = await transferOwnership(businessWalletId, transferForm);
+      // Send only the appropriate field (OTP for merchants, password for others)
+      const payload = {
+        newOwnerUserId: transferForm.newOwnerUserId,
+        ...(isMerchant ? { otp: transferForm.otp } : { password: transferForm.password })
+      };
+      
+      const result = await transferOwnership(businessWalletId, payload);
       queryClient.invalidateQueries({ queryKey: teamQueryKeys.walletTeam(businessWalletId) });
+      // Invalidate user profile to refresh isWalletOwner flag for both old and new owner
+      queryClient.invalidateQueries({ queryKey: ['userProfile'] });
       toast.success(result.message);
       setShowTransferDialog(false);
-      setTransferForm({ newOwnerUserId: '', password: '' });
+      setTransferForm({ newOwnerUserId: '', password: '', otp: '' });
+      setOtpSent(false);
+      // Refresh the page to ensure all components get updated profile data
+      setTimeout(() => {
+        window.location.reload();
+      }, 1000);
     } catch (error: any) {
       console.error('Error transferring ownership:', error);
       toast.error(error.response?.data?.message || 'Failed to transfer ownership');
@@ -378,6 +433,18 @@ export default function TeamManagementPage() {
                 </div>
 
                 <div>
+                  <Label htmlFor="add-phoneNumber">Phone Number</Label>
+                  <Input
+                    id="add-phoneNumber"
+                    type="tel"
+                    placeholder="+256700123456"
+                    value={addDirectForm.phoneNumber}
+                    onChange={(e) => setAddDirectForm({ ...addDirectForm, phoneNumber: e.target.value })}
+                  />
+                  <p className="text-xs text-gray-500 mt-1">Optional - Include country code (e.g., +256700123456)</p>
+                </div>
+
+                <div>
                   <Label htmlFor="add-role">Role *</Label>
                   <Select 
                     value={addDirectForm.role} 
@@ -464,6 +531,18 @@ export default function TeamManagementPage() {
                       required
                     />
                   </div>
+                </div>
+
+                <div>
+                  <Label htmlFor="invite-phoneNumber">Phone Number</Label>
+                  <Input
+                    id="invite-phoneNumber"
+                    type="tel"
+                    placeholder="+256700123456"
+                    value={inviteForm.phoneNumber}
+                    onChange={(e) => setInviteForm({ ...inviteForm, phoneNumber: e.target.value })}
+                  />
+                  <p className="text-xs text-gray-500 mt-1">Optional - Include country code (e.g., +256700123456)</p>
                 </div>
 
                 <div>
@@ -578,11 +657,11 @@ export default function TeamManagementPage() {
                 Invite team members to help manage your business wallet
               </p>
               <Button 
-                className="mt-4 bg-blue-600 hover:bg-blue-700"
-                onClick={() => setShowInviteDialog(true)}
+                className="mt-4 bg-green-600 hover:bg-green-700"
+                onClick={() => setShowAddDirectDialog(true)}
               >
                 <UserPlus className="h-4 w-4 mr-2" />
-                Invite Your First Member
+                Add Your First Member
               </Button>
             </div>
           ) : (
@@ -726,20 +805,61 @@ export default function TeamManagementPage() {
               </Select>
             </div>
 
-            <div>
-              <Label htmlFor="transfer-password">Confirm Your Password *</Label>
-              <Input
-                id="transfer-password"
-                type="password"
-                placeholder="Enter your password"
-                value={transferForm.password}
-                onChange={(e) => setTransferForm({ ...transferForm, password: e.target.value })}
-                required
-              />
-              <p className="text-xs text-gray-500 mt-1">
-                Password confirmation required for security
-              </p>
-            </div>
+            {isMerchant ? (
+              <div>
+                <Label htmlFor="transfer-otp">Enter OTP *</Label>
+                <div className="flex gap-2">
+                  <Input
+                    id="transfer-otp"
+                    type="text"
+                    placeholder="Enter 6-digit OTP"
+                    value={transferForm.otp}
+                    onChange={(e) => setTransferForm({ ...transferForm, otp: e.target.value })}
+                    maxLength={6}
+                    required
+                    disabled={!otpSent}
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={handleRequestOtp}
+                    disabled={isRequestingOtp || otpSent}
+                    className="whitespace-nowrap"
+                  >
+                    {isRequestingOtp ? (
+                      <>
+                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                        Sending...
+                      </>
+                    ) : otpSent ? (
+                      'OTP Sent'
+                    ) : (
+                      'Request OTP'
+                    )}
+                  </Button>
+                </div>
+                <p className="text-xs text-gray-500 mt-1">
+                  {otpSent 
+                    ? 'OTP sent to your phone number. Enter the code to confirm transfer.'
+                    : 'Click "Request OTP" to receive a verification code on your phone'}
+                </p>
+              </div>
+            ) : (
+              <div>
+                <Label htmlFor="transfer-password">Confirm Your Password *</Label>
+                <Input
+                  id="transfer-password"
+                  type="password"
+                  placeholder="Enter your password"
+                  value={transferForm.password}
+                  onChange={(e) => setTransferForm({ ...transferForm, password: e.target.value })}
+                  required
+                />
+                <p className="text-xs text-gray-500 mt-1">
+                  Password confirmation required for security
+                </p>
+              </div>
+            )}
 
             <div className="bg-orange-50 border border-orange-200 rounded-lg p-4">
               <h4 className="font-semibold text-orange-900 mb-2">Important:</h4>
@@ -754,7 +874,11 @@ export default function TeamManagementPage() {
               <Button
                 type="button"
                 variant="outline"
-                onClick={() => setShowTransferDialog(false)}
+                onClick={() => {
+                  setShowTransferDialog(false);
+                  setTransferForm({ newOwnerUserId: '', password: '', otp: '' });
+                  setOtpSent(false);
+                }}
               >
                 Cancel
               </Button>
