@@ -1,9 +1,10 @@
 "use client"
-import React, { useRef } from 'react';
+import React, { useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
-import { Printer, Download } from 'lucide-react';
+import { Printer, Download, Loader2 } from 'lucide-react';
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
+import { toast } from 'sonner';
 
 interface Transaction {
   id: string;
@@ -54,22 +55,100 @@ interface TransactionReceiptProps {
 
 export default function TransactionReceipt({ transaction, merchantInfo }: TransactionReceiptProps) {
   const receiptRef = useRef<HTMLDivElement>(null);
+  const [isGeneratingPDF, setIsGeneratingPDF] = useState(false);
 
   const handlePrint = () => {
-    window.print();
+    if (!receiptRef.current) {
+      toast.error('Receipt content not found');
+      return;
+    }
+    
+    try {
+      // Create a new window for printing
+      const printWindow = window.open('', '_blank', 'width=800,height=600');
+      if (!printWindow) {
+        // Fallback: use browser's native print with CSS
+        window.print();
+        return;
+      }
+
+      const printContent = receiptRef.current.innerHTML;
+      const printStyles = `
+        <style>
+          * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+          }
+          body {
+            font-family: Arial, sans-serif;
+            padding: 20px;
+            background: white;
+            color: #000;
+          }
+          @media print {
+            @page {
+              margin: 10mm;
+              size: A4;
+            }
+            body {
+              padding: 0;
+            }
+            .no-print {
+              display: none !important;
+            }
+          }
+        </style>
+      `;
+      
+      printWindow.document.write(`
+        <!DOCTYPE html>
+        <html>
+          <head>
+            <title>Transaction Receipt - ${transaction.reference || transaction.id}</title>
+            ${printStyles}
+          </head>
+          <body>
+            ${printContent}
+            <script>
+              window.onload = function() {
+                setTimeout(function() {
+                  window.print();
+                }, 250);
+              };
+            </script>
+          </body>
+        </html>
+      `);
+      printWindow.document.close();
+      
+      toast.success('Opening print dialog...');
+    } catch (error) {
+      console.error('Print error:', error);
+      toast.error('Failed to open print dialog. Please try using your browser\'s print function.');
+    }
   };
 
   const handleDownloadPDF = async () => {
-    if (!receiptRef.current) return;
+    if (!receiptRef.current) {
+      toast.error('Receipt content not found');
+      return;
+    }
 
+    setIsGeneratingPDF(true);
     try {
+      toast.info('Generating PDF...');
+      
       const canvas = await html2canvas(receiptRef.current, {
         scale: 2,
         logging: false,
         useCORS: true,
+        backgroundColor: '#ffffff',
+        width: receiptRef.current.offsetWidth,
+        height: receiptRef.current.offsetHeight,
       });
 
-      const imgData = canvas.toDataURL('image/png');
+      const imgData = canvas.toDataURL('image/png', 1.0);
       const pdf = new jsPDF({
         orientation: 'portrait',
         unit: 'mm',
@@ -79,75 +158,156 @@ export default function TransactionReceipt({ transaction, merchantInfo }: Transa
       const imgWidth = 210; // A4 width in mm
       const imgHeight = (canvas.height * imgWidth) / canvas.width;
 
+      // Add image to PDF
       pdf.addImage(imgData, 'PNG', 0, 0, imgWidth, imgHeight);
-      pdf.save(`receipt-${transaction.reference || transaction.id}.pdf`);
+      
+      // Save PDF
+      const fileName = `receipt-${transaction.reference || transaction.id}.pdf`;
+      pdf.save(fileName);
+      
+      toast.success('PDF downloaded successfully');
     } catch (error) {
       console.error('Error generating PDF:', error);
+      toast.error('Failed to generate PDF. Please try again.');
+    } finally {
+      setIsGeneratingPDF(false);
     }
   };
 
   // Extract sender and receiver info with contact details
   const getSenderInfo = () => {
+    // Check for admin-funded deposits first
+    if (transaction.type === 'DEPOSIT' && transaction.metadata?.fundedByAdmin) {
+      // Admin is funding the merchant's wallet
+      return {
+        name: transaction.metadata?.adminName || 'Admin User',
+        contact: transaction.metadata?.adminPhone || transaction.metadata?.adminEmail || 'Admin'
+      };
+    }
+    
     if (transaction.direction === 'DEBIT') {
-      // Merchant is sending
+      // Merchant is sending - sender is the merchant (wallet owner)
       return {
         name: merchantInfo?.businessName || 'Merchant',
         contact: merchantInfo?.phone || ''
       };
     } else {
-      // Someone else is sending to merchant
-      const senderName = transaction.metadata?.counterpartyInfo?.name || 
-                        transaction.metadata?.senderName ||
-                        transaction.metadata?.userName || 
-                        transaction.metadata?.phoneNumber || 
-                        'Customer';
-      const senderContact = transaction.metadata?.counterpartyInfo?.phone || 
-                            transaction.metadata?.phoneNumber || 
-                            (transaction.metadata?.counterpartyInfo as any)?.accountNumber || 
-                            '';
-      return {
-        name: senderName,
-        contact: senderContact
-      };
+      // CREDIT direction - someone else is sending to merchant
+      // Extract sender info based on transaction type (matching page logic)
+      if (transaction.type === 'MERCHANT_TO_WALLET' || transaction.type === 'MERCHANT_TO_INTERNAL_WALLET' || transaction.type?.includes('MERCHANT_TO_WALLET') || transaction.type?.includes('MERCHANT_TO_INTERNAL_WALLET')) {
+        // Merchant sending to wallet
+        return {
+          name: transaction.metadata?.merchantName || transaction.metadata?.counterpartyInfo?.name || 'Merchant',
+          contact: transaction.metadata?.merchantCode || transaction.metadata?.accountNumber || ''
+        };
+      } else if (transaction.type === 'MNO_TO_WALLET' || transaction.type?.includes('MNO_TO_WALLET')) {
+        // Mobile Money sending to wallet
+        if (transaction.metadata?.mnoProvider) {
+          return {
+            name: transaction.metadata?.userName || `${transaction.metadata.mnoProvider} Mobile Money`,
+            contact: transaction.metadata?.phoneNumber || ''
+          };
+        } else if (transaction.metadata?.phoneNumber) {
+          return {
+            name: transaction.metadata?.userName || 'Mobile Money User',
+            contact: transaction.metadata?.phoneNumber || ''
+          };
+        } else {
+          return {
+            name: 'External',
+            contact: ''
+          };
+        }
+      } else if (transaction.type === 'WALLET_TO_WALLET' || (transaction as any).counterpartyId || (transaction as any).counterpartyUser) {
+        // P2P - Wallet to Wallet - sender is another RukaPay user
+        const counterpartyUser = (transaction as any).counterpartyUser;
+        const senderName = counterpartyUser?.profile?.firstName && counterpartyUser?.profile?.lastName
+          ? `${counterpartyUser.profile.firstName} ${counterpartyUser.profile.lastName}`
+          : transaction.metadata?.counterpartyInfo?.name || transaction.metadata?.userName || 'RukaPay User';
+        return {
+          name: senderName,
+          contact: counterpartyUser?.phone || (transaction as any).counterpartyId || ''
+        };
+      } else if (transaction.metadata?.counterpartyInfo) {
+        return {
+          name: transaction.metadata.counterpartyInfo.name,
+          contact: transaction.metadata.counterpartyInfo.phone || transaction.metadata.counterpartyInfo.accountNumber || ''
+        };
+      } else {
+        // Fallback - extract from metadata
+        return {
+          name: transaction.metadata?.userName || transaction.metadata?.phoneNumber || 'External',
+          contact: transaction.metadata?.phoneNumber || transaction.metadata?.accountNumber || ''
+        };
+      }
     }
   };
 
   const getReceiverInfo = () => {
+    // Check for admin-funded deposits first
+    if (transaction.type === 'DEPOSIT' && transaction.metadata?.fundedByAdmin) {
+      // Merchant is receiving funds from admin
+      return {
+        name: merchantInfo?.businessName || 'Merchant',
+        contact: merchantInfo?.phone || ''
+      };
+    }
+    
     if (transaction.direction === 'CREDIT') {
-      // Merchant is receiving
+      // Merchant is receiving - receiver is the merchant (wallet owner)
       return {
         name: merchantInfo?.businessName || 'Merchant',
         contact: merchantInfo?.phone || ''
       };
     } else {
-      // Merchant is sending to someone
-      const receiverName = transaction.metadata?.counterpartyInfo?.name || 
-                          transaction.metadata?.recipientName ||
-                          transaction.metadata?.beneficiaryName ||
-                          transaction.metadata?.accountName ||
-                          transaction.metadata?.phoneNumber || 
-                          transaction.metadata?.accountNumber || 
-                          'Recipient';
-      
-      // Get contact (phone or account number)
-      let receiverContact = '';
-      if (transaction.type?.includes('BANK') || transaction.type?.includes('WALLET_TO_BANK')) {
-        // Bank transfer - show account number
-        receiverContact = transaction.metadata?.accountNumber || 
-                         (transaction.metadata?.counterpartyInfo as any)?.accountNumber || 
-                         transaction.metadata?.bankAccountNumber || '';
+      // DEBIT direction - merchant is sending to someone
+      // Extract receiver info based on transaction type (matching page logic)
+      if (transaction.type === 'WALLET_TO_WALLET' || (transaction as any).counterpartyId || (transaction as any).counterpartyUser) {
+        // P2P - Wallet to Wallet - receiver is another RukaPay user
+        const counterpartyUser = (transaction as any).counterpartyUser;
+        const receiverName = counterpartyUser?.profile?.firstName && counterpartyUser?.profile?.lastName
+          ? `${counterpartyUser.profile.firstName} ${counterpartyUser.profile.lastName}`
+          : transaction.metadata?.counterpartyInfo?.name || transaction.metadata?.userName || 'RukaPay User';
+        return {
+          name: receiverName,
+          contact: counterpartyUser?.phone || (transaction as any).counterpartyId || ''
+        };
+      } else if (transaction.type === 'WALLET_TO_MERCHANT' || transaction.type === 'WALLET_TO_INTERNAL_MERCHANT' || transaction.type?.includes('MERCHANT') || transaction.metadata?.merchantName) {
+        // Wallet to Merchant - receiver is merchant
+        return {
+          name: transaction.metadata?.merchantName || transaction.metadata?.counterpartyInfo?.name || transaction.metadata?.userName || 'Merchant',
+          contact: transaction.metadata?.merchantCode || transaction.metadata?.accountNumber || ''
+        };
+      } else if (transaction.metadata?.counterpartyInfo) {
+        return {
+          name: transaction.metadata.counterpartyInfo.name,
+          contact: transaction.metadata.counterpartyInfo.phone || transaction.metadata.counterpartyInfo.accountNumber || ''
+        };
+      } else if (transaction.metadata?.mnoProvider) {
+        // External Mobile Money - show recipient name if available
+        return {
+          name: transaction.metadata?.userName || transaction.metadata?.recipientName || `${transaction.metadata.mnoProvider} Mobile Money`,
+          contact: transaction.metadata?.phoneNumber || ''
+        };
+      } else if (transaction.metadata?.phoneNumber) {
+        // External Mobile Money (no provider specified)
+        return {
+          name: transaction.metadata?.userName || transaction.metadata?.recipientName || 'Mobile Money User',
+          contact: transaction.metadata?.phoneNumber || ''
+        };
+      } else if (transaction.metadata?.accountNumber) {
+        // Bank/Utility/Other External Account
+        return {
+          name: transaction.metadata?.userName || transaction.metadata?.recipientName || 'External Account',
+          contact: transaction.metadata?.accountNumber || ''
+        };
       } else {
-        // Mobile money or wallet - show phone number
-        receiverContact = transaction.metadata?.counterpartyInfo?.phone || 
-                         transaction.metadata?.phoneNumber || 
-                         transaction.metadata?.recipientPhone || 
-                         (transaction.metadata?.counterpartyInfo as any)?.accountNumber || '';
+        // Fallback
+        return {
+          name: transaction.metadata?.recipientName || transaction.metadata?.userName || 'Recipient',
+          contact: transaction.metadata?.phoneNumber || transaction.metadata?.accountNumber || ''
+        };
       }
-      
-      return {
-        name: receiverName,
-        contact: receiverContact
-      };
     }
   };
 
@@ -207,14 +367,29 @@ export default function TransactionReceipt({ transaction, merchantInfo }: Transa
           <Printer className="h-4 w-4" />
           Print Receipt
         </Button>
-        <Button onClick={handleDownloadPDF} variant="outline" className="flex items-center gap-2">
-          <Download className="h-4 w-4" />
-          Download PDF
+        <Button 
+          onClick={handleDownloadPDF} 
+          variant="outline" 
+          className="flex items-center gap-2"
+          disabled={isGeneratingPDF}
+        >
+          {isGeneratingPDF ? (
+            <>
+              <Loader2 className="h-4 w-4 animate-spin" />
+              Generating...
+            </>
+          ) : (
+            <>
+              <Download className="h-4 w-4" />
+              Download PDF
+            </>
+          )}
         </Button>
       </div>
 
       {/* Receipt Content */}
       <div
+        id="receipt-content"
         ref={receiptRef}
         className="bg-white p-8 rounded-lg border border-gray-300 max-w-2xl mx-auto print:border-0 print:shadow-none"
         style={{
@@ -323,7 +498,17 @@ export default function TransactionReceipt({ transaction, merchantInfo }: Transa
               <div className="flex justify-between items-center">
                 <span className="text-base font-bold text-gray-800">Total:</span>
                 <span className="text-base font-bold text-gray-800">
-                  {formatCurrency(transaction.netAmount || transaction.amount, transaction.currency)}
+                  {(() => {
+                    // For DEBIT (outgoing): Total = amount + fee (total amount debited from merchant)
+                    // For CREDIT (incoming): Total = amount or netAmount (net amount received)
+                    if (transaction.direction === 'DEBIT') {
+                      const totalAmount = Number(transaction.amount || 0) + Number(transaction.fee || 0);
+                      return formatCurrency(totalAmount, transaction.currency);
+                    } else {
+                      // CREDIT - show net amount received
+                      return formatCurrency(transaction.netAmount || transaction.amount, transaction.currency);
+                    }
+                  })()}
                 </span>
               </div>
             </div>
@@ -354,6 +539,10 @@ export default function TransactionReceipt({ transaction, merchantInfo }: Transa
       {/* Print Styles */}
       <style jsx global>{`
         @media print {
+          @page {
+            margin: 0;
+            size: A4;
+          }
           body * {
             visibility: hidden;
           }
@@ -366,6 +555,8 @@ export default function TransactionReceipt({ transaction, merchantInfo }: Transa
             left: 0;
             top: 0;
             width: 100%;
+            max-width: 100%;
+            padding: 20px;
           }
           .print\\:hidden {
             display: none !important;
