@@ -89,3 +89,47 @@ export async function deletePayrollEmployee(id: string): Promise<{ success: bool
   }
 }
 
+/**
+ * Remove employee from payroll batch
+ * Uses Next.js API route which proxies to backend
+ */
+export async function removeEmployeeFromBatch(
+  batchId: string,
+  employeePaymentId: string
+): Promise<{ success: boolean; message: string }> {
+  try {
+    // Get session token for authentication
+    let accessToken: string | null = null;
+    if (typeof window !== 'undefined') {
+      try {
+        const { getSession } = await import('next-auth/react');
+        const session = await getSession();
+        accessToken = (session as any)?.accessToken || null;
+      } catch (error) {
+        console.error('Error getting session:', error);
+        // Fallback to localStorage
+        accessToken = localStorage.getItem('accessToken');
+      }
+    }
+
+    // Use Next.js API route which handles authentication
+    const response = await fetch(`/api/payroll/batch/${batchId}/employee/${employeePaymentId}`, {
+      method: 'DELETE',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(accessToken && { 'Authorization': `Bearer ${accessToken}` }),
+      },
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({ error: 'Failed to remove employee' }));
+      throw new Error(errorData.error || errorData.message || 'Failed to remove employee from batch');
+    }
+
+    return await response.json();
+  } catch (error: any) {
+    console.error('Error removing employee from batch:', error);
+    throw new Error(error.message || 'Failed to remove employee from batch');
+  }
+}
+
