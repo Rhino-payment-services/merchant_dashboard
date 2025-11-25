@@ -32,12 +32,17 @@ import {
   Send,
   ThumbsUp,
   ThumbsDown,
-  AlertTriangle
+  AlertTriangle,
+  ChevronDown,
+  ChevronUp,
+  Trash2,
+  Eye
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Textarea } from '@/components/ui/textarea';
 import { canInitiatePayments, canApprovePayroll, UserSession } from '@/lib/utils/permissions';
 import { useUserProfile } from '../../UserProfileProvider';
+import { removeEmployeeFromBatch } from '@/lib/api/payroll.api';
 
 // Transaction limits - ALL payment methods use 3.5M limit
 const TRANSACTION_LIMIT = 3500000; // 3.5M UGX for all methods
@@ -96,6 +101,17 @@ export default function RunPayrollPage() {
   const [rejectionReason, setRejectionReason] = useState('');
   const [approvedPayrolls, setApprovedPayrolls] = useState<any[]>([]);
   const [loadingApproved, setLoadingApproved] = useState(false);
+  const [expandedPayrolls, setExpandedPayrolls] = useState<Record<string, boolean>>({});
+  const [payrollDetails, setPayrollDetails] = useState<Record<string, any>>({});
+  const [loadingDetails, setLoadingDetails] = useState<Record<string, boolean>>({});
+  
+  // Remove employee confirmation dialog state
+  const [showRemoveEmployeeDialog, setShowRemoveEmployeeDialog] = useState(false);
+  const [employeeToRemove, setEmployeeToRemove] = useState<{
+    batchId: string;
+    employeePaymentId: string;
+    employeeName: string;
+  } | null>(null);
   
   // Tranche editing state
   const [editingTranches, setEditingTranches] = useState<Record<string, any[]>>({});
@@ -328,6 +344,103 @@ export default function RunPayrollPage() {
     }
   };
 
+  const togglePayrollView = async (payrollId: string) => {
+    const isExpanded = expandedPayrolls[payrollId];
+    
+    if (!isExpanded && !payrollDetails[payrollId]) {
+      // Fetch payroll details
+      setLoadingDetails({ ...loadingDetails, [payrollId]: true });
+      try {
+        const response = await fetch(`/api/payroll/batch/${payrollId}`, {
+          headers: {
+            'Authorization': `Bearer ${(session as any)?.accessToken}`
+          }
+        });
+        
+        if (response.ok) {
+          const data = await response.json();
+          setPayrollDetails({ ...payrollDetails, [payrollId]: data });
+        } else {
+          toast.error('Failed to load payroll details');
+        }
+      } catch (error: any) {
+        console.error('Error fetching payroll details:', error);
+        toast.error('Failed to load payroll details');
+      } finally {
+        setLoadingDetails({ ...loadingDetails, [payrollId]: false });
+      }
+    }
+    
+    setExpandedPayrolls({ ...expandedPayrolls, [payrollId]: !isExpanded });
+  };
+
+  const openRemoveEmployeeDialog = (batchId: string, employeePaymentId: string, employeeName: string) => {
+    setEmployeeToRemove({ batchId, employeePaymentId, employeeName });
+    setShowRemoveEmployeeDialog(true);
+  };
+
+  const handleRemoveEmployee = async () => {
+    if (!employeeToRemove) return;
+
+    const { batchId, employeePaymentId, employeeName } = employeeToRemove;
+
+    setLoading(true);
+    try {
+      await removeEmployeeFromBatch(batchId, employeePaymentId);
+      toast.success(`✅ ${employeeName} removed from payroll batch`);
+      
+      // Close dialog
+      setShowRemoveEmployeeDialog(false);
+      setEmployeeToRemove(null);
+      
+      // Refresh the payroll details if it's in the expanded list
+      if (payrollDetails[batchId]) {
+        const response = await fetch(`/api/payroll/batch/${batchId}`, {
+          headers: {
+            'Authorization': `Bearer ${(session as any)?.accessToken}`
+          }
+        });
+        
+        if (response.ok) {
+          const data = await response.json();
+          setPayrollDetails({ ...payrollDetails, [batchId]: data });
+        }
+      }
+      
+      // Refresh main payroll data if it matches
+      if (payrollData && payrollData.id === batchId) {
+        const response = await fetch(`/api/payroll/month/${payrollData.paymentMonth}`, {
+          headers: {
+            'Authorization': `Bearer ${(session as any)?.accessToken}`
+          }
+        });
+        
+        if (response.ok) {
+          const data = await response.json();
+          if (data) {
+            setPayrollData(data);
+          }
+        }
+      }
+      
+      // Refresh approved payrolls list
+      const approvedResponse = await fetch('/api/payroll/approved', {
+        headers: {
+          'Authorization': `Bearer ${(session as any)?.accessToken}`
+        }
+      });
+      if (approvedResponse.ok) {
+        const approvedData = await approvedResponse.json();
+        setApprovedPayrolls(Array.isArray(approvedData) ? approvedData : []);
+      }
+    } catch (error: any) {
+      console.error('Error removing employee:', error);
+      toast.error(error.message || 'Failed to remove employee from batch');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleProcess = async (batchId?: string) => {
     const payrollId = batchId || payrollData?.id;
     if (!payrollId) {
@@ -477,63 +590,133 @@ export default function RunPayrollPage() {
           </CardHeader>
           <CardContent>
             <div className="space-y-4">
-              {approvedPayrolls.map((payroll: any) => (
-                <div
-                  key={payroll.id}
-                  className="bg-white p-4 rounded-lg border border-green-200"
-                >
-                  <div className="flex items-center justify-between">
-                    <div className="flex-1">
-                      <div className="flex items-center gap-3 mb-2">
-                        <h3 className="font-semibold text-lg">
-                          Payroll - {new Date(payroll.paymentMonth + '-01').toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
-                        </h3>
-                        <Badge className="bg-green-600">APPROVED</Badge>
+              {approvedPayrolls.map((payroll: any) => {
+                const isExpanded = expandedPayrolls[payroll.id];
+                const details = payrollDetails[payroll.id];
+                const isLoadingDetails = loadingDetails[payroll.id];
+                
+                return (
+                  <div
+                    key={payroll.id}
+                    className="bg-white p-4 rounded-lg border border-green-200"
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="flex-1">
+                        <div className="flex items-center gap-3 mb-2">
+                          <h3 className="font-semibold text-lg">
+                            Payroll - {new Date(payroll.paymentMonth + '-01').toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
+                          </h3>
+                          <Badge className="bg-green-600">APPROVED</Badge>
+                        </div>
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                          <div>
+                            <span className="text-gray-600">Employees:</span>
+                            <p className="font-semibold">{payroll.totalEmployees}</p>
+                          </div>
+                          <div>
+                            <span className="text-gray-600">Gross:</span>
+                            <p className="font-semibold">{formatCurrency(payroll.totalGross)}</p>
+                          </div>
+                          <div>
+                            <span className="text-gray-600">Deductions:</span>
+                            <p className="font-semibold">{formatCurrency(payroll.totalDeductions)}</p>
+                          </div>
+                          <div>
+                            <span className="text-gray-600">Net Payable:</span>
+                            <p className="font-semibold text-green-700">{formatCurrency(payroll.totalNet)}</p>
+                          </div>
+                        </div>
+                        <div className="mt-2 text-xs text-gray-500">
+                          Initiated by: {payroll.initiatedBy} | Approved by: {payroll.approvedBy || 'N/A'}
+                        </div>
                       </div>
-                      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
-                        <div>
-                          <span className="text-gray-600">Employees:</span>
-                          <p className="font-semibold">{payroll.totalEmployees}</p>
-                        </div>
-                        <div>
-                          <span className="text-gray-600">Gross:</span>
-                          <p className="font-semibold">{formatCurrency(payroll.totalGross)}</p>
-                        </div>
-                        <div>
-                          <span className="text-gray-600">Deductions:</span>
-                          <p className="font-semibold">{formatCurrency(payroll.totalDeductions)}</p>
-                        </div>
-                        <div>
-                          <span className="text-gray-600">Net Payable:</span>
-                          <p className="font-semibold text-green-700">{formatCurrency(payroll.totalNet)}</p>
-                        </div>
-                      </div>
-                      <div className="mt-2 text-xs text-gray-500">
-                        Initiated by: {payroll.initiatedBy} | Approved by: {payroll.approvedBy || 'N/A'}
+                      <div className="ml-4 flex gap-2">
+                        <Button
+                          onClick={() => togglePayrollView(payroll.id)}
+                          variant="outline"
+                          className="border-gray-300"
+                        >
+                          {isExpanded ? (
+                            <>
+                              <ChevronUp className="h-4 w-4 mr-2" />
+                              Hide Employees
+                            </>
+                          ) : (
+                            <>
+                              <Eye className="h-4 w-4 mr-2" />
+                              View Employees
+                            </>
+                          )}
+                        </Button>
+                        <Button
+                          onClick={() => handleProcess(payroll.id)}
+                          className="bg-blue-600 hover:bg-blue-700"
+                          disabled={loading}
+                        >
+                          {loading ? (
+                            <>
+                              <Clock className="h-4 w-4 mr-2 animate-spin" />
+                              Processing...
+                            </>
+                          ) : (
+                            <>
+                              <DollarSign className="h-4 w-4 mr-2" />
+                              Pay Now
+                            </>
+                          )}
+                        </Button>
                       </div>
                     </div>
-                    <div className="ml-4">
-                      <Button
-                        onClick={() => handleProcess(payroll.id)}
-                        className="bg-blue-600 hover:bg-blue-700"
-                        disabled={loading}
-                      >
-                        {loading ? (
-                          <>
-                            <Clock className="h-4 w-4 mr-2 animate-spin" />
-                            Processing...
-                          </>
+                    
+                    {/* Employees List */}
+                    {isExpanded && (
+                      <div className="mt-4 pt-4 border-t border-green-200">
+                        {isLoadingDetails ? (
+                          <div className="text-center py-4">
+                            <Clock className="h-5 w-5 animate-spin mx-auto text-gray-400" />
+                            <p className="text-sm text-gray-500 mt-2">Loading employees...</p>
+                          </div>
+                        ) : details?.employees && details.employees.length > 0 ? (
+                          <div className="space-y-2">
+                            <h4 className="font-semibold text-sm text-gray-700 mb-3">Employees in this payroll:</h4>
+                            {details.employees.map((emp: any) => (
+                              <div
+                                key={emp.id}
+                                className="flex items-center justify-between p-3 bg-gray-50 rounded-lg border"
+                              >
+                                <div className="flex-1">
+                                  <p className="font-medium">{emp.firstName} {emp.lastName}</p>
+                                  <p className="text-xs text-gray-500">{emp.phoneNumber}</p>
+                                  <div className="flex gap-4 mt-1 text-xs">
+                                    <span className="text-gray-600">
+                                      Gross: <span className="font-medium">{formatCurrency(emp.grossSalary)}</span>
+                                    </span>
+                                    <span className="text-gray-600">
+                                      Net: <span className="font-medium text-green-600">{formatCurrency(emp.netSalary)}</span>
+                                    </span>
+                                  </div>
+                                </div>
+                                <Button
+                                  onClick={() => openRemoveEmployeeDialog(payroll.id, emp.paymentId || emp.id, `${emp.firstName} ${emp.lastName}`)}
+                                  variant="ghost"
+                                  size="sm"
+                                  className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                                  disabled={loading}
+                                >
+                                  <Trash2 className="h-4 w-4 mr-1" />
+                                  Remove
+                                </Button>
+                              </div>
+                            ))}
+                          </div>
                         ) : (
-                          <>
-                            <DollarSign className="h-4 w-4 mr-2" />
-                            Pay Now
-                          </>
+                          <p className="text-sm text-gray-500 text-center py-4">No employees found</p>
                         )}
-                      </Button>
-                    </div>
+                      </div>
+                    )}
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </CardContent>
         </Card>
@@ -745,16 +928,30 @@ export default function RunPayrollPage() {
                           </div>
                         )}
                       </div>
-                      <div className="text-right ml-4">
-                        <p className="text-sm text-gray-500">
-                          Gross: {formatCurrency(emp.grossSalary)}
-                        </p>
-                        <p className="text-sm text-red-600">
-                          Deductions: -{formatCurrency(emp.totalDeductions)}
-                        </p>
-                        <p className="font-bold text-green-600">
-                          Net: {formatCurrency(emp.netSalary)}
-                        </p>
+                      <div className="text-right ml-4 flex flex-col items-end gap-2">
+                        <div>
+                          <p className="text-sm text-gray-500">
+                            Gross: {formatCurrency(emp.grossSalary)}
+                          </p>
+                          <p className="text-sm text-red-600">
+                            Deductions: -{formatCurrency(emp.totalDeductions)}
+                          </p>
+                          <p className="font-bold text-green-600">
+                            Net: {formatCurrency(emp.netSalary)}
+                          </p>
+                        </div>
+                        {(payrollData.status === 'PENDING' || payrollData.status === 'APPROVED') && (
+                          <Button
+                            onClick={() => openRemoveEmployeeDialog(payrollData.id, emp.paymentId || emp.id, `${emp.firstName} ${emp.lastName}`)}
+                            variant="ghost"
+                            size="sm"
+                            className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                            disabled={loading}
+                          >
+                            <Trash2 className="h-4 w-4 mr-1" />
+                            Remove
+                          </Button>
+                        )}
                       </div>
                     </div>
                   );
@@ -1005,6 +1202,43 @@ export default function RunPayrollPage() {
           </CardContent>
         </Card>
       )}
+
+      {/* Remove Employee Confirmation Dialog */}
+      <AlertDialog open={showRemoveEmployeeDialog} onOpenChange={setShowRemoveEmployeeDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Remove Employee from Payroll?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to remove <strong>{employeeToRemove?.employeeName}</strong> from this payroll batch? 
+              This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel 
+              onClick={() => {
+                setShowRemoveEmployeeDialog(false);
+                setEmployeeToRemove(null);
+              }}
+            >
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleRemoveEmployee}
+              disabled={loading}
+              className="bg-red-600 hover:bg-red-700"
+            >
+              {loading ? (
+                <>
+                  <Clock className="h-4 w-4 mr-2 animate-spin" />
+                  Removing...
+                </>
+              ) : (
+                'Remove Employee'
+              )}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
