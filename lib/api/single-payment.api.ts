@@ -123,6 +123,7 @@ export const processSinglePayment = async (paymentData: SinglePaymentDto, userId
       reference: paymentData.reference,
       walletType: paymentData.walletType || 'BUSINESS',
       userId: userId, // Sender's user ID
+      channel: 'MERCHANT_PORTAL', // ✅ Set channel for metrics tracking
       
       // Map transaction-specific fields
       phoneNumber: paymentData.phoneNumber,

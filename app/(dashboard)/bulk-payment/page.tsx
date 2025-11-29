@@ -494,6 +494,7 @@ export default function BulkPaymentPage() {
       // Prepare bulk transaction request
       const bulkRequest = {
         userId,
+        channel: 'MERCHANT_PORTAL', // ✅ Set channel for metrics tracking
         transactions: payments.map(p => {
           // Build transaction object based on mode
           const transaction: any = {
