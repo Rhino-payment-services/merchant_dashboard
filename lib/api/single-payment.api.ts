@@ -59,7 +59,8 @@ export interface SinglePaymentDto {
 
 // Validation DTO that matches the backend ValidateTransactionDto
 export interface ValidateTransactionRequestDto {
-  transactionType: 'WALLET_TO_MNO' | 'WALLET_TO_BANK' | 'BILL_PAYMENT' | 'MNO_TO_WALLET' | 'WALLET_TO_WALLET' | 'WALLET_TO_MERCHANT' | 'MERCHANT_TO_WALLET'
+  transactionType?: 'WALLET_TO_MNO' | 'WALLET_TO_BANK' | 'BILL_PAYMENT' | 'MNO_TO_WALLET' | 'WALLET_TO_WALLET' | 'WALLET_TO_MERCHANT' | 'MERCHANT_TO_WALLET'
+  transactionModeCode?: string // Use mode code for custom modes like MERCHANT_TO_WALLET
   phoneNumber?: string
   network?: string // MNO provider
   accountNumber?: string
@@ -183,8 +184,12 @@ export const validateTransaction = async (paymentData: SinglePaymentDto): Promis
 }> => {
   try {
     // Transform SinglePaymentDto to ValidateTransactionRequestDto
+    // For MERCHANT_TO_WALLET, use transactionModeCode to ensure correct routing
     const validationData: ValidateTransactionRequestDto = {
-      transactionType: paymentData.mode as any, // Map mode to transactionType
+      ...(paymentData.mode === 'MERCHANT_TO_WALLET' 
+        ? { transactionModeCode: paymentData.mode } // Use mode code for MERCHANT_TO_WALLET
+        : { transactionType: paymentData.mode as any } // Map mode to transactionType for others
+      ),
       amount: paymentData.amount,
       currency: paymentData.currency || 'UGX',
       geographicRegion: 'UG',
