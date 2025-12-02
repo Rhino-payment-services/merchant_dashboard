@@ -59,7 +59,7 @@ export interface SinglePaymentDto {
 
 // Validation DTO that matches the backend ValidateTransactionDto
 export interface ValidateTransactionRequestDto {
-  transactionType: 'WALLET_TO_MNO' | 'WALLET_TO_BANK' | 'BILL_PAYMENT' | 'MNO_TO_WALLET' | 'WALLET_TO_WALLET' | 'WALLET_TO_MERCHANT'
+  transactionType: 'WALLET_TO_MNO' | 'WALLET_TO_BANK' | 'BILL_PAYMENT' | 'MNO_TO_WALLET' | 'WALLET_TO_WALLET' | 'WALLET_TO_MERCHANT' | 'MERCHANT_TO_WALLET'
   phoneNumber?: string
   network?: string // MNO provider
   accountNumber?: string
@@ -214,6 +214,9 @@ export const validateTransaction = async (paymentData: SinglePaymentDto): Promis
     validationData.customerPhoneNumber = paymentData.phoneNumber;
   } else if (paymentData.mode === 'WALLET_TO_MERCHANT') {
     validationData.merchantCode = paymentData.merchantCode;
+  } else if (paymentData.mode === 'MERCHANT_TO_WALLET') {
+    // For MERCHANT_TO_WALLET, we need the recipient phone number
+    validationData.phoneNumber = paymentData.recipientPhoneNumber || paymentData.phoneNumber;
   }
 
   console.log('API: Validating transaction:', validationData);
