@@ -615,6 +615,50 @@ export default function BulkPaymentPage() {
     }
   };
 
+  // Normalize raw row keys from CSV/Excel into a consistent shape
+  const normalizeBulkRow = (row: any) => {
+    // Mode: support both "mode" and "Transaction Mode" columns
+    const rawMode = (row.mode || row['Transaction Mode'] || row.transactionMode || '').toString().trim();
+
+    // Amount / Description / Currency
+    const amount = Number(row.amount ?? row.Amount ?? 0);
+    const description = row.description || row.Description || '';
+    const currency = row.currency || row.Currency || 'UGX';
+
+    // Phone / Account number column
+    const phoneOrAccount =
+      row.phoneNumber ||
+      row['Phone Number / Account Number'] ||
+      row.phone ||
+      row.accountNumber ||
+      '';
+
+    // Network / MNO provider
+    const network = row.mnoProvider || row.Network || row.network || '';
+
+    // Bank fields
+    const bankName = row.bankName || row['Bank Name'] || '';
+    const bankSortCode = row.bankSortCode || row['Bank Sort Code'] || '';
+
+    // Recipient name
+    const recipientName = row.recipientName || row.Name || row.name || '';
+
+    return {
+      ...row,
+      mode: rawMode,
+      amount,
+      description,
+      currency,
+      phoneNumber: row.phoneNumber || phoneOrAccount,
+      recipientPhone: row.recipientPhone || phoneOrAccount,
+      accountNumber: row.accountNumber || phoneOrAccount,
+      mnoProvider: row.mnoProvider || network,
+      bankName,
+      bankSortCode,
+      recipientName,
+    };
+  };
+
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -675,7 +719,9 @@ export default function BulkPaymentPage() {
             return row;
           });
 
-          const newPayments: PaymentItem[] = data
+          const normalized = data.map(normalizeBulkRow);
+
+          const newPayments: PaymentItem[] = normalized
             .filter(row => {
               const isValid = row.mode && row.amount && row.description;
               if (!isValid) {
@@ -740,7 +786,9 @@ export default function BulkPaymentPage() {
           console.log('📊 Parsed Excel data:', data);
           console.log('📋 First row sample:', data[0]);
 
-          const newPayments: PaymentItem[] = (data as any[])
+          const normalized = (data as any[]).map(normalizeBulkRow);
+
+          const newPayments: PaymentItem[] = normalized
             .filter(row => row.amount && row.description && row.mode)
             .map((row, index) => ({
               id: `upload-${Date.now()}-${index}`,
@@ -804,9 +852,15 @@ export default function BulkPaymentPage() {
         'Currency': 'UGX',
       },
       {
-        'Transaction Mode': 'WALLET_TO_WALLET',
-        'Phone Number / Account Number': '256700333333',
+        'Transaction Mode': 'MERCHANT_TO_WALLET',
+        'Phone Number / Account Number': '256700333333', // Recipient phone number
         'Name': 'Alice Johnson',
+        'Amount': 75000,
+        'Network': '',
+        'Bank Name': '',
+        'Bank Sort Code': '',
+        'Description': 'Merchant to wallet refund',
+        'Currency': 'UGX',
       },
     ];
 
