@@ -22,57 +22,6 @@ const TRANSACTION_TYPES = [
   { value: 'MERCHANT_TO_WALLET', label: 'Merchant to Wallet', icon: Wallet, color: 'text-green-600', bg: 'bg-green-50' },
 ];
 
-// Normalize bulk row data from template column names to lowercase field names
-const normalizeBulkRow = (row: any): any => {
-  const normalized: any = {};
-  
-  // Map template column names to lowercase field names
-  const fieldMapping: Record<string, string> = {
-    'Transaction Mode': 'mode',
-    'transaction mode': 'mode',
-    'Mode': 'mode',
-    'mode': 'mode',
-    'Phone Number / Account Number': 'phoneNumber',
-    'phone number / account number': 'phoneNumber',
-    'Phone Number': 'phoneNumber',
-    'phone number': 'phoneNumber',
-    'Account Number': 'accountNumber',
-    'account number': 'accountNumber',
-    'Name': 'recipientName',
-    'name': 'recipientName',
-    'Recipient Name': 'recipientName',
-    'recipient name': 'recipientName',
-    'Amount': 'amount',
-    'amount': 'amount',
-    'Network': 'network',
-    'network': 'network',
-    'MNO Provider': 'mnoProvider',
-    'mno provider': 'mnoProvider',
-    'Bank Name': 'bankName',
-    'bank name': 'bankName',
-    'Bank Sort Code': 'bankSortCode',
-    'bank sort code': 'bankSortCode',
-    'Sort Code': 'bankSortCode',
-    'sort code': 'bankSortCode',
-    'Description': 'description',
-    'description': 'description',
-    'Currency': 'currency',
-    'currency': 'currency',
-    'Account Name': 'accountName',
-    'account name': 'accountName',
-    'Recipient Phone': 'recipientPhone',
-    'recipient phone': 'recipientPhone',
-  };
-  
-  // Normalize all fields
-  Object.keys(row).forEach(key => {
-    const normalizedKey = fieldMapping[key] || key.toLowerCase();
-    normalized[normalizedKey] = row[key];
-  });
-  
-  return normalized;
-};
-
 const UGANDAN_BANKS = [
   { bankName: "Barclays (now Absa)", bankSortCode: "013847" },
   { bankName: "Bank of Baroda", bankSortCode: "020147" },
@@ -196,12 +145,6 @@ export default function BulkPaymentPage() {
   };
 
   const processSinglePaymentTransaction = async () => {
-    // Prevent double-clicking - check if already processing
-    if (singlePaymentLoading) {
-      console.log('⚠️ Already processing single payment, ignoring duplicate click');
-      return;
-    }
-
     if (!singlePayment.amount || singlePayment.amount <= 0) {
       toast.error('Please enter a valid amount');
       return;
@@ -531,12 +474,6 @@ export default function BulkPaymentPage() {
   };
 
   const handleProcessBulk = async () => {
-    // Prevent double-clicking - check if already processing
-    if (processing) {
-      console.log('⚠️ Already processing bulk payment, ignoring duplicate click');
-      return;
-    }
-
     if (payments.length === 0) {
       toast.error('No payments to process');
       return;
@@ -557,7 +494,6 @@ export default function BulkPaymentPage() {
       // Prepare bulk transaction request
       const bulkRequest = {
         userId,
-        channel: 'MERCHANT_PORTAL', // ✅ Set channel for metrics tracking
         transactions: payments.map(p => {
           // Build transaction object based on mode
           const transaction: any = {
@@ -740,7 +676,6 @@ export default function BulkPaymentPage() {
           });
 
           const newPayments: PaymentItem[] = data
-            .map(row => normalizeBulkRow(row)) // Normalize template column names to lowercase field names
             .filter(row => {
               const isValid = row.mode && row.amount && row.description;
               if (!isValid) {
@@ -806,14 +741,7 @@ export default function BulkPaymentPage() {
           console.log('📋 First row sample:', data[0]);
 
           const newPayments: PaymentItem[] = (data as any[])
-            .map(row => normalizeBulkRow(row)) // Normalize template column names to lowercase field names
-            .filter(row => {
-              const isValid = row.amount && row.description && row.mode;
-              if (!isValid) {
-                console.log('⚠️ Skipping invalid row:', row);
-              }
-              return isValid;
-            })
+            .filter(row => row.amount && row.description && row.mode)
             .map((row, index) => ({
               id: `upload-${Date.now()}-${index}`,
               itemId: `ITEM-${Date.now()}-${index}`,
@@ -876,15 +804,9 @@ export default function BulkPaymentPage() {
         'Currency': 'UGX',
       },
       {
-        'Transaction Mode': 'MERCHANT_TO_WALLET',
+        'Transaction Mode': 'WALLET_TO_WALLET',
         'Phone Number / Account Number': '256700333333',
         'Name': 'Alice Johnson',
-        'Amount': 75000,
-        'Network': '',
-        'Bank Name': '',
-        'Bank Sort Code': '',
-        'Description': 'Merchant to wallet payment',
-        'Currency': 'UGX',
       },
     ];
 
@@ -1286,11 +1208,7 @@ export default function BulkPaymentPage() {
                   <Button
                     onClick={processSinglePaymentTransaction}
                     disabled={!validationInfo?.isValid || singlePaymentLoading || !singlePayment.amount || singlePayment.amount <= 0}
-                    className={`flex items-center gap-2 ${
-                      !validationInfo?.isValid || singlePaymentLoading || !singlePayment.amount || singlePayment.amount <= 0
-                        ? 'opacity-50 cursor-not-allowed' 
-                        : 'bg-green-600 hover:bg-green-700'
-                    }`}
+                    className={`flex items-center gap-2 ${!validationInfo?.isValid ? 'opacity-50 cursor-not-allowed' : 'bg-green-600 hover:bg-green-700'}`}
                   >
                     {singlePaymentLoading ? (
                       <>
