@@ -676,11 +676,31 @@ export default function BulkPaymentPage() {
             return row;
           });
 
+          // Map template column names to expected property names (same as Excel)
+          const mapCsvRow = (row: any) => ({
+            mode: row['Transaction Mode'] || row['mode'] || row['Mode'],
+            amount: row['Amount'] || row['Amount (UGX)'] || row['amount'],
+            description: row['Description'] || row['description'] || row['Desc'],
+            phoneNumber: row['Phone Number / Account Number'] || row['Phone Number'] || row['phoneNumber'] || row['phone'] || '',
+            recipientName: row['Name'] || row['Recipient Name'] || row['recipientName'] || row['name'] || '',
+            mnoProvider: row['Network'] || row['MNO Provider'] || row['mnoProvider'] || row['network'] || '',
+            bankName: row['Bank Name'] || row['bankName'] || '',
+            bankSortCode: row['Bank Sort Code'] || row['bankSortCode'] || '',
+            accountNumber: row['Account Number'] || row['accountNumber'] || '',
+            accountName: row['Account Name'] || row['accountName'] || '',
+            currency: row['Currency'] || row['currency'] || 'UGX',
+            recipientPhone: row['Recipient Phone'] || row['recipientPhone'] || row['recipientPhoneNumber'] || '',
+          });
+
           const newPayments: PaymentItem[] = data
+            .map(mapCsvRow)
             .filter(row => {
-              const isValid = row.mode && row.amount && row.description;
+              const hasAmount = row.amount && Number(row.amount) > 0;
+              const hasMode = row.mode;
+              // Description is optional - will be auto-generated if not provided
+              const isValid = hasAmount && hasMode;
               if (!isValid) {
-                console.log('⚠️ Skipping invalid row:', row);
+                console.log('⚠️ Skipping invalid CSV row:', row, { hasAmount, hasMode });
               }
               return isValid;
             })
@@ -690,22 +710,23 @@ export default function BulkPaymentPage() {
               mode: row.mode as any,
               amount: Number(row.amount),
               currency: row.currency || 'UGX',
-              description: row.description,
+              description: row.description || `Payment ${index + 1}`, // Auto-generate if empty
               phoneNumber: row.phoneNumber || '',
-              mnoProvider: getValidMnoProvider(row.mnoProvider || row.network),
-              recipientName: row.recipientName || row.name || '',
+              mnoProvider: getValidMnoProvider(row.mnoProvider),
+              recipientName: row.recipientName || '',
               accountNumber: row.accountNumber || '',
               bankSortCode: row.bankSortCode || '',
               bankName: row.bankName || '',
               accountName: row.accountName || '',
               recipientPhone: row.recipientPhone || '',
+              recipientPhoneNumber: row.recipientPhone || row.phoneNumber || '', // For MERCHANT_TO_WALLET
               status: 'pending' as const,
             }));
 
-          console.log('✅ Parsed payments:', newPayments);
+          console.log('✅ Parsed CSV payments:', newPayments);
 
           if (newPayments.length === 0) {
-            toast.error('No valid payment rows found in CSV');
+            toast.error('No valid payment rows found in CSV. Ensure rows have Transaction Mode and Amount columns.');
             return;
           }
 
@@ -741,25 +762,60 @@ export default function BulkPaymentPage() {
           console.log('📊 Parsed Excel data:', data);
           console.log('📋 First row sample:', data[0]);
 
+          // Map template column names to expected property names
+          const mapRow = (row: any) => ({
+            // Support both template column names and simple property names
+            mode: row['Transaction Mode'] || row['mode'] || row['Mode'],
+            amount: row['Amount'] || row['Amount (UGX)'] || row['amount'],
+            description: row['Description'] || row['description'] || row['Desc'],
+            phoneNumber: row['Phone Number / Account Number'] || row['Phone Number'] || row['phoneNumber'] || row['phone'] || '',
+            recipientName: row['Name'] || row['Recipient Name'] || row['recipientName'] || row['name'] || '',
+            mnoProvider: row['Network'] || row['MNO Provider'] || row['mnoProvider'] || row['network'] || '',
+            bankName: row['Bank Name'] || row['bankName'] || '',
+            bankSortCode: row['Bank Sort Code'] || row['bankSortCode'] || '',
+            accountNumber: row['Account Number'] || row['accountNumber'] || '',
+            accountName: row['Account Name'] || row['accountName'] || '',
+            currency: row['Currency'] || row['currency'] || 'UGX',
+            recipientPhone: row['Recipient Phone'] || row['recipientPhone'] || row['recipientPhoneNumber'] || '',
+          });
+
           const newPayments: PaymentItem[] = (data as any[])
-            .filter(row => row.amount && row.description && row.mode)
+            .map(mapRow)
+            .filter(row => {
+              const hasAmount = row.amount && Number(row.amount) > 0;
+              const hasMode = row.mode;
+              // Description is optional now - will be auto-generated if not provided
+              const isValid = hasAmount && hasMode;
+              if (!isValid) {
+                console.log('⚠️ Skipping invalid row:', row, { hasAmount, hasMode });
+              }
+              return isValid;
+            })
             .map((row, index) => ({
               id: `upload-${Date.now()}-${index}`,
               itemId: `ITEM-${Date.now()}-${index}`,
-              mode: row.mode || 'WALLET_TO_MNO',
+              mode: row.mode as any,
               amount: Number(row.amount),
               currency: row.currency || 'UGX',
-              description: row.description,
+              description: row.description || `Payment ${index + 1}`, // Auto-generate if empty
               phoneNumber: row.phoneNumber || '',
-              mnoProvider: getValidMnoProvider(row.mnoProvider || row.network),
-              recipientName: row.recipientName || row.name || '',
+              mnoProvider: getValidMnoProvider(row.mnoProvider),
+              recipientName: row.recipientName || '',
               accountNumber: row.accountNumber || '',
               bankSortCode: row.bankSortCode || '',
               bankName: row.bankName || '',
               accountName: row.accountName || '',
               recipientPhone: row.recipientPhone || '',
+              recipientPhoneNumber: row.recipientPhone || row.phoneNumber || '', // For MERCHANT_TO_WALLET
               status: 'pending' as const,
             }));
+
+          console.log('✅ Parsed Excel payments:', newPayments);
+
+          if (newPayments.length === 0) {
+            toast.error('No valid payment rows found in Excel. Ensure rows have Mode and Amount columns.');
+            return;
+          }
 
           setPayments(prev => [...prev, ...newPayments]);
           toast.success(`✅ Uploaded ${newPayments.length} payments from Excel`);
@@ -808,6 +864,23 @@ export default function BulkPaymentPage() {
         'Transaction Mode': 'WALLET_TO_WALLET',
         'Phone Number / Account Number': '256700333333',
         'Name': 'Alice Johnson',
+        'Amount': 75000,
+        'Network': '',
+        'Bank Name': '',
+        'Bank Sort Code': '',
+        'Description': 'Wallet to wallet transfer',
+        'Currency': 'UGX',
+      },
+      {
+        'Transaction Mode': 'MERCHANT_TO_WALLET',
+        'Phone Number / Account Number': '256700444444',
+        'Name': 'Bob Wilson',
+        'Amount': 25000,
+        'Network': '',
+        'Bank Name': '',
+        'Bank Sort Code': '',
+        'Description': 'Commission payment',
+        'Currency': 'UGX',
       },
     ];
 
