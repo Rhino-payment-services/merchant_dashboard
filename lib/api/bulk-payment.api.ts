@@ -43,6 +43,7 @@ export interface BulkTransactionItem {
 
 export interface CreateBulkTransactionRequest {
   userId: string
+  channel?: string // ✅ Channel for metrics tracking (e.g., 'MERCHANT_PORTAL')
   transactions: BulkTransactionItem[]
   description?: string
   reference?: string
