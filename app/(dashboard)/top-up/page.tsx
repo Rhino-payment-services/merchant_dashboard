@@ -117,7 +117,8 @@ export default function TopUpPage() {
         mnoProvider: mnoProvider,
         narration: topUpForm.narration || "Mobile money collection",
         userName: (session?.user as any)?.userData?.profile?.firstName || session?.user?.name || "Merchant",
-        walletType: "BUSINESS"  // ✅ Explicitly route to BUSINESS wallet for merchant dashboard
+        walletType: "BUSINESS",           // ✅ Explicitly route to BUSINESS wallet
+        channel: "MERCHANT_PORTAL"        // ✅ Identify source channel
       };
       
       console.log("Transaction Data (rdbs_core):", transactionData);
