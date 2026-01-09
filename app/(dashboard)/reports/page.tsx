@@ -1,10 +1,11 @@
 "use client"
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { useUserProfile } from '../UserProfileProvider';
+import { useMyTransactions, TransactionFilter } from '@/lib/api/transactions.api';
 import { 
   Download, 
   FileText, 
@@ -23,6 +24,7 @@ import { Chart } from '../../components/chart';
 import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
+import { toast } from 'sonner';
 
 interface Transaction {
   rdbs_transaction_id: string;
@@ -46,14 +48,99 @@ interface ReportSummary {
 }
 
 export default function ReportsPage() {
-  const { profile, loading } = useUserProfile();
+  const { profile, loading: profileLoading } = useUserProfile();
   const [dateRange, setDateRange] = useState({ from: '', to: '' });
   const [transactionType, setTransactionType] = useState<'all' | 'credit' | 'debit'>('all');
   const [status, setStatus] = useState<'all' | 'approved' | 'pending' | 'failed'>('all');
   const [searchTerm, setSearchTerm] = useState('');
   const [isExporting, setIsExporting] = useState(false);
 
-  const transactions: Transaction[] = profile?.merchant_transactions || [];
+  // Build filter for API - use date range if provided
+  const apiFilter: TransactionFilter = useMemo(() => {
+    const filter: TransactionFilter = {
+      page: 1,
+      limit: 1000, // Fetch a large number of transactions for reports
+    };
+
+    if (dateRange.from) filter.startDate = dateRange.from;
+    if (dateRange.to) filter.endDate = dateRange.to;
+    if (status !== 'all') {
+      // Map status filter to API status
+      if (status === 'approved') filter.status = 'COMPLETED';
+      else if (status === 'pending') filter.status = 'PENDING';
+      else if (status === 'failed') filter.status = 'FAILED';
+    }
+    if (transactionType !== 'all') {
+      filter.direction = transactionType === 'credit' ? 'CREDIT' : 'DEBIT';
+    }
+
+    return filter;
+  }, [dateRange, status, transactionType]);
+
+  // Fetch transactions from API
+  const { 
+    data: transactionsData, 
+    isLoading: transactionsLoading, 
+    error: transactionsError,
+    refetch: refetchTransactions
+  } = useMyTransactions(apiFilter);
+
+  // Transform API transactions to the format expected by the reports page
+  const transformTransaction = (apiTxn: any): Transaction => {
+    // Map API status to reports page status
+    const mapStatus = (apiStatus: string): 'approved' | 'pending' | 'failed' => {
+      if (apiStatus === 'COMPLETED' || apiStatus === 'SUCCESS') return 'approved';
+      if (apiStatus === 'PENDING' || apiStatus === 'PROCESSING') return 'pending';
+      return 'failed';
+    };
+
+    // Get sender name from transaction metadata (similar to transactions page logic)
+    const getSenderName = (txn: any): string => {
+      // Check for admin-funded deposits first
+      if (txn.type === 'DEPOSIT' && txn.metadata?.fundedByAdmin) {
+        return txn.metadata?.adminName || 'Admin User';
+      }
+      
+      if (txn.direction === 'DEBIT') {
+        // Merchant is sending - sender is the merchant
+        return profile?.merchant_names || profile?.merchantBusinessTradeName || profile?.businessTradeName || 'Merchant';
+      } else {
+        // CREDIT direction - someone else is sending to merchant
+        if (txn.type === 'MERCHANT_TO_WALLET' || txn.type === 'MERCHANT_TO_INTERNAL_WALLET') {
+          return txn.metadata?.merchantName || txn.metadata?.counterpartyInfo?.name || 'Merchant';
+        } else if (txn.type === 'MNO_TO_WALLET') {
+          return txn.metadata?.userName || `${txn.metadata?.mnoProvider || ''} Mobile Money`.trim() || 'Mobile Money User';
+        } else if (txn.type === 'WALLET_TO_WALLET' || txn.counterpartyId || txn.counterpartyUser) {
+          // P2P - Wallet to Wallet
+          const senderName = txn.counterpartyUser?.profile?.firstName && txn.counterpartyUser?.profile?.lastName
+            ? `${txn.counterpartyUser.profile.firstName} ${txn.counterpartyUser.profile.lastName}`
+            : txn.metadata?.counterpartyInfo?.name || txn.metadata?.userName || 'RukaPay User';
+          return senderName;
+        } else if (txn.metadata?.counterpartyInfo) {
+          return txn.metadata.counterpartyInfo.name;
+        } else {
+          // Fallback
+          return txn.metadata?.userName || txn.metadata?.phoneNumber || 'Customer';
+        }
+      }
+    };
+
+    return {
+      rdbs_transaction_id: apiTxn.reference || apiTxn.transactionId || apiTxn.id || '',
+      rdbs_approval_date: apiTxn.createdAt || apiTxn.updatedAt || new Date().toISOString(),
+      rdbs_sender_name: getSenderName(apiTxn),
+      rdbs_amount: Number(apiTxn.amount || 0),
+      rdbs_type: apiTxn.direction === 'CREDIT' ? 'credit' : 'debit',
+      rdbs_approval_status: mapStatus(apiTxn.status || 'PENDING'),
+      rdbs_date: apiTxn.createdAt || apiTxn.updatedAt
+    };
+  };
+
+  // Transform all API transactions
+  const transactions: Transaction[] = useMemo(() => {
+    if (!transactionsData?.transactions) return [];
+    return transactionsData.transactions.map(transformTransaction);
+  }, [transactionsData, profile]);
 
   // Filter transactions based on criteria
   const filteredTransactions = useMemo(() => {
@@ -115,37 +202,78 @@ export default function ReportsPage() {
   const exportToExcel = () => {
     setIsExporting(true);
     try {
+      if (filteredTransactions.length === 0) {
+        toast.error('No transactions to export');
+        setIsExporting(false);
+        return;
+      }
+
+      // Prepare transaction data with all relevant fields
       const exportData = filteredTransactions.map(txn => {
-        const transaction = txn as any;
+        const transactionDate = new Date(txn.rdbs_approval_date);
         return {
-          'Transaction Mode': transaction.mode || transaction.rdbs_type || 'N/A',
-          'Phone Number / Account Number': transaction.phoneNumber || transaction.accountNumber || transaction.recipientPhone || 'N/A',
-          'Name': transaction.rdbs_sender_name || transaction.recipientName || 'N/A',
+          'Transaction ID': txn.rdbs_transaction_id || 'N/A',
+          'Date': transactionDate.toLocaleDateString('en-UG'),
+          'Time': transactionDate.toLocaleTimeString('en-UG'),
+          'Customer Name': txn.rdbs_sender_name || 'N/A',
+          'Transaction Type': txn.rdbs_type?.toUpperCase() || 'N/A',
+          'Amount (UGX)': Number(txn.rdbs_amount || 0),
+          'Status': txn.rdbs_approval_status?.toUpperCase() || 'N/A',
+          'Date (Full)': transactionDate.toISOString(),
         };
       });
 
+      // Create transactions worksheet
       const ws = XLSX.utils.json_to_sheet(exportData);
+      
+      // Set column widths for better readability
+      const columnWidths = [
+        { wch: 25 }, // Transaction ID
+        { wch: 12 }, // Date
+        { wch: 12 }, // Time
+        { wch: 30 }, // Customer Name
+        { wch: 15 }, // Transaction Type
+        { wch: 15 }, // Amount
+        { wch: 12 }, // Status
+        { wch: 25 }, // Date (Full)
+      ];
+      ws['!cols'] = columnWidths;
+
       const wb = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb, ws, 'Transactions');
       
-      // Add summary sheet
+      // Add summary sheet with formatted values
       const summaryData = [
-        { 'Metric': 'Total Revenue', 'Value': summary.totalRevenue, 'Currency': 'UGX' },
-        { 'Metric': 'Total Expenses', 'Value': summary.totalExpenses, 'Currency': 'UGX' },
-        { 'Metric': 'Net Income', 'Value': summary.netIncome, 'Currency': 'UGX' },
-        { 'Metric': 'Total Transactions', 'Value': summary.totalTransactions },
-        { 'Metric': 'Credit Transactions', 'Value': summary.creditTransactions },
-        { 'Metric': 'Debit Transactions', 'Value': summary.debitTransactions },
-        { 'Metric': 'Average Transaction', 'Value': summary.averageTransaction, 'Currency': 'UGX' },
-        { 'Metric': 'Success Rate', 'Value': `${summary.successRate.toFixed(1)}%` }
+        { 'Metric': 'Total Revenue', 'Value': summary.totalRevenue, 'Currency': 'UGX', 'Formatted': `UGX ${Number(summary.totalRevenue).toLocaleString()}` },
+        { 'Metric': 'Total Expenses', 'Value': summary.totalExpenses, 'Currency': 'UGX', 'Formatted': `UGX ${Number(summary.totalExpenses).toLocaleString()}` },
+        { 'Metric': 'Net Income', 'Value': summary.netIncome, 'Currency': 'UGX', 'Formatted': `UGX ${Number(summary.netIncome).toLocaleString()}` },
+        { 'Metric': 'Total Transactions', 'Value': summary.totalTransactions, 'Currency': '', 'Formatted': summary.totalTransactions.toString() },
+        { 'Metric': 'Credit Transactions', 'Value': summary.creditTransactions, 'Currency': '', 'Formatted': summary.creditTransactions.toString() },
+        { 'Metric': 'Debit Transactions', 'Value': summary.debitTransactions, 'Currency': '', 'Formatted': summary.debitTransactions.toString() },
+        { 'Metric': 'Average Transaction', 'Value': summary.averageTransaction, 'Currency': 'UGX', 'Formatted': `UGX ${Number(summary.averageTransaction).toLocaleString()}` },
+        { 'Metric': 'Success Rate', 'Value': summary.successRate, 'Currency': '%', 'Formatted': `${summary.successRate.toFixed(1)}%` }
       ];
       
       const summaryWs = XLSX.utils.json_to_sheet(summaryData);
+      summaryWs['!cols'] = [
+        { wch: 25 }, // Metric
+        { wch: 15 }, // Value
+        { wch: 10 }, // Currency
+        { wch: 20 }, // Formatted
+      ];
       XLSX.utils.book_append_sheet(wb, summaryWs, 'Summary');
 
-      XLSX.writeFile(wb, `rukapay-transactions-${new Date().toISOString().split('T')[0]}.xlsx`);
+      // Generate filename with merchant name and date
+      const merchantName = profile?.merchant_names || profile?.merchantBusinessTradeName || profile?.businessTradeName || 'Merchant';
+      const sanitizedMerchantName = merchantName.replace(/[^a-zA-Z0-9]/g, '_');
+      const dateStr = new Date().toISOString().split('T')[0];
+      const filename = `${sanitizedMerchantName}-transactions-${dateStr}.xlsx`;
+
+      XLSX.writeFile(wb, filename);
+      toast.success('Excel file exported successfully');
     } catch (error) {
-      console.error('Export failed:', error);
+      console.error('Excel export failed:', error);
+      toast.error('Failed to export Excel file. Please try again.');
     } finally {
       setIsExporting(false);
     }
@@ -155,6 +283,12 @@ export default function ReportsPage() {
   const exportToPDF = async () => {
     setIsExporting(true);
     try {
+      if (filteredTransactions.length === 0) {
+        toast.error('No transactions to export');
+        setIsExporting(false);
+        return;
+      }
+
       // Create a text-based PDF instead of image-based to avoid CSS issues
       const pdf = new jsPDF('landscape', 'mm', 'a4');
       const pageWidth = pdf.internal.pageSize.getWidth();
@@ -170,10 +304,16 @@ export default function ReportsPage() {
       pdf.setFont('helvetica', 'bold');
       pdf.text(`${merchantName} Transaction Report`, pageWidth / 2, margin + 10, { align: 'center' });
       
-      // Add date
-      pdf.setFontSize(12);
+      // Add date range if filters are applied
+      pdf.setFontSize(10);
       pdf.setFont('helvetica', 'normal');
-      pdf.text(`Generated on: ${new Date().toLocaleDateString()}`, pageWidth / 2, margin + 20, { align: 'center' });
+      let dateRangeText = `Generated on: ${new Date().toLocaleDateString('en-UG')}`;
+      if (dateRange.from || dateRange.to) {
+        const fromDate = dateRange.from ? new Date(dateRange.from).toLocaleDateString('en-UG') : 'All time';
+        const toDate = dateRange.to ? new Date(dateRange.to).toLocaleDateString('en-UG') : 'Today';
+        dateRangeText += ` | Period: ${fromDate} to ${toDate}`;
+      }
+      pdf.text(dateRangeText, pageWidth / 2, margin + 20, { align: 'center' });
       
       // Add summary
       pdf.setFontSize(16);
@@ -192,69 +332,112 @@ export default function ReportsPage() {
       yPosition += 8;
       pdf.text(`Total Transactions: ${summary.totalTransactions}`, margin, yPosition);
       yPosition += 8;
+      pdf.text(`Credit Transactions: ${summary.creditTransactions}`, margin, yPosition);
+      yPosition += 8;
+      pdf.text(`Debit Transactions: ${summary.debitTransactions}`, margin, yPosition);
+      yPosition += 8;
       pdf.text(`Success Rate: ${summary.successRate.toFixed(1)}%`, margin, yPosition);
       
       // Add transactions table
       yPosition += 20;
       pdf.setFontSize(16);
       pdf.setFont('helvetica', 'bold');
-      pdf.text('Transaction Details', margin, yPosition);
+      pdf.text(`Transaction Details (${filteredTransactions.length} transactions)`, margin, yPosition);
       
       yPosition += 10;
-      pdf.setFontSize(10);
+      pdf.setFontSize(9);
       pdf.setFont('helvetica', 'normal');
       
       // Table headers
-      const headers = ['ID', 'Date', 'Customer', 'Type', 'Amount', 'Status'];
-      const columnWidths = [30, 25, 40, 20, 30, 25];
+      const headers = ['Transaction ID', 'Date', 'Customer', 'Type', 'Amount (UGX)', 'Status'];
+      const columnWidths = [35, 25, 45, 20, 35, 20];
       let xPosition = margin;
+      
+      // Draw header background
+      pdf.setFillColor(240, 240, 240);
+      pdf.rect(margin, yPosition - 5, contentWidth, 8, 'F');
       
       headers.forEach((header, index) => {
         pdf.setFont('helvetica', 'bold');
+        pdf.setFontSize(9);
         pdf.text(header, xPosition, yPosition);
         xPosition += columnWidths[index];
       });
       
       yPosition += 8;
       pdf.setFont('helvetica', 'normal');
+      pdf.setFontSize(8);
       
       // Add transaction data
-      const transactionsPerPage = 15;
+      const transactionsPerPage = 18;
       let transactionCount = 0;
       
       filteredTransactions.forEach((txn, index) => {
-        if (transactionCount >= transactionsPerPage) {
+        // Check if we need a new page
+        if (yPosition > pageHeight - margin - 10) {
           pdf.addPage();
           yPosition = margin + 20;
+          
+          // Redraw headers on new page
+          xPosition = margin;
+          pdf.setFillColor(240, 240, 240);
+          pdf.rect(margin, yPosition - 5, contentWidth, 8, 'F');
+          pdf.setFont('helvetica', 'bold');
+          pdf.setFontSize(9);
+          headers.forEach((header, headerIndex) => {
+            pdf.text(header, xPosition, yPosition);
+            xPosition += columnWidths[headerIndex];
+          });
+          yPosition += 8;
+          pdf.setFont('helvetica', 'normal');
+          pdf.setFontSize(8);
           transactionCount = 0;
         }
         
         xPosition = margin;
-        pdf.text(txn.rdbs_transaction_id.substring(0, 8), xPosition, yPosition);
+        
+        // Transaction ID (truncate if too long, handle empty strings)
+        const transactionId = (txn.rdbs_transaction_id || 'N/A').toString();
+        const displayId = transactionId.length > 15 ? transactionId.substring(0, 15) + '...' : transactionId;
+        pdf.text(displayId, xPosition, yPosition);
         xPosition += columnWidths[0];
         
-        pdf.text(new Date(txn.rdbs_approval_date).toLocaleDateString(), xPosition, yPosition);
+        // Date
+        const transactionDate = new Date(txn.rdbs_approval_date);
+        pdf.text(transactionDate.toLocaleDateString('en-UG', { day: '2-digit', month: 'short', year: 'numeric' }), xPosition, yPosition);
         xPosition += columnWidths[1];
         
-        pdf.text(txn.rdbs_sender_name.substring(0, 15), xPosition, yPosition);
+        // Customer name (truncate if too long, handle empty strings)
+        const customerName = (txn.rdbs_sender_name || 'N/A').toString();
+        const displayName = customerName.length > 22 ? customerName.substring(0, 22) + '...' : customerName;
+        pdf.text(displayName, xPosition, yPosition);
         xPosition += columnWidths[2];
         
-        pdf.text(txn.rdbs_type, xPosition, yPosition);
+        // Type
+        pdf.text(txn.rdbs_type?.toUpperCase() || 'N/A', xPosition, yPosition);
         xPosition += columnWidths[3];
         
-        pdf.text(`UGX ${Number(txn.rdbs_amount).toLocaleString()}`, xPosition, yPosition);
+        // Amount
+        pdf.text(`UGX ${Number(txn.rdbs_amount || 0).toLocaleString()}`, xPosition, yPosition);
         xPosition += columnWidths[4];
         
-        pdf.text(txn.rdbs_approval_status, xPosition, yPosition);
+        // Status
+        pdf.text(txn.rdbs_approval_status?.toUpperCase() || 'N/A', xPosition, yPosition);
         
         yPosition += 6;
         transactionCount++;
       });
       
-      pdf.save(`${merchantName.replace(/[^a-zA-Z0-9]/g, '_')}-transaction-report-${new Date().toISOString().split('T')[0]}.pdf`);
+      // Generate filename
+      const sanitizedMerchantName = merchantName.replace(/[^a-zA-Z0-9]/g, '_');
+      const dateStr = new Date().toISOString().split('T')[0];
+      const filename = `${sanitizedMerchantName}-transaction-report-${dateStr}.pdf`;
+      
+      pdf.save(filename);
+      toast.success('PDF exported successfully');
     } catch (error) {
       console.error('PDF export failed:', error);
-      alert('Failed to generate PDF. Please try again. If the issue persists, try using the Excel export instead.');
+      toast.error('Failed to generate PDF. Please try again.');
     } finally {
       setIsExporting(false);
     }
@@ -268,6 +451,27 @@ export default function ReportsPage() {
     setSearchTerm('');
   };
 
+  // Handle loading state
+  const loading = profileLoading || transactionsLoading;
+
+  // Handle errors
+  useEffect(() => {
+    if (transactionsError) {
+      console.error('Error loading transactions:', transactionsError);
+      toast.error('Failed to load transaction data. Please try again.');
+    }
+  }, [transactionsError]);
+
+  // Refresh handler
+  const handleRefresh = async () => {
+    try {
+      await refetchTransactions();
+      toast.success('Reports refreshed');
+    } catch (error) {
+      toast.error('Failed to refresh reports');
+    }
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
@@ -275,6 +479,21 @@ export default function ReportsPage() {
           <RefreshCw className="w-5 h-5 animate-spin" />
           <span>Loading reports...</span>
         </div>
+      </div>
+    );
+  }
+
+  if (transactionsError) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <Card className="p-8 text-center max-w-md">
+          <h2 className="text-xl font-semibold text-red-600 mb-2">Error Loading Reports</h2>
+          <p className="text-gray-600 mb-4">Failed to load transaction data. Please try again.</p>
+          <Button onClick={handleRefresh} variant="outline">
+            <RefreshCw className="w-4 h-4 mr-2" />
+            Retry
+          </Button>
+        </Card>
       </div>
     );
   }
@@ -291,8 +510,26 @@ export default function ReportsPage() {
             </div>
             <div className="flex gap-2">
               <Button 
+                onClick={handleRefresh}
+                variant="outline"
+                disabled={transactionsLoading}
+                className="flex items-center gap-2"
+              >
+                <RefreshCw className={`w-4 h-4 ${transactionsLoading ? 'animate-spin' : ''}`} />
+                Refresh
+              </Button>
+              <Button 
+                onClick={exportToExcel} 
+                disabled={isExporting || filteredTransactions.length === 0}
+                variant="outline"
+                className="flex items-center gap-2"
+              >
+                <DownloadCloud className="w-4 h-4" />
+                {isExporting ? 'Exporting...' : 'Export Excel'}
+              </Button>
+              <Button 
                 onClick={exportToPDF} 
-                disabled={isExporting}
+                disabled={isExporting || filteredTransactions.length === 0}
                 className="bg-[#08163d] hover:bg-[#131824]"
               >
                 <FileText className="w-4 h-4 mr-2" />
@@ -437,7 +674,12 @@ export default function ReportsPage() {
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <Chart period="Monthly" from={dateRange.from} to={dateRange.to} />
+              <Chart 
+                period="Monthly" 
+                from={dateRange.from} 
+                to={dateRange.to}
+                transactions={transactions}
+              />
             </CardContent>
           </Card>
 

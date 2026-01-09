@@ -85,9 +85,17 @@ const chartConfig = {
     },
 } satisfies ChartConfig
 
-export function Chart({ period = "Monthly", from, to }: { period?: "Monthly" | "Weekly", from?: string, to?: string }) {
+interface ChartProps {
+  period?: "Monthly" | "Weekly";
+  from?: string;
+  to?: string;
+  transactions?: any[]; // Optional prop to pass transactions directly
+}
+
+export function Chart({ period = "Monthly", from, to, transactions: propTransactions }: ChartProps) {
   const { profile } = useUserProfile();
-  const transactions = profile?.merchant_transactions || [];
+  // Use prop transactions if provided, otherwise fall back to profile transactions
+  const transactions = propTransactions || profile?.merchant_transactions || [];
   const filteredTransactions = useMemo(() => {
     if (!from || !to) return transactions.sort((a: any, b: any) => new Date(b.rdbs_approval_date).getTime() - new Date(a.rdbs_approval_date).getTime());
     return transactions.filter((txn: any) => {
