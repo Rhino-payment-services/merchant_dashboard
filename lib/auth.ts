@@ -43,7 +43,11 @@ export const authOptions: NextAuthOptions = {
             merchantCode: user.merchantCode,
             accessToken,
             refreshToken,
-            user: user
+            user: {
+              ...user,
+              mustChangePassword: user.mustChangePassword || user.isFirstLogin || false,
+              isFirstLogin: user.isFirstLogin || false
+            }
           }
         } catch (error: any) {
           console.error("Authorization error:", error)
@@ -98,56 +102,6 @@ export const authOptions: NextAuthOptions = {
         } catch (error: any) {
           console.error("Authorization error:", error)
           throw new Error(error.response?.data?.message || error.message || "Invalid email or password")
-        }
-      }
-    }),
-    // Provider 3: Email + OTP (Team Members - using same admin API)
-    CredentialsProvider({
-      id: "team-member-otp",
-      name: "Team Member OTP",
-      credentials: {
-        email: { label: "Email", type: "email" },
-        otp: { label: "OTP", type: "text" }
-      },
-      async authorize(credentials) {
-        try {
-          if (!credentials?.email || !credentials?.otp) {
-            throw new Error("Email and OTP are required")
-          }
-
-          // Verify OTP using admin verify-otp API (same as admin users)
-          const response = await axios.post(`${API_URL}/auth/verify-otp`, {
-            email: credentials.email,
-            otp: credentials.otp
-          })
-
-          const { success, user, accessToken, refreshToken, message } = response.data
-
-          if (!success || !accessToken || !refreshToken) {
-            throw new Error(message || "OTP verification failed")
-          }
-
-          // Return user data with tokens
-          return {
-            id: user.id,
-            email: user.email,
-            phone: user.phone,
-            name: user.profile?.firstName + " " + user.profile?.lastName || user.email,
-            role: user.role,
-            userType: user.userType,
-            subscriberType: user.subscriberType,
-            merchantCode: user.merchantCode,
-            accessToken,
-            refreshToken,
-            user: {
-              ...user,
-              mustChangePassword: user.mustChangePassword || user.isFirstLogin || false,
-              isFirstLogin: user.isFirstLogin || false
-            }
-          }
-        } catch (error: any) {
-          console.error("Authorization error:", error)
-          throw new Error(error.response?.data?.message || error.message || "OTP verification failed")
         }
       }
     })
