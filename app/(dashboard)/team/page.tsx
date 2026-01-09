@@ -48,8 +48,7 @@ import {
   Key,
   ArrowRightLeft,
   Loader2,
-  Phone,
-  User
+  Phone
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useQueryClient } from '@tanstack/react-query';
@@ -707,14 +706,10 @@ export default function TeamManagementPage() {
                         <div className="flex items-center gap-2 text-sm">
                           <Phone className="h-4 w-4 text-gray-400" />
                           {member.phone ? (
-                            <span className="text-gray-600">{member.phone}</span>
+                            <span className="text-gray-600">{member.phone.replace(/^\+/, '')}</span>
                           ) : (
                             <span className="text-red-500 italic">No phone number</span>
                           )}
-                        </div>
-                        <div className="flex items-center gap-2 text-sm text-gray-500">
-                          <User className="h-4 w-4 text-gray-400" />
-                          <span>User ID: {member.userId.slice(0, 8)}...</span>
                         </div>
                       </div>
                       
