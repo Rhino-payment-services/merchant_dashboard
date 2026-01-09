@@ -47,7 +47,9 @@ import {
   Edit,
   Key,
   ArrowRightLeft,
-  Loader2
+  Loader2,
+  Phone,
+  User
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useQueryClient } from '@tanstack/react-query';
@@ -670,18 +672,19 @@ export default function TeamManagementPage() {
               {teamMembers.map((member) => (
                 <div
                   key={member.id}
-                  className="flex items-center justify-between p-4 border rounded-lg hover:bg-gray-50"
+                  className="flex items-start justify-between p-4 border rounded-lg hover:bg-gray-50"
                 >
-                  <div className="flex items-center gap-4 flex-1">
-                    <div className="h-10 w-10 rounded-full bg-blue-100 flex items-center justify-center">
-                      <span className="text-blue-600 font-semibold">
+                  <div className="flex items-start gap-4 flex-1">
+                    <div className="h-12 w-12 rounded-full bg-blue-100 flex items-center justify-center flex-shrink-0">
+                      <span className="text-blue-600 font-semibold text-lg">
                         {member.firstName?.[0] || member.email[0].toUpperCase()}
                       </span>
                     </div>
                     
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2">
-                        <p className="font-medium text-gray-900">
+                    <div className="flex-1 min-w-0">
+                      {/* Name and badges */}
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <p className="font-semibold text-gray-900">
                           {member.firstName && member.lastName 
                             ? `${member.firstName} ${member.lastName}`
                             : member.email
@@ -694,9 +697,29 @@ export default function TeamManagementPage() {
                           {member.status}
                         </Badge>
                       </div>
-                      <p className="text-sm text-gray-500">{member.email}</p>
                       
-                      <div className="flex gap-2 mt-2">
+                      {/* Contact details */}
+                      <div className="mt-2 space-y-1">
+                        <div className="flex items-center gap-2 text-sm text-gray-600">
+                          <Mail className="h-4 w-4 text-gray-400" />
+                          <span>{member.email}</span>
+                        </div>
+                        <div className="flex items-center gap-2 text-sm">
+                          <Phone className="h-4 w-4 text-gray-400" />
+                          {member.phone ? (
+                            <span className="text-gray-600">{member.phone}</span>
+                          ) : (
+                            <span className="text-red-500 italic">No phone number</span>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-2 text-sm text-gray-500">
+                          <User className="h-4 w-4 text-gray-400" />
+                          <span>User ID: {member.userId.slice(0, 8)}...</span>
+                        </div>
+                      </div>
+                      
+                      {/* Permissions */}
+                      <div className="flex gap-2 mt-3 flex-wrap">
                         {member.canViewBalance && (
                           <Badge variant="outline" className="text-xs">
                             View Balance
@@ -719,9 +742,17 @@ export default function TeamManagementPage() {
                         )}
                       </div>
 
+                      {/* Status messages */}
                       {member.status === 'PENDING' && (
-                        <p className="text-xs text-yellow-600 mt-1">
+                        <p className="text-xs text-yellow-600 mt-2">
+                          <Clock className="h-3 w-3 inline mr-1" />
                           Invited {new Date(member.invitedAt).toLocaleDateString()} - Waiting for acceptance
+                        </p>
+                      )}
+                      {member.status === 'ACTIVE' && member.acceptedAt && (
+                        <p className="text-xs text-green-600 mt-2">
+                          <CheckCircle className="h-3 w-3 inline mr-1" />
+                          Active since {new Date(member.acceptedAt).toLocaleDateString()}
                         </p>
                       )}
                     </div>

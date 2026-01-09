@@ -5,6 +5,7 @@ export interface TeamMember {
   walletId: string;
   userId: string;
   email: string;
+  phone?: string | null;
   firstName: string;
   lastName: string;
   role: 'OWNER' | 'ADMIN' | 'ACCOUNTANT' | 'MEMBER' | 'VIEWER';
