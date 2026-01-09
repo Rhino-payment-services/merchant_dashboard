@@ -28,12 +28,10 @@ function LoginContent() {
     phoneNumber: '',
   });
 
-  // Team member login (Email + Password or Phone + OTP)
+  // Team member login (Email + Password only)
   const [teamData, setTeamData] = useState({
     email: '',
-    password: '',
-    phoneNumber: '',
-    loginMethod: 'password' as 'password' | 'otp' // Login method selector
+    password: ''
   });
 
   // Handle Owner Login - Request OTP
@@ -73,55 +71,12 @@ function LoginContent() {
     }
   };
 
-  // Handle Team Member Login - Request OTP (using same merchant OTP API as owner)
-  const handleTeamOTPRequest = async (e: React.FormEvent) => {
-    e.preventDefault();
-    
-    if (!teamData.phoneNumber) {
-      toast.error('Please enter your phone number');
-      return;
-    }
-
-    setIsLoading(true);
-    
-    try {
-      // Request OTP using merchant login API (same as owner - phone + OTP)
-      console.log('🔗 Calling API for team member:', `${API_URL}/auth/merchant/login`);
-      const response = await fetch(`${API_URL}/auth/merchant/login`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ phoneNumber: teamData.phoneNumber })
-      });
-
-      const data = await response.json();
-
-      if (data.success) {
-        toast.success('OTP sent to your phone!');
-        // Redirect to OTP page with phoneNumber param (same as owner)
-        router.push(`/auth/otp?phoneNumber=${encodeURIComponent(teamData.phoneNumber)}&type=team&expiresIn=${data.expiresIn || 300}`);
-      } else {
-        toast.error(data.message || 'Failed to send OTP');
-      }
-    } catch (error: any) {
-      console.error('OTP request error:', error);
-      toast.error('Failed to send OTP. Please try again.');
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
   // Handle Team Member Login - Email + Password
   const handleTeamLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     
     if (!teamData.email) {
       toast.error('Please enter your email address');
-      return;
-    }
-
-    // If OTP method selected, request OTP instead
-    if (teamData.loginMethod === 'otp') {
-      await handleTeamOTPRequest(e);
       return;
     }
 
@@ -230,112 +185,53 @@ function LoginContent() {
             </form>
           </TabsContent>
 
-          {/* Team Member Login (Email + Password or Phone + OTP) */}
+          {/* Team Member Login (Email + Password only) */}
           <TabsContent value="team">
             <form onSubmit={handleTeamLogin} className="space-y-4">
-              {/* Login Method Selector */}
+              {/* Email Input */}
               <div>
-                <label className="text-sm font-medium text-gray-700 mb-2 block">Login Method</label>
-                <div className="flex gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setTeamData({ ...teamData, loginMethod: 'password', password: '', phoneNumber: '' })}
-                    className={`flex-1 px-4 py-2 rounded-lg border transition-all ${
-                      teamData.loginMethod === 'password'
-                        ? 'bg-main-50 border-main-500 text-main-700 font-medium'
-                        : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50'
-                    }`}
-                  >
-                    <Lock className="w-4 h-4 inline mr-2" />
-                    Password
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setTeamData({ ...teamData, loginMethod: 'otp', password: '', email: '' })}
-                    className={`flex-1 px-4 py-2 rounded-lg border transition-all ${
-                      teamData.loginMethod === 'otp'
-                        ? 'bg-main-50 border-main-500 text-main-700 font-medium'
-                        : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50'
-                    }`}
-                  >
-                    <Phone className="w-4 h-4 inline mr-2" />
-                    Phone OTP
-                  </button>
+                <label htmlFor="email" className="text-sm font-medium text-gray-700">Email Address</label>
+                <div className="relative mt-2">
+                  <Mail className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
+                  <Input
+                    id="email"
+                    type="email"
+                    placeholder="your.email@company.com"
+                    value={teamData.email}
+                    onChange={(e) => setTeamData({ ...teamData, email: e.target.value })}
+                    className="pl-10"
+                    required
+                  />
                 </div>
               </div>
 
-              {/* Email Input (only show if password method selected) */}
-              {teamData.loginMethod === 'password' && (
-                <div>
-                  <label htmlFor="email" className="text-sm font-medium text-gray-700">Email Address</label>
-                  <div className="relative mt-2">
-                    <Mail className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
-                    <Input
-                      id="email"
-                      type="email"
-                      placeholder="your.email@company.com"
-                      value={teamData.email}
-                      onChange={(e) => setTeamData({ ...teamData, email: e.target.value })}
-                      className="pl-10"
-                      required
-                    />
-                  </div>
+              {/* Password Input */}
+              <div>
+                <label htmlFor="password" className="text-sm font-medium text-gray-700">Password</label>
+                <div className="relative mt-2">
+                  <Lock className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
+                  <Input
+                    id="password"
+                    type="password"
+                    placeholder="Enter your password"
+                    value={teamData.password}
+                    onChange={(e) => setTeamData({ ...teamData, password: e.target.value })}
+                    className="pl-10"
+                    required
+                  />
                 </div>
-              )}
-
-              {/* Phone Input (only show if OTP method selected) */}
-              {teamData.loginMethod === 'otp' && (
-                <div>
-                  <label htmlFor="phoneNumber" className="text-sm font-medium text-gray-700">Phone Number</label>
-                  <div className="mt-2">
-                    <PhoneNumberInput
-                      value={teamData.phoneNumber}
-                      onChange={(value) => setTeamData({ ...teamData, phoneNumber: value })}
-                      placeholder="700 123 456"
-                      defaultCountry="ug"
-                    />
-                  </div>
-                  <p className="text-xs text-gray-500 mt-2">
-                    Enter your registered phone number
-                  </p>
-                </div>
-              )}
-
-              {/* Password Input (only show if password method selected) */}
-              {teamData.loginMethod === 'password' && (
-                <div>
-                  <label htmlFor="password" className="text-sm font-medium text-gray-700">Password</label>
-                  <div className="relative mt-2">
-                    <Lock className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
-                    <Input
-                      id="password"
-                      type="password"
-                      placeholder="Enter your password"
-                      value={teamData.password}
-                      onChange={(e) => setTeamData({ ...teamData, password: e.target.value })}
-                      className="pl-10"
-                      required
-                    />
-                  </div>
-                </div>
-              )}
+              </div>
 
               <Button
                 type="submit"
                 className="w-full py-3 bg-main-600 hover:bg-main-700 text-white font-medium rounded-lg transition-all duration-200"
                 disabled={isLoading}
               >
-                {isLoading 
-                  ? (teamData.loginMethod === 'otp' ? 'Sending OTP...' : 'Signing in...') 
-                  : (teamData.loginMethod === 'otp' ? 'Send OTP' : 'Sign In')
-                }
+                {isLoading ? 'Signing in...' : 'Sign In'}
               </Button>
 
               <p className="text-xs text-center text-gray-500">
-                {teamData.loginMethod === 'otp' 
-                  ? "You'll receive a 6-digit OTP via SMS"
-                  : "Team member access provided by business owner"
-                }
+                Team member access provided by business owner
               </p>
             </form>
           </TabsContent>
