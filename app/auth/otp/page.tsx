@@ -72,7 +72,7 @@ function OTPContent() {
     try {
       const otpCode = otp.join('');
       
-      console.log('🔐 Signing in with NextAuth...', { phoneNumber, email, loginType, otp: otpCode });
+      console.log('🔐 Signing in with NextAuth...', { phoneNumber, loginType, otp: otpCode });
       
       // Use NextAuth signIn - team members use same merchant-otp provider (phone + OTP)
       const result = await signIn('merchant-otp', {
