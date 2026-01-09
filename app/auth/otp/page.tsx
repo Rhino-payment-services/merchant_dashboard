@@ -9,11 +9,14 @@ import { Card } from '../../../components/ui/card';
 import { ArrowLeft, ArrowRight, Building2 } from 'lucide-react';
 import Image from 'next/image';
 import { toast } from 'sonner';
+import { API_URL } from '@/lib/config';
 
 function OTPContent() {
   const router = useRouter();
   const searchParams:any = useSearchParams();
   const phoneNumber = searchParams.get('phoneNumber') || '';
+  const email = searchParams.get('email') || '';
+  const loginType = searchParams.get('type') || 'merchant'; // 'merchant' or 'team'
   const expiresIn = parseInt(searchParams.get('expiresIn') || '300'); // Default 5 minutes
   
   const [isLoading, setIsLoading] = useState(false);
@@ -69,14 +72,20 @@ function OTPContent() {
     try {
       const otpCode = otp.join('');
       
-      console.log('🔐 Signing in with NextAuth...', { phoneNumber, otp: otpCode });
+      console.log('🔐 Signing in with NextAuth...', { phoneNumber, email, loginType, otp: otpCode });
       
-      // Use NextAuth signIn
-      const result = await signIn('merchant-otp', {
-        phoneNumber,
-        otp: otpCode,
-        redirect: false,
-      });
+      // Use NextAuth signIn - different provider based on login type
+      const result = loginType === 'team' 
+        ? await signIn('team-member-otp', {
+            email,
+            otp: otpCode,
+            redirect: false,
+          })
+        : await signIn('merchant-otp', {
+            phoneNumber,
+            otp: otpCode,
+            redirect: false,
+          });
       
       console.log('📥 NextAuth Result:', result);
       
@@ -94,6 +103,18 @@ function OTPContent() {
         // Small delay before redirect
         await new Promise(resolve => setTimeout(resolve, 100));
         
+        // Check if user needs to change password (first login for team members)
+        if (loginType === 'team') {
+          const session = await fetch('/api/auth/session').then(res => res.json());
+          const userData = (session?.user as any)?.userData;
+          
+          if (userData?.mustChangePassword || userData?.isFirstLogin) {
+            toast.info('Please set your password');
+            router.push('/auth/change-password?firstLogin=true');
+            return;
+          }
+        }
+        
         // Redirect to dashboard
         console.log('🔄 Redirecting to dashboard...');
         router.push('/');
@@ -110,15 +131,40 @@ function OTPContent() {
     }
   };
 
-  const handleResendOTP = () => {
+  const handleResendOTP = async () => {
     setCountdown(30);
     setCanResend(false);
     setOtp(['', '', '', '', '','']);
     // Focus on first input
     otpRefs.current[0]?.focus();
     
-    // Simulate resend API call
-    console.log('Resending OTP to:', phoneNumber);
+    try {
+      // Resend OTP - use admin login API for team, merchant login for owners
+      const endpoint = loginType === 'team' 
+        ? '/auth/login'  // Admin API for team members
+        : '/auth/merchant/login';
+      
+      const payload = loginType === 'team'
+        ? { email }
+        : { phoneNumber };
+      
+      const response = await fetch(`${API_URL}${endpoint}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+
+      const data = await response.json();
+      
+      if (data.success) {
+        toast.success('OTP resent successfully!');
+      } else {
+        toast.error(data.message || 'Failed to resend OTP');
+      }
+    } catch (error) {
+      console.error('Resend OTP error:', error);
+      toast.error('Failed to resend OTP. Please try again.');
+    }
   };
 
   const handleBackToLogin = () => {
@@ -139,7 +185,9 @@ function OTPContent() {
           <h1 className="text-3xl font-bold text-[#08163d] mb-3">Verify OTP</h1>
           <p className="text-gray-600 text-lg">
             Enter the 6-digit code sent to <br />
-            <span className="font-semibold text-[#08163d]">{phoneNumber}</span>
+            <span className="font-semibold text-[#08163d]">
+              {loginType === 'team' ? email : phoneNumber}
+            </span>
           </p>
         </div>
 

@@ -23,8 +23,21 @@ export default function MerchantAuthGuard({
   useEffect(() => {
     if (status === 'unauthenticated') {
       router.push(redirectTo)
+      return
     }
-  }, [status, router, redirectTo])
+
+    // Check if user needs to change password (first login)
+    if (isAuthenticated && session?.user) {
+      const userData = (session.user as any)?.userData
+      const mustChangePassword = userData?.mustChangePassword || userData?.isFirstLogin
+      const currentPath = window.location.pathname
+
+      // Don't redirect if already on password change page
+      if (mustChangePassword && !currentPath.includes('/auth/change-password')) {
+        router.push('/auth/change-password?firstLogin=true')
+      }
+    }
+  }, [status, isAuthenticated, session, router, redirectTo])
 
   // Show loading while checking authentication
   if (isLoading) {

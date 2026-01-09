@@ -28,10 +28,11 @@ function LoginContent() {
     phoneNumber: '',
   });
 
-  // Team member login (Email + Password)
+  // Team member login (Email + Password or Email + OTP)
   const [teamData, setTeamData] = useState({
     email: '',
-    password: ''
+    password: '',
+    loginMethod: 'password' as 'password' | 'otp' // New: login method selector
   });
 
   // Handle Owner Login - Request OTP
@@ -71,12 +72,59 @@ function LoginContent() {
     }
   };
 
+  // Handle Team Member Login - Request OTP (using same admin API)
+  const handleTeamOTPRequest = async (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    if (!teamData.email) {
+      toast.error('Please enter your email address');
+      return;
+    }
+
+    setIsLoading(true);
+    
+    try {
+      // Request OTP using admin login API (same as admin users)
+      const response = await fetch(`${API_URL}/auth/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: teamData.email })
+      });
+
+      const data = await response.json();
+
+      if (data.success) {
+        toast.success('OTP sent to your email!');
+        // Redirect to OTP page with email param
+        router.push(`/auth/otp?email=${encodeURIComponent(teamData.email)}&type=team&expiresIn=${data.expiresIn || 300}`);
+      } else {
+        toast.error(data.message || 'Failed to send OTP');
+      }
+    } catch (error: any) {
+      console.error('OTP request error:', error);
+      toast.error('Failed to send OTP. Please try again.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   // Handle Team Member Login - Email + Password
   const handleTeamLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    if (!teamData.email || !teamData.password) {
-      toast.error('Please enter email and password');
+    if (!teamData.email) {
+      toast.error('Please enter your email address');
+      return;
+    }
+
+    // If OTP method selected, request OTP instead
+    if (teamData.loginMethod === 'otp') {
+      await handleTeamOTPRequest(e);
+      return;
+    }
+
+    if (!teamData.password) {
+      toast.error('Please enter your password');
       return;
     }
 
@@ -97,6 +145,16 @@ function LoginContent() {
       }
 
       if (result?.ok) {
+        // Check if user needs to change password (first login)
+        const session = await fetch('/api/auth/session').then(res => res.json());
+        const userData = (session?.user as any)?.userData;
+        
+        if (userData?.mustChangePassword || userData?.isFirstLogin) {
+          toast.info('Please set your password');
+          router.push('/auth/change-password?firstLogin=true');
+          return;
+        }
+
         toast.success('Login successful!');
         router.push('/');
         router.refresh();
@@ -170,7 +228,7 @@ function LoginContent() {
             </form>
           </TabsContent>
 
-          {/* Team Member Login (Email + Password) */}
+          {/* Team Member Login (Email + Password or OTP) */}
           <TabsContent value="team">
             <form onSubmit={handleTeamLogin} className="space-y-4">
               <div>
@@ -189,32 +247,72 @@ function LoginContent() {
                 </div>
               </div>
 
+              {/* Login Method Selector */}
               <div>
-                <label htmlFor="password" className="text-sm font-medium text-gray-700">Password</label>
-                <div className="relative mt-2">
-                  <Lock className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
-                  <Input
-                    id="password"
-                    type="password"
-                    placeholder="Enter your password"
-                    value={teamData.password}
-                    onChange={(e) => setTeamData({ ...teamData, password: e.target.value })}
-                    className="pl-10"
-                    required
-                  />
+                <label className="text-sm font-medium text-gray-700 mb-2 block">Login Method</label>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setTeamData({ ...teamData, loginMethod: 'password', password: '' })}
+                    className={`flex-1 px-4 py-2 rounded-lg border transition-all ${
+                      teamData.loginMethod === 'password'
+                        ? 'bg-main-50 border-main-500 text-main-700 font-medium'
+                        : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50'
+                    }`}
+                  >
+                    <Lock className="w-4 h-4 inline mr-2" />
+                    Password
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setTeamData({ ...teamData, loginMethod: 'otp', password: '' })}
+                    className={`flex-1 px-4 py-2 rounded-lg border transition-all ${
+                      teamData.loginMethod === 'otp'
+                        ? 'bg-main-50 border-main-500 text-main-700 font-medium'
+                        : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50'
+                    }`}
+                  >
+                    <Phone className="w-4 h-4 inline mr-2" />
+                    OTP
+                  </button>
                 </div>
               </div>
+
+              {/* Password Input (only show if password method selected) */}
+              {teamData.loginMethod === 'password' && (
+                <div>
+                  <label htmlFor="password" className="text-sm font-medium text-gray-700">Password</label>
+                  <div className="relative mt-2">
+                    <Lock className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
+                    <Input
+                      id="password"
+                      type="password"
+                      placeholder="Enter your password"
+                      value={teamData.password}
+                      onChange={(e) => setTeamData({ ...teamData, password: e.target.value })}
+                      className="pl-10"
+                      required
+                    />
+                  </div>
+                </div>
+              )}
 
               <Button
                 type="submit"
                 className="w-full py-3 bg-main-600 hover:bg-main-700 text-white font-medium rounded-lg transition-all duration-200"
                 disabled={isLoading}
               >
-                {isLoading ? 'Signing in...' : 'Sign In'}
+                {isLoading 
+                  ? (teamData.loginMethod === 'otp' ? 'Sending OTP...' : 'Signing in...') 
+                  : (teamData.loginMethod === 'otp' ? 'Send OTP' : 'Sign In')
+                }
               </Button>
 
               <p className="text-xs text-center text-gray-500">
-                Team member access provided by business owner
+                {teamData.loginMethod === 'otp' 
+                  ? "You'll receive a 6-digit OTP via email"
+                  : "Team member access provided by business owner"
+                }
               </p>
             </form>
           </TabsContent>
