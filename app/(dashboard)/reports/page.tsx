@@ -18,7 +18,11 @@ import {
   BarChart3,
   PieChart,
   DownloadCloud,
-  RefreshCw
+  RefreshCw,
+  ChevronLeft,
+  ChevronRight,
+  ChevronsLeft,
+  ChevronsRight
 } from 'lucide-react';
 import { Chart } from '../../components/chart';
 import * as XLSX from 'xlsx';
@@ -54,6 +58,8 @@ export default function ReportsPage() {
   const [status, setStatus] = useState<'all' | 'approved' | 'pending' | 'failed'>('all');
   const [searchTerm, setSearchTerm] = useState('');
   const [isExporting, setIsExporting] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage, setItemsPerPage] = useState(10);
 
   // Build filter for API - use date range if provided
   const apiFilter: TransactionFilter = useMemo(() => {
@@ -96,9 +102,19 @@ export default function ReportsPage() {
 
     // Get sender name from transaction metadata (similar to transactions page logic)
     const getSenderName = (txn: any): string => {
-      // Check for admin-funded deposits first
+      // Check for admin-funded deposits/Wallet Funding first
       if (txn.type === 'DEPOSIT' && txn.metadata?.fundedByAdmin) {
         return txn.metadata?.adminName || 'Admin User';
+      }
+      
+      // Wallet Funding - when merchant wallet is being funded (credit to merchant)
+      if (txn.type === 'DEPOSIT' || txn.type === 'WALLET_FUNDING' || 
+          (txn.direction === 'CREDIT' && txn.metadata?.fundedByAdmin)) {
+        // For wallet funding, the sender is the one funding the wallet (admin, external source, etc.)
+        return txn.metadata?.adminName || 
+               txn.metadata?.userName || 
+               txn.metadata?.counterpartyInfo?.name || 
+               'Wallet Funding Source';
       }
       
       if (txn.direction === 'DEBIT') {
@@ -120,17 +136,23 @@ export default function ReportsPage() {
           return txn.metadata.counterpartyInfo.name;
         } else {
           // Fallback
-          return txn.metadata?.userName || txn.metadata?.phoneNumber || 'Customer';
+          return txn.metadata?.userName || txn.metadata?.phoneNumber || 'Sender';
         }
       }
     };
 
+    // Determine transaction type - Wallet Funding should always be credit
+    const isWalletFunding = apiTxn.type === 'DEPOSIT' || 
+                           apiTxn.type === 'WALLET_FUNDING' || 
+                           (apiTxn.direction === 'CREDIT' && apiTxn.metadata?.fundedByAdmin);
+    
     return {
       rdbs_transaction_id: apiTxn.reference || apiTxn.transactionId || apiTxn.id || '',
       rdbs_approval_date: apiTxn.createdAt || apiTxn.updatedAt || new Date().toISOString(),
       rdbs_sender_name: getSenderName(apiTxn),
       rdbs_amount: Number(apiTxn.amount || 0),
-      rdbs_type: apiTxn.direction === 'CREDIT' ? 'credit' : 'debit',
+      // Wallet Funding should always be credit to merchant wallet
+      rdbs_type: isWalletFunding ? 'credit' : (apiTxn.direction === 'CREDIT' ? 'credit' : 'debit'),
       rdbs_approval_status: mapStatus(apiTxn.status || 'PENDING'),
       rdbs_date: apiTxn.createdAt || apiTxn.updatedAt
     };
@@ -162,6 +184,17 @@ export default function ReportsPage() {
     // Sort by rdbs_approval_date in descending order (newest first)
     return filtered.sort((a, b) => new Date(b.rdbs_approval_date).getTime() - new Date(a.rdbs_approval_date).getTime());
   }, [transactions, dateRange, transactionType, status, searchTerm]);
+
+  // Pagination calculations
+  const totalPages = Math.ceil(filteredTransactions.length / itemsPerPage);
+  const startIndex = (currentPage - 1) * itemsPerPage;
+  const endIndex = startIndex + itemsPerPage;
+  const paginatedTransactions = filteredTransactions.slice(startIndex, endIndex);
+
+  // Reset to page 1 when filters change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [dateRange, transactionType, status, searchTerm]);
 
   // Calculate summary statistics
   const summary: ReportSummary = useMemo(() => {
@@ -215,7 +248,7 @@ export default function ReportsPage() {
           'Transaction ID': txn.rdbs_transaction_id || 'N/A',
           'Date': transactionDate.toLocaleDateString('en-UG'),
           'Time': transactionDate.toLocaleTimeString('en-UG'),
-          'Customer Name': txn.rdbs_sender_name || 'N/A',
+          'Sender Name': txn.rdbs_sender_name || 'N/A',
           'Transaction Type': txn.rdbs_type?.toUpperCase() || 'N/A',
           'Amount (UGX)': Number(txn.rdbs_amount || 0),
           'Status': txn.rdbs_approval_status?.toUpperCase() || 'N/A',
@@ -231,7 +264,7 @@ export default function ReportsPage() {
         { wch: 25 }, // Transaction ID
         { wch: 12 }, // Date
         { wch: 12 }, // Time
-        { wch: 30 }, // Customer Name
+        { wch: 30 }, // Sender Name
         { wch: 15 }, // Transaction Type
         { wch: 15 }, // Amount
         { wch: 12 }, // Status
@@ -349,7 +382,7 @@ export default function ReportsPage() {
       pdf.setFont('helvetica', 'normal');
       
       // Table headers
-      const headers = ['Transaction ID', 'Date', 'Customer', 'Type', 'Amount (UGX)', 'Status'];
+      const headers = ['Transaction ID', 'Date', 'Sender', 'Type', 'Amount (UGX)', 'Status'];
       const columnWidths = [35, 25, 45, 20, 35, 20];
       let xPosition = margin;
       
@@ -407,9 +440,9 @@ export default function ReportsPage() {
         pdf.text(transactionDate.toLocaleDateString('en-UG', { day: '2-digit', month: 'short', year: 'numeric' }), xPosition, yPosition);
         xPosition += columnWidths[1];
         
-        // Customer name (truncate if too long, handle empty strings)
-        const customerName = (txn.rdbs_sender_name || 'N/A').toString();
-        const displayName = customerName.length > 22 ? customerName.substring(0, 22) + '...' : customerName;
+        // Sender name (truncate if too long, handle empty strings)
+        const senderName = (txn.rdbs_sender_name || 'N/A').toString();
+        const displayName = senderName.length > 22 ? senderName.substring(0, 22) + '...' : senderName;
         pdf.text(displayName, xPosition, yPosition);
         xPosition += columnWidths[2];
         
@@ -449,6 +482,7 @@ export default function ReportsPage() {
     setTransactionType('all');
     setStatus('all');
     setSearchTerm('');
+    setCurrentPage(1);
   };
 
   // Handle loading state
@@ -739,7 +773,7 @@ export default function ReportsPage() {
                   <TableRow>
                     <TableHead>Reference ID</TableHead>
                     <TableHead>Date & Time</TableHead>
-                    <TableHead>Customer</TableHead>
+                    <TableHead>Sender</TableHead>
                     <TableHead>Type</TableHead>
                     <TableHead>Amount</TableHead>
                     <TableHead>Status</TableHead>
@@ -753,7 +787,7 @@ export default function ReportsPage() {
                       </TableCell>
                     </TableRow>
                   ) : (
-                    filteredTransactions.map((txn) => (
+                    paginatedTransactions.map((txn) => (
                       <TableRow key={txn.rdbs_transaction_id}>
                         <TableCell className="font-mono text-sm">
                           {txn.rdbs_transaction_id}
@@ -798,6 +832,70 @@ export default function ReportsPage() {
                 </TableBody>
               </Table>
             </div>
+            
+            {/* Pagination */}
+            {filteredTransactions.length > 0 && (
+              <div className="flex items-center justify-between px-4 py-3 border-t">
+                <div className="flex items-center gap-4">
+                  <div className="text-sm text-gray-700">
+                    Showing {startIndex + 1} to {Math.min(endIndex, filteredTransactions.length)} of {filteredTransactions.length} results
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <label className="text-sm text-gray-700">Items per page:</label>
+                    <select
+                      value={itemsPerPage}
+                      onChange={(e) => {
+                        setItemsPerPage(Number(e.target.value));
+                        setCurrentPage(1);
+                      }}
+                      className="px-2 py-1 border rounded-md text-sm"
+                    >
+                      <option value={10}>10</option>
+                      <option value={20}>20</option>
+                      <option value={50}>50</option>
+                      <option value={100}>100</option>
+                    </select>
+                  </div>
+                </div>
+                <div className="flex items-center space-x-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setCurrentPage(1)}
+                    disabled={currentPage <= 1}
+                  >
+                    <ChevronsLeft className="w-4 h-4" />
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setCurrentPage(Math.max(currentPage - 1, 1))}
+                    disabled={currentPage <= 1}
+                  >
+                    <ChevronLeft className="w-4 h-4" />
+                  </Button>
+                  <span className="text-sm text-gray-700 px-2">
+                    Page {currentPage} of {totalPages || 1}
+                  </span>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setCurrentPage(Math.min(currentPage + 1, totalPages))}
+                    disabled={currentPage >= totalPages}
+                  >
+                    <ChevronRight className="w-4 h-4" />
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setCurrentPage(totalPages)}
+                    disabled={currentPage >= totalPages}
+                  >
+                    <ChevronsRight className="w-4 h-4" />
+                  </Button>
+                </div>
+              </div>
+            )}
           </CardContent>
         </Card>
       </div>
