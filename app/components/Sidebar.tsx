@@ -20,7 +20,9 @@ import {
   Search,
   Users,
   Briefcase,
-  CheckCircle
+  CheckCircle,
+  FileCheck,
+  ShieldCheck
 } from 'lucide-react';
 import Image from 'next/image';
 import { useSession } from 'next-auth/react';
@@ -38,12 +40,16 @@ const navLinks = [
     // { name: 'Payroll', path: '/payroll', icon: FileText },
     { name: 'Payment', path: '/bulk-payment', icon: ArrowRightLeft },
   ]},
-        { section: 'TOOLS', links: [
-          { name: 'Report', path: '/reports', icon: FileBarChart },
-          { name: 'Team Members', path: '/team', icon: Users },
-          { name: 'Payroll', path: '/payroll', icon: Briefcase },
-          { name: 'Payroll Approvals', path: '/payroll/approvals', icon: CheckCircle },
-        ]},
+  { section: 'TOOLS', links: [
+    { name: 'Report', path: '/reports', icon: FileBarChart },
+    { name: 'Team Members', path: '/team', icon: Users },
+    { name: 'Payroll', path: '/payroll', icon: Briefcase },
+    { name: 'Payroll Approvals', path: '/payroll/approvals', icon: CheckCircle },
+  ]},
+  { section: 'ACCOUNT', links: [
+    { name: 'KYC Verification', path: '/kyc', icon: ShieldCheck },
+    { name: 'Settings', path: '/settings', icon: Settings },
+  ]},
   // { section: 'SUPPORT', links: [
   //   { name: 'Help Center', path: '/help', icon: HelpCircle },
   //   { name: 'Feedback', path: '/feedback', icon: MessageCircle },

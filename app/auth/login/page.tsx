@@ -12,6 +12,7 @@ import { Phone, Mail, Lock, Building2 } from 'lucide-react';
 import Image from 'next/image';
 import { toast } from 'sonner';
 import { API_URL } from '@/lib/config';
+import Link from 'next/link';
 
 function LoginContent() {
   useEffect(() => {
@@ -237,6 +238,14 @@ function LoginContent() {
           </TabsContent>
           </Tabs>
         </Card>
+
+        {/* Sign Up Link */}
+        <p className="text-center mt-4 text-gray-600">
+          Don't have an account?{' '}
+          <Link href="/auth/signup" className="text-main-600 font-medium hover:underline">
+            Sign Up
+          </Link>
+        </p>
       </div>
     </div>
   );
