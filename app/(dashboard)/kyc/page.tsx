@@ -69,13 +69,6 @@ const DOCUMENT_TYPES = [
     icon: Building2
   },
   { 
-    id: 'BANK_STATEMENT', 
-    name: 'Bank Statement', 
-    description: 'Recent bank statement (last 3 months)',
-    required: true,
-    icon: CreditCard
-  },
-  { 
     id: 'BUSINESS_LICENSE', 
     name: 'Business License', 
     description: 'Valid business registration or trading license',
@@ -402,16 +395,6 @@ export default function KycPage() {
               const uploadedDoc = getDocumentForType(docType.id)
               const DocIcon = docType.icon
               const isUploading = uploadingDocument === docType.id
-              
-              // Debug logging for Bank Statement
-              if (docType.id === 'BANK_STATEMENT') {
-                console.log('Bank Statement render check:', {
-                  hasUploadedDoc: !!uploadedDoc,
-                  uploadedDoc,
-                  status: uploadedDoc?.status,
-                  documentUrl: uploadedDoc?.documentUrl
-                })
-              }
 
               return (
                 <Card key={docType.id} className={uploadedDoc?.status === 'REJECTED' ? 'border-red-200' : ''}>
