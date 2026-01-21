@@ -229,7 +229,12 @@ export default function KycPage() {
     // Only return documents that are actually uploaded (have a documentUrl)
     const doc = kycStatus?.documents?.find(doc => doc.documentType === type)
     // Filter out documents without a valid documentUrl - these are not actually uploaded
-    if (doc && !doc.documentUrl) {
+    // Check for null, undefined, or empty string
+    if (!doc) {
+      return undefined
+    }
+    // Ensure documentUrl exists and is not empty
+    if (!doc.documentUrl || (typeof doc.documentUrl === 'string' && doc.documentUrl.trim() === '')) {
       return undefined
     }
     return doc
@@ -377,25 +382,34 @@ export default function KycPage() {
                           <p className="text-sm text-gray-500">{docType.description}</p>
                           
                           {/* For National ID: Show registered National ID and verification status if available */}
-                          {docType.id === 'NATIONAL_ID' && !uploadedDoc && (profile?.merchantData?.ownerNationalId || profile?.merchantData?.nationalId) && (
-                            <div className="mt-2 p-2 bg-blue-50 border border-blue-200 rounded-md">
-                              <p className="text-xs font-medium text-blue-900 mb-1">
-                                Registered National ID: {profile?.merchantData?.ownerNationalId || profile?.merchantData?.nationalId}
-                              </p>
-                              <p className="text-xs text-blue-700">
-                                {profile?.merchantData?.isVerified ? (
-                                  <span className="flex items-center gap-1">
-                                    <CheckCircle className="w-3 h-3" />
-                                    Verified during registration
-                                  </span>
-                                ) : (
-                                  <span className="flex items-center gap-1">
-                                    <Clock className="w-3 h-3" />
-                                    Not yet verified
-                                  </span>
-                                )}
-                              </p>
-                            </div>
+                          {docType.id === 'NATIONAL_ID' && !uploadedDoc && (
+                            (() => {
+                              // Check owner's National ID from merchant data first, then user profile
+                              const ownerNationalId = profile?.merchantData?.ownerNationalId || 
+                                                      profile?.merchantData?.nationalId ||
+                                                      profile?.userProfile?.nationalId ||
+                                                      profile?.nationalId;
+                              return ownerNationalId ? (
+                                <div className="mt-2 p-2 bg-blue-50 border border-blue-200 rounded-md">
+                                  <p className="text-xs font-medium text-blue-900 mb-1">
+                                    Registered National ID: {ownerNationalId}
+                                  </p>
+                                  <p className="text-xs text-blue-700">
+                                    {profile?.merchantData?.isVerified || profile?.isVerified ? (
+                                      <span className="flex items-center gap-1">
+                                        <CheckCircle className="w-3 h-3" />
+                                        Verified during registration
+                                      </span>
+                                    ) : (
+                                      <span className="flex items-center gap-1">
+                                        <Clock className="w-3 h-3" />
+                                        Not yet verified
+                                      </span>
+                                    )}
+                                  </p>
+                                </div>
+                              ) : null;
+                            })()
                           )}
                           
                           {uploadedDoc?.rejectionReason && (
@@ -431,32 +445,40 @@ export default function KycPage() {
                           </Button>
                         )}
                         
-                        {/* For National ID, show option to use registered ID if available from merchant registration */}
-                        {docType.id === 'NATIONAL_ID' && !uploadedDoc && (profile?.merchantData?.ownerNationalId || profile?.merchantData?.nationalId) && (
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={async () => {
-                              // Use the National ID from merchant registration
-                              const registeredNationalId = profile?.merchantData?.ownerNationalId || profile?.merchantData?.nationalId
-                              try {
-                                // Create a document reference using the registered National ID
-                                // This would typically call an API endpoint to link the registered ID
-                                toast.success(`Using National ID from registration: ${registeredNationalId}`)
-                                // Optionally, you could call an API to create a document reference
-                                // await apiClient.post('/merchant-kyc/use-registered-id', { 
-                                //   documentType: 'NATIONAL_ID',
-                                //   documentNumber: registeredNationalId
-                                // })
-                                refetchKyc()
-                              } catch (error: any) {
-                                toast.error(error.response?.data?.message || 'Failed to use registered National ID')
-                              }
-                            }}
-                          >
-                            <FileCheck className="w-4 h-4 mr-2" />
-                            Use Registered ID
-                          </Button>
+                        {/* For National ID, show option to use registered ID if available from owner's registration */}
+                        {docType.id === 'NATIONAL_ID' && !uploadedDoc && (
+                          (() => {
+                            // Check owner's National ID from merchant data first, then user profile
+                            const ownerNationalId = profile?.merchantData?.ownerNationalId || 
+                                                    profile?.merchantData?.nationalId ||
+                                                    profile?.userProfile?.nationalId ||
+                                                    profile?.nationalId;
+                            return ownerNationalId ? (
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={async () => {
+                                  // Use the National ID from owner's registration
+                                  try {
+                                    // Create a document reference using the registered National ID
+                                    // This would typically call an API endpoint to link the registered ID
+                                    toast.success(`Using National ID from registration: ${ownerNationalId}`)
+                                    // Optionally, you could call an API to create a document reference
+                                    // await apiClient.post('/merchant-kyc/use-registered-id', { 
+                                    //   documentType: 'NATIONAL_ID',
+                                    //   documentNumber: ownerNationalId
+                                    // })
+                                    refetchKyc()
+                                  } catch (error: any) {
+                                    toast.error(error.response?.data?.message || 'Failed to use registered National ID')
+                                  }
+                                }}
+                              >
+                                <FileCheck className="w-4 h-4 mr-2" />
+                                Use Registered ID
+                              </Button>
+                            ) : null;
+                          })()
                         )}
                         
                         {uploadedDoc && uploadedDoc.status !== 'VERIFIED' && (
@@ -470,7 +492,11 @@ export default function KycPage() {
                           </Button>
                         )}
                         
-                        {(!uploadedDoc || uploadedDoc.status === 'REJECTED') && (
+                        {/* Show upload button if no document is uploaded OR document is rejected OR document doesn't have a valid URL */}
+                        {(!uploadedDoc || 
+                          uploadedDoc.status === 'REJECTED' || 
+                          !uploadedDoc.documentUrl || 
+                          (typeof uploadedDoc.documentUrl === 'string' && uploadedDoc.documentUrl.trim() === '')) && (
                           <>
                             <input
                               ref={el => { fileInputRefs.current[docType.id] = el }}
@@ -493,7 +519,7 @@ export default function KycPage() {
                               ) : (
                                 <Upload className="w-4 h-4 mr-2" />
                               )}
-                              {uploadedDoc ? 'Re-upload' : 'Upload'}
+                              {uploadedDoc && uploadedDoc.status === 'REJECTED' ? 'Re-upload' : 'Upload'}
                             </Button>
                           </>
                         )}
