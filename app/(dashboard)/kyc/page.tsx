@@ -35,8 +35,8 @@ interface KycDocument {
   documentNumber?: string
   documentUrl?: string
   originalName?: string
-  status: 'PENDING' | 'VERIFIED' | 'REJECTED' | 'EXPIRED'
-  uploadedAt: string
+  status?: 'PENDING' | 'VERIFIED' | 'REJECTED' | 'EXPIRED'
+  uploadedAt?: string
   verifiedAt?: string
   rejectionReason?: string
 }
@@ -256,18 +256,20 @@ export default function KycPage() {
       return undefined
     }
     
-    // CRITICAL: If status is NOT_UPLOADED, treat it as if there's no document
-    if (doc.status === 'NOT_UPLOADED' || !doc.status) {
-      console.log(`Document ${type} filtered out - status is NOT_UPLOADED or missing`)
+    // CRITICAL: If status is missing or undefined, treat it as if there's no document
+    // (This handles cases where backend returns placeholder records)
+    if (!doc.status) {
+      console.log(`Document ${type} filtered out - status is missing`)
       return undefined
     }
     
     // Ensure documentUrl exists and is not empty
+    // This is the primary check - if there's no valid URL, the document isn't actually uploaded
     if (!doc.documentUrl || 
         doc.documentUrl === null || 
         doc.documentUrl === undefined ||
         (typeof doc.documentUrl === 'string' && doc.documentUrl.trim() === '')) {
-      console.log(`Document ${type} filtered out - no valid documentUrl (documentUrl: ${JSON.stringify(doc.documentUrl)})`)
+      console.log(`Document ${type} filtered out - no valid documentUrl (documentUrl: ${JSON.stringify(doc.documentUrl)}, status: ${doc.status})`)
       return undefined
     }
     
