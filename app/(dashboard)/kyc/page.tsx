@@ -256,6 +256,12 @@ export default function KycPage() {
       return undefined
     }
     
+    // CRITICAL: If status is NOT_UPLOADED, treat it as if there's no document
+    if (doc.status === 'NOT_UPLOADED' || !doc.status) {
+      console.log(`Document ${type} filtered out - status is NOT_UPLOADED or missing`)
+      return undefined
+    }
+    
     // Ensure documentUrl exists and is not empty
     if (!doc.documentUrl || 
         doc.documentUrl === null || 
