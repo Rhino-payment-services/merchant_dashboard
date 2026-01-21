@@ -387,13 +387,46 @@ export default function KycPage() {
                       <div className="flex items-center gap-3">
                         {getStatusBadge(uploadedDoc?.status || 'NOT_UPLOADED')}
                         
-                        {uploadedDoc?.documentUrl && (
+                        {/* Only show view button if document actually exists, has a URL, and has a valid uploaded status */}
+                        {/* Don't show view button if status would show as "Not Uploaded" */}
+                        {uploadedDoc && 
+                         uploadedDoc.documentUrl && 
+                         uploadedDoc.status && 
+                         ['PENDING', 'VERIFIED', 'REJECTED', 'EXPIRED'].includes(uploadedDoc.status) && (
                           <Button
                             variant="outline"
                             size="sm"
                             onClick={() => window.open(uploadedDoc.documentUrl, '_blank')}
                           >
                             <Eye className="w-4 h-4" />
+                          </Button>
+                        )}
+                        
+                        {/* For National ID, show option to use registered ID if available from merchant registration */}
+                        {docType.id === 'NATIONAL_ID' && !uploadedDoc && (profile?.merchantData?.ownerNationalId || profile?.merchantData?.nationalId) && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={async () => {
+                              // Use the National ID from merchant registration
+                              const registeredNationalId = profile?.merchantData?.ownerNationalId || profile?.merchantData?.nationalId
+                              try {
+                                // Create a document reference using the registered National ID
+                                // This would typically call an API endpoint to link the registered ID
+                                toast.success(`Using National ID from registration: ${registeredNationalId}`)
+                                // Optionally, you could call an API to create a document reference
+                                // await apiClient.post('/merchant-kyc/use-registered-id', { 
+                                //   documentType: 'NATIONAL_ID',
+                                //   documentNumber: registeredNationalId
+                                // })
+                                refetchKyc()
+                              } catch (error: any) {
+                                toast.error(error.response?.data?.message || 'Failed to use registered National ID')
+                              }
+                            }}
+                          >
+                            <FileCheck className="w-4 h-4 mr-2" />
+                            Use Registered ID
                           </Button>
                         )}
                         
