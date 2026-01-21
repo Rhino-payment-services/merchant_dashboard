@@ -375,6 +375,29 @@ export default function KycPage() {
                             {docType.required && <Badge variant="outline" className="text-xs">Required</Badge>}
                           </div>
                           <p className="text-sm text-gray-500">{docType.description}</p>
+                          
+                          {/* For National ID: Show registered National ID and verification status if available */}
+                          {docType.id === 'NATIONAL_ID' && !uploadedDoc && (profile?.merchantData?.ownerNationalId || profile?.merchantData?.nationalId) && (
+                            <div className="mt-2 p-2 bg-blue-50 border border-blue-200 rounded-md">
+                              <p className="text-xs font-medium text-blue-900 mb-1">
+                                Registered National ID: {profile?.merchantData?.ownerNationalId || profile?.merchantData?.nationalId}
+                              </p>
+                              <p className="text-xs text-blue-700">
+                                {profile?.merchantData?.isVerified ? (
+                                  <span className="flex items-center gap-1">
+                                    <CheckCircle className="w-3 h-3" />
+                                    Verified during registration
+                                  </span>
+                                ) : (
+                                  <span className="flex items-center gap-1">
+                                    <Clock className="w-3 h-3" />
+                                    Not yet verified
+                                  </span>
+                                )}
+                              </p>
+                            </div>
+                          )}
+                          
                           {uploadedDoc?.rejectionReason && (
                             <p className="text-sm text-red-600 mt-1">
                               <AlertCircle className="w-3 h-3 inline mr-1" />
