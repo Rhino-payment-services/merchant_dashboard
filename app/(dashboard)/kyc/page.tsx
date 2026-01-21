@@ -226,7 +226,13 @@ export default function KycPage() {
   }
 
   const getDocumentForType = (type: string) => {
-    return kycStatus?.documents?.find(doc => doc.documentType === type)
+    // Only return documents that are actually uploaded (have a documentUrl)
+    const doc = kycStatus?.documents?.find(doc => doc.documentType === type)
+    // Filter out documents without a valid documentUrl - these are not actually uploaded
+    if (doc && !doc.documentUrl) {
+      return undefined
+    }
+    return doc
   }
 
   const getOverallStatusColor = () => {
@@ -375,8 +381,8 @@ export default function KycPage() {
                               Rejection reason: {uploadedDoc.rejectionReason}
                             </p>
                           )}
-                          {/* Only show uploaded date if document actually exists */}
-                          {uploadedDoc && uploadedDoc.uploadedAt && (
+                          {/* Only show uploaded date if document actually exists AND has a valid documentUrl */}
+                          {uploadedDoc && uploadedDoc.documentUrl && uploadedDoc.uploadedAt && (
                             <p className="text-xs text-gray-400 mt-1">
                               Uploaded: {new Date(uploadedDoc.uploadedAt).toLocaleDateString()}
                             </p>
