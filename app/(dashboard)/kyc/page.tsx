@@ -104,8 +104,11 @@ export default function KycPage() {
     queryFn: async () => {
       try {
         const response = await apiClient.get('/merchant-kyc/status')
+        console.log('KYC Status API Response:', response.data)
+        console.log('Documents from API:', response.data?.documents)
         return response.data
       } catch (error: any) {
+        console.error('KYC Status API Error:', error)
         // Return default status if not found or unauthorized
         if (error.response?.status === 404 || error.response?.status === 401) {
           return {
@@ -228,6 +231,19 @@ export default function KycPage() {
   const getDocumentForType = (type: string) => {
     // Only return documents that are actually uploaded (have a documentUrl)
     const doc = kycStatus?.documents?.find(doc => doc.documentType === type)
+    
+    // Debug logging
+    if (doc && type === 'BANK_STATEMENT') {
+      console.log('Bank Statement document found:', {
+        id: doc.id,
+        documentUrl: doc.documentUrl,
+        status: doc.status,
+        uploadedAt: doc.uploadedAt,
+        hasUrl: !!doc.documentUrl,
+        urlLength: doc.documentUrl?.length
+      })
+    }
+    
     // Filter out documents without a valid documentUrl - these are not actually uploaded
     // Check for null, undefined, or empty string
     if (!doc) {
@@ -235,6 +251,7 @@ export default function KycPage() {
     }
     // Ensure documentUrl exists and is not empty
     if (!doc.documentUrl || (typeof doc.documentUrl === 'string' && doc.documentUrl.trim() === '')) {
+      console.log(`Document ${type} filtered out - no valid documentUrl`)
       return undefined
     }
     return doc
@@ -365,6 +382,16 @@ export default function KycPage() {
               const uploadedDoc = getDocumentForType(docType.id)
               const DocIcon = docType.icon
               const isUploading = uploadingDocument === docType.id
+              
+              // Debug logging for Bank Statement
+              if (docType.id === 'BANK_STATEMENT') {
+                console.log('Bank Statement render check:', {
+                  hasUploadedDoc: !!uploadedDoc,
+                  uploadedDoc,
+                  status: uploadedDoc?.status,
+                  documentUrl: uploadedDoc?.documentUrl
+                })
+              }
 
               return (
                 <Card key={docType.id} className={uploadedDoc?.status === 'REJECTED' ? 'border-red-200' : ''}>
@@ -385,10 +412,23 @@ export default function KycPage() {
                           {docType.id === 'NATIONAL_ID' && !uploadedDoc && (
                             (() => {
                               // Check owner's National ID from merchant data first, then user profile
-                              const ownerNationalId = profile?.merchantData?.ownerNationalId || 
+                              const ownerNationalId = profile?.ownerNationalId || 
+                                                      profile?.merchantData?.ownerNationalId || 
                                                       profile?.merchantData?.nationalId ||
                                                       profile?.userProfile?.nationalId ||
                                                       profile?.nationalId;
+                              
+                              console.log('National ID check:', {
+                                hasProfile: !!profile,
+                                ownerNationalId: ownerNationalId,
+                                fromOwnerNationalId: profile?.ownerNationalId,
+                                fromMerchantDataOwner: profile?.merchantData?.ownerNationalId,
+                                fromMerchantDataNational: profile?.merchantData?.nationalId,
+                                fromUserProfile: profile?.userProfile?.nationalId,
+                                fromDirectProfile: profile?.nationalId,
+                                isVerified: profile?.merchantData?.isVerified || profile?.isVerified
+                              })
+                              
                               return ownerNationalId ? (
                                 <div className="mt-2 p-2 bg-blue-50 border border-blue-200 rounded-md">
                                   <p className="text-xs font-medium text-blue-900 mb-1">
@@ -419,7 +459,10 @@ export default function KycPage() {
                             </p>
                           )}
                           {/* Only show uploaded date if document actually exists AND has a valid documentUrl */}
-                          {uploadedDoc && uploadedDoc.documentUrl && uploadedDoc.uploadedAt && (
+                          {uploadedDoc && 
+                           uploadedDoc.documentUrl && 
+                           uploadedDoc.documentUrl.trim() !== '' && 
+                           uploadedDoc.uploadedAt && (
                             <p className="text-xs text-gray-400 mt-1">
                               Uploaded: {new Date(uploadedDoc.uploadedAt).toLocaleDateString()}
                             </p>
@@ -449,7 +492,8 @@ export default function KycPage() {
                         {docType.id === 'NATIONAL_ID' && !uploadedDoc && (
                           (() => {
                             // Check owner's National ID from merchant data first, then user profile
-                            const ownerNationalId = profile?.merchantData?.ownerNationalId || 
+                            const ownerNationalId = profile?.ownerNationalId || 
+                                                    profile?.merchantData?.ownerNationalId || 
                                                     profile?.merchantData?.nationalId ||
                                                     profile?.userProfile?.nationalId ||
                                                     profile?.nationalId;

@@ -213,7 +213,13 @@ export function UserProfileProvider({
         merchantCode: merchantCode || merchantData?.merchantCode,
         phone: businessPhone,
         email: businessEmail,
-        businessAddress: merchantData?.businessAddress
+        businessAddress: merchantData?.businessAddress,
+        // Owner National ID from merchant data
+        ownerNationalId: merchantData?.ownerNationalId,
+        // User profile data for fallback
+        userProfile: userData?.profile,
+        // Verification status
+        isVerified: merchantData?.isVerified || userData?.isVerified || false
       };
 
       console.log('📊 UserProfile - Final profile data:', {
