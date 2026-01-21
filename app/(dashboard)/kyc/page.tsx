@@ -243,9 +243,21 @@ export default function KycPage() {
     }
   }
 
-  const getOverallStatusMessage = () => {
+  const getOverallStatusMessage = (verifiedCount: number, totalRequired: number) => {
+    // Check if all required documents are verified
+    const allRequiredVerified = verifiedCount === totalRequired
+    
+    // Only show "complete" if all required documents are actually verified
+    if (allRequiredVerified && kycStatus?.overallStatus === 'VERIFIED') {
+      return { message: 'Your KYC verification is complete', icon: CheckCircle, color: 'text-green-600' }
+    }
+    
     switch (kycStatus?.overallStatus) {
       case 'VERIFIED':
+        // If status is VERIFIED but not all docs are verified, show partial status
+        if (!allRequiredVerified) {
+          return { message: 'Some documents are verified, others pending', icon: AlertCircle, color: 'text-yellow-600' }
+        }
         return { message: 'Your KYC verification is complete', icon: CheckCircle, color: 'text-green-600' }
       case 'PENDING':
         return { message: 'Your documents are being reviewed', icon: Clock, color: 'text-yellow-600' }
@@ -258,9 +270,6 @@ export default function KycPage() {
     }
   }
 
-  const statusInfo = getOverallStatusMessage()
-  const StatusIcon = statusInfo.icon
-
   if (profileLoading || kycLoading) {
     return (
       <div className="flex items-center justify-center h-screen">
@@ -270,11 +279,24 @@ export default function KycPage() {
   }
 
   const requiredDocuments = DOCUMENT_TYPES.filter(d => d.required)
+  // Count only VERIFIED documents for progress calculation
+  const verifiedRequired = requiredDocuments.filter(d => {
+    const doc = getDocumentForType(d.id)
+    return doc && doc.status === 'VERIFIED'
+  }).length
+  // Count uploaded documents (including pending) for display
   const uploadedRequired = requiredDocuments.filter(d => {
     const doc = getDocumentForType(d.id)
     return doc && doc.status !== 'REJECTED'
   }).length
-  const verificationProgress = Math.round((uploadedRequired / requiredDocuments.length) * 100)
+  // Progress should be based on verified documents, not just uploaded ones
+  const verificationProgress = Math.round((verifiedRequired / requiredDocuments.length) * 100)
+  
+  // Check if all required documents are verified
+  const allRequiredVerified = verifiedRequired === requiredDocuments.length
+
+  const statusInfo = getOverallStatusMessage(verifiedRequired, requiredDocuments.length)
+  const StatusIcon = statusInfo.icon
 
   return (
     <div className="p-6 max-w-5xl mx-auto">
@@ -353,7 +375,8 @@ export default function KycPage() {
                               Rejection reason: {uploadedDoc.rejectionReason}
                             </p>
                           )}
-                          {uploadedDoc?.uploadedAt && (
+                          {/* Only show uploaded date if document actually exists */}
+                          {uploadedDoc && uploadedDoc.uploadedAt && (
                             <p className="text-xs text-gray-400 mt-1">
                               Uploaded: {new Date(uploadedDoc.uploadedAt).toLocaleDateString()}
                             </p>
