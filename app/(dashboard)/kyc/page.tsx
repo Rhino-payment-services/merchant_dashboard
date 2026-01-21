@@ -232,28 +232,40 @@ export default function KycPage() {
     // Only return documents that are actually uploaded (have a documentUrl)
     const doc = kycStatus?.documents?.find(doc => doc.documentType === type)
     
-    // Debug logging
-    if (doc && type === 'BANK_STATEMENT') {
-      console.log('Bank Statement document found:', {
+    // Debug logging for ALL documents, not just Bank Statement
+    if (doc) {
+      console.log(`Document ${type} found in API response:`, {
         id: doc.id,
+        documentType: doc.documentType,
         documentUrl: doc.documentUrl,
+        documentUrlType: typeof doc.documentUrl,
+        documentUrlValue: JSON.stringify(doc.documentUrl),
         status: doc.status,
         uploadedAt: doc.uploadedAt,
         hasUrl: !!doc.documentUrl,
-        urlLength: doc.documentUrl?.length
+        urlLength: doc.documentUrl?.length,
+        isEmpty: doc.documentUrl === '' || doc.documentUrl === null || doc.documentUrl === undefined,
+        isTrimmedEmpty: typeof doc.documentUrl === 'string' && doc.documentUrl.trim() === ''
       })
     }
     
     // Filter out documents without a valid documentUrl - these are not actually uploaded
     // Check for null, undefined, or empty string
     if (!doc) {
+      console.log(`Document ${type} - not found in API response`)
       return undefined
     }
+    
     // Ensure documentUrl exists and is not empty
-    if (!doc.documentUrl || (typeof doc.documentUrl === 'string' && doc.documentUrl.trim() === '')) {
-      console.log(`Document ${type} filtered out - no valid documentUrl`)
+    if (!doc.documentUrl || 
+        doc.documentUrl === null || 
+        doc.documentUrl === undefined ||
+        (typeof doc.documentUrl === 'string' && doc.documentUrl.trim() === '')) {
+      console.log(`Document ${type} filtered out - no valid documentUrl (documentUrl: ${JSON.stringify(doc.documentUrl)})`)
       return undefined
     }
+    
+    console.log(`Document ${type} passed filter - returning document`)
     return doc
   }
 
@@ -477,6 +489,7 @@ export default function KycPage() {
                         {/* Don't show view button if status would show as "Not Uploaded" */}
                         {uploadedDoc && 
                          uploadedDoc.documentUrl && 
+                         uploadedDoc.documentUrl.trim() !== '' &&
                          uploadedDoc.status && 
                          ['PENDING', 'VERIFIED', 'REJECTED', 'EXPIRED'].includes(uploadedDoc.status) && (
                           <Button
@@ -525,7 +538,11 @@ export default function KycPage() {
                           })()
                         )}
                         
-                        {uploadedDoc && uploadedDoc.status !== 'VERIFIED' && (
+                        {/* Only show delete button if document is truly uploaded AND has valid URL AND not verified */}
+                        {uploadedDoc && 
+                         uploadedDoc.status !== 'VERIFIED' && 
+                         uploadedDoc.documentUrl && 
+                         uploadedDoc.documentUrl.trim() !== '' && (
                           <Button
                             variant="outline"
                             size="sm"
@@ -536,7 +553,11 @@ export default function KycPage() {
                           </Button>
                         )}
                         
-                        {/* Show upload button if no document is uploaded OR document is rejected OR document doesn't have a valid URL */}
+                        {/* Show upload button if:
+                            1. No document exists, OR
+                            2. Document is rejected, OR
+                            3. Document doesn't have a valid URL
+                        */}
                         {(!uploadedDoc || 
                           uploadedDoc.status === 'REJECTED' || 
                           !uploadedDoc.documentUrl || 
