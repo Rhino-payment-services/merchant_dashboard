@@ -160,39 +160,115 @@ function SignupContent() {
         })
       })
 
+      // Check if response is ok before parsing JSON
+      if (!response.ok) {
+        let errorData: any
+        try {
+          errorData = await response.json()
+        } catch (e) {
+          // If JSON parsing fails, use response status text
+          const errorMessage = response.statusText || 'Registration failed'
+          setApiError(errorMessage)
+          toast.error(errorMessage)
+          return
+        }
+
+        // Extract error message from various response formats
+        let errorMessage = 'Registration failed'
+        
+        // Handle validation errors (array format)
+        if (Array.isArray(errorData.message)) {
+          errorMessage = errorData.message.join(', ')
+        } 
+        // Handle error object with message property
+        else if (errorData.message) {
+          errorMessage = errorData.message
+        }
+        // Handle error object with error property
+        else if (errorData.error) {
+          errorMessage = typeof errorData.error === 'string' 
+            ? errorData.error 
+            : errorData.error.message || 'Registration failed'
+        }
+        // Handle data.message format
+        else if (errorData.data?.message) {
+          if (Array.isArray(errorData.data.message)) {
+            errorMessage = errorData.data.message.join(', ')
+          } else {
+            errorMessage = errorData.data.message
+          }
+        }
+        // Handle statusCode with message
+        else if (errorData.statusCode && errorData.message) {
+          errorMessage = Array.isArray(errorData.message) 
+            ? errorData.message.join(', ')
+            : errorData.message
+        }
+
+        // Show toast error for any error
+        toast.error(errorMessage)
+
+        // Handle specific error messages for form field highlighting
+        const lowerMessage = errorMessage.toLowerCase()
+        if (lowerMessage.includes('phone') || lowerMessage.includes('mobile')) {
+          setFormErrors(prev => ({ ...prev, phoneNumber: 'This phone number is already registered' }))
+          setApiError('Phone number conflict: This phone number is already registered. Please use a different number or login instead.')
+          setStep(1) // Go back to step 1 where phone is
+        } else if (lowerMessage.includes('email')) {
+          setFormErrors(prev => ({ ...prev, email: 'This email is already registered' }))
+          setApiError('Email conflict: This email is already registered. Please use a different email or login instead.')
+          setStep(1) // Go back to step 1 where email is
+        } else if (lowerMessage.includes('national') || lowerMessage.includes('nin')) {
+          setFormErrors(prev => ({ ...prev, nationalId: 'This National ID is already registered' }))
+          setApiError('National ID conflict: This National ID is already registered.')
+          setStep(1)
+        } else if (lowerMessage.includes('business')) {
+          setFormErrors(prev => ({ ...prev, businessTradeName: 'This business name is already registered' }))
+          setApiError('Business name conflict: This business name is already registered.')
+        } else {
+          setApiError(errorMessage)
+        }
+        return
+      }
+
       const data = await response.json()
 
       if ((response.ok || response.status === 201) && data.success) {
         setStep(3)
         toast.success('Registration successful!')
       } else {
-        // Handle specific error messages
+        // Handle success response but with error message
         const errorMessage = data.message || 'Registration failed'
-        
-        if (errorMessage.toLowerCase().includes('phone') || errorMessage.toLowerCase().includes('mobile')) {
-          setFormErrors(prev => ({ ...prev, phoneNumber: 'This phone number is already registered' }))
-          setApiError('Phone number conflict: This phone number is already registered. Please use a different number or login instead.')
-          setStep(1) // Go back to step 1 where phone is
-        } else if (errorMessage.toLowerCase().includes('email')) {
-          setFormErrors(prev => ({ ...prev, email: 'This email is already registered' }))
-          setApiError('Email conflict: This email is already registered. Please use a different email or login instead.')
-          setStep(1) // Go back to step 1 where email is
-        } else if (errorMessage.toLowerCase().includes('national') || errorMessage.toLowerCase().includes('nin')) {
-          setFormErrors(prev => ({ ...prev, nationalId: 'This National ID is already registered' }))
-          setApiError('National ID conflict: This National ID is already registered.')
-          setStep(1)
-        } else if (errorMessage.toLowerCase().includes('business')) {
-          setFormErrors(prev => ({ ...prev, businessTradeName: 'This business name is already registered' }))
-          setApiError('Business name conflict: This business name is already registered.')
-        } else {
-          setApiError(errorMessage)
-        }
-        
+        setApiError(errorMessage)
         toast.error(errorMessage)
       }
     } catch (error: any) {
       console.error('Signup error:', error)
-      const errorMessage = error.message || 'Something went wrong. Please try again.'
+      
+      // Extract error message from various error formats
+      let errorMessage = 'Something went wrong. Please try again.'
+      
+      if (error.response) {
+        // Axios error with response
+        const errorData = error.response.data
+        if (Array.isArray(errorData?.message)) {
+          errorMessage = errorData.message.join(', ')
+        } else if (errorData?.message) {
+          errorMessage = errorData.message
+        } else if (errorData?.error) {
+          errorMessage = typeof errorData.error === 'string' 
+            ? errorData.error 
+            : errorData.error.message || errorMessage
+        } else if (errorData?.data?.message) {
+          errorMessage = Array.isArray(errorData.data.message)
+            ? errorData.data.message.join(', ')
+            : errorData.data.message
+        }
+      } else if (error.message) {
+        // Network error or other error with message
+        errorMessage = error.message
+      }
+      
       setApiError(errorMessage)
       toast.error(errorMessage)
     } finally {

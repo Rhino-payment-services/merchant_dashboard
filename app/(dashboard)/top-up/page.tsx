@@ -80,8 +80,8 @@ export default function TopUpPage() {
     if (cleaned.match(/^(256)?(77|78|76)/)) {
       return 'MTN';
     }
-    // Airtel prefixes: 075, 070, 074
-    if (cleaned.match(/^(256)?(75|70|74)/)) {
+    // Airtel prefixes: 075, 070, 074, 020
+    if (cleaned.match(/^(256)?(75|70|74|20)/)) {
       return 'Airtel';
     }
     

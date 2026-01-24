@@ -1,4 +1,5 @@
 import apiClient from './client'
+import { toast } from 'sonner'
 
 /**
  * Merchant search and management API
@@ -113,6 +114,68 @@ export const getMyMerchantDetails = async (): Promise<MerchantDetails> => {
   } catch (error: any) {
     console.error('Error getting my merchant details:', error)
     throw new Error(error.response?.data?.message || 'Failed to get merchant details')
+  }
+}
+
+/**
+ * Create a new merchant account
+ * Handles all error cases and shows toast notifications
+ * 
+ * @param merchantData - Merchant KYC data
+ * @returns Created merchant details
+ */
+export const createMerchant = async (merchantData: any): Promise<any> => {
+  try {
+    const response = await apiClient.post('/merchant-kyc/create', merchantData)
+    toast.success('Merchant created successfully!')
+    return response.data
+  } catch (error: any) {
+    console.error('Error creating merchant:', error)
+    
+    // Extract error message from various response formats
+    let errorMessage = 'Failed to create merchant account'
+    
+    if (error.response?.data) {
+      const errorData = error.response.data
+      
+      // Handle validation errors (array format)
+      if (Array.isArray(errorData.message)) {
+        errorMessage = errorData.message.join(', ')
+      } 
+      // Handle error object with message property
+      else if (errorData.message) {
+        errorMessage = errorData.message
+      }
+      // Handle error object with error property
+      else if (errorData.error) {
+        errorMessage = typeof errorData.error === 'string' 
+          ? errorData.error 
+          : errorData.error.message || errorMessage
+      }
+      // Handle data.message format
+      else if (errorData.data?.message) {
+        if (Array.isArray(errorData.data.message)) {
+          errorMessage = errorData.data.message.join(', ')
+        } else {
+          errorMessage = errorData.data.message
+        }
+      }
+      // Handle statusCode with message
+      else if (errorData.statusCode && errorData.message) {
+        errorMessage = Array.isArray(errorData.message) 
+          ? errorData.message.join(', ')
+          : errorData.message
+      }
+    } else if (error.message) {
+      // Network error or other error with message
+      errorMessage = error.message
+    }
+    
+    // Show toast error
+    toast.error(errorMessage)
+    
+    // Re-throw error so caller can handle it if needed
+    throw new Error(errorMessage)
   }
 }
 

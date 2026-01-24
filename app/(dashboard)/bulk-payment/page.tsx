@@ -457,20 +457,41 @@ export default function BulkPaymentPage() {
     setTimeout(poll, 2000);
   };
 
+  // Backend-accepted transaction modes (must match exactly, no spaces)
+  const VALID_MODES = [
+    'WALLET_TO_WALLET', 'WALLET_TO_MNO', 'WALLET_TOPUP_PULL', 'MNO_TO_WALLET',
+    'WALLET_TO_BANK', 'WALLET_TO_INTERNATIONAL_BANK', 'UTILITIES',
+    'WALLET_TO_MERCHANT', 'WALLET_TO_INTERNAL_MERCHANT', 'WALLET_TO_EXTERNAL_MERCHANT',
+    'MERCHANT_WITHDRAWAL', 'MERCHANT_TO_WALLET',
+  ] as const;
+
+  const normalizeMode = (raw: unknown): (typeof VALID_MODES)[number] | null => {
+    const s = (raw != null && raw !== '') ? String(raw).trim() : '';
+    if (!s) return null;
+    const upper = s.toUpperCase();
+    return VALID_MODES.includes(upper as any) ? (upper as (typeof VALID_MODES)[number]) : null;
+  };
+
+  /** Normalize Excel row keys (trim) so "Transaction Mode " matches "Transaction Mode" */
+  const normalizeRowKeys = (row: Record<string, unknown>): Record<string, unknown> => {
+    const out: Record<string, unknown> = {};
+    for (const k of Object.keys(row)) {
+      const trimmed = k.trim();
+      if (trimmed) out[trimmed] = row[k];
+    }
+    return out;
+  };
+
   const getValidMnoProvider = (provider: string | undefined): string => {
     const validProviders = ['MTN', 'Airtel'];
     if (provider) {
-      const normalizedProvider = provider.trim();
-      // Check exact match first
-      if (validProviders.includes(normalizedProvider)) {
-        return normalizedProvider;
-      }
-      // Check case-insensitive match and return correct capitalization
-      const upperProvider = normalizedProvider.toUpperCase();
-      if (upperProvider === 'MTN') return 'MTN';
-      if (upperProvider === 'AIRTEL') return 'Airtel';
+      const normalizedProvider = String(provider).trim();
+      if (validProviders.includes(normalizedProvider)) return normalizedProvider;
+      const upper = normalizedProvider.toUpperCase();
+      if (upper === 'MTN') return 'MTN';
+      if (upper === 'AIRTEL') return 'Airtel';
     }
-    return 'MTN'; // Default to MTN if invalid or empty
+    return 'MTN';
   };
 
   const handleProcessBulk = async () => {
@@ -676,57 +697,61 @@ export default function BulkPaymentPage() {
             return row;
           });
 
-          // Map template column names to expected property names (same as Excel)
-          const mapCsvRow = (row: any) => ({
-            mode: row['Transaction Mode'] || row['mode'] || row['Mode'],
-            amount: row['Amount'] || row['Amount (UGX)'] || row['amount'],
-            description: row['Description'] || row['description'] || row['Desc'],
-            phoneNumber: row['Phone Number / Account Number'] || row['Phone Number'] || row['phoneNumber'] || row['phone'] || '',
-            recipientName: row['Name'] || row['Recipient Name'] || row['recipientName'] || row['name'] || '',
-            mnoProvider: row['Network'] || row['MNO Provider'] || row['mnoProvider'] || row['network'] || '',
-            bankName: row['Bank Name'] || row['bankName'] || '',
-            bankSortCode: row['Bank Sort Code'] || row['bankSortCode'] || '',
-            accountNumber: row['Account Number'] || row['accountNumber'] || '',
-            accountName: row['Account Name'] || row['accountName'] || '',
-            currency: row['Currency'] || row['currency'] || 'UGX',
-            recipientPhone: row['Recipient Phone'] || row['recipientPhone'] || row['recipientPhoneNumber'] || '',
-          });
+          const phoneOrAccount = (r: any) =>
+            r['Phone Number / Account Number'] || r['Phone Number'] || r['phoneNumber'] || r['phone'] || '';
+          const mapCsvRow = (row: any) => {
+            const rawMode = row['Transaction Mode'] || row['mode'] || row['Mode'];
+            const mode = normalizeMode(rawMode);
+            return {
+              mode,
+              amount: row['Amount'] || row['Amount (UGX)'] || row['amount'],
+              description: row['Description'] || row['description'] || row['Desc'],
+              phoneNumber: phoneOrAccount(row),
+              recipientName: row['Name'] || row['Recipient Name'] || row['recipientName'] || row['name'] || '',
+              mnoProvider: row['Network'] || row['MNO Provider'] || row['mnoProvider'] || row['network'] || '',
+              bankName: row['Bank Name'] || row['bankName'] || '',
+              bankSortCode: row['Bank Sort Code'] || row['Bank Sort'] || row['bankSortCode'] || '',
+              accountNumber: row['Account Number'] || row['accountNumber'] || phoneOrAccount(row),
+              accountName: row['Account Name'] || row['accountName'] || row['Name'] || row['name'] || '',
+              currency: row['Currency'] || row['currency'] || 'UGX',
+              recipientPhone: row['Recipient Phone'] || row['recipientPhone'] || row['recipientPhoneNumber'] || '',
+            };
+          };
 
-          const newPayments: PaymentItem[] = data
-            .map(mapCsvRow)
-            .filter(row => {
-              const hasAmount = row.amount && Number(row.amount) > 0;
-              const hasMode = row.mode;
-              // Description is optional - will be auto-generated if not provided
-              const isValid = hasAmount && hasMode;
-              if (!isValid) {
-                console.log('⚠️ Skipping invalid CSV row:', row, { hasAmount, hasMode });
-              }
-              return isValid;
-            })
-            .map((row, index) => ({
-              id: `upload-${Date.now()}-${index}`,
-              itemId: `ITEM-${Date.now()}-${index}`,
-              mode: row.mode as any,
-              amount: Number(row.amount),
-              currency: row.currency || 'UGX',
-              description: row.description || `Payment ${index + 1}`, // Auto-generate if empty
-              phoneNumber: row.phoneNumber || '',
-              mnoProvider: getValidMnoProvider(row.mnoProvider),
-              recipientName: row.recipientName || '',
-              accountNumber: row.accountNumber || '',
-              bankSortCode: row.bankSortCode || '',
-              bankName: row.bankName || '',
-              accountName: row.accountName || '',
-              recipientPhone: row.recipientPhone || '',
-              recipientPhoneNumber: row.recipientPhone || row.phoneNumber || '', // For MERCHANT_TO_WALLET
-              status: 'pending' as const,
-            }));
+          const mapped = data.map((row, i) => ({ ...mapCsvRow(row), _sourceIndex: i + 2 }));
+          const valid = mapped.filter(r => r.amount && Number(r.amount) > 0 && r.mode != null);
+          const skippedCount = mapped.length - valid.length;
+          if (skippedCount > 0) {
+            toast.warning(
+              `Skipped ${skippedCount} row(s): missing amount or invalid Transaction Mode. Use exact values (e.g. WALLET_TO_MNO, WALLET_TO_BANK).`
+            );
+          }
+
+          const newPayments: PaymentItem[] = valid.map((row, index) => ({
+            id: `upload-${Date.now()}-${index}`,
+            itemId: `ITEM-${Date.now()}-${index}`,
+            mode: row.mode as any,
+            amount: Number(row.amount),
+            currency: row.currency || 'UGX',
+            description: row.description || `Payment ${index + 1}`,
+            phoneNumber: row.phoneNumber || '',
+            mnoProvider: getValidMnoProvider(row.mnoProvider),
+            recipientName: row.recipientName || '',
+            accountNumber: row.accountNumber || '',
+            bankSortCode: row.bankSortCode || '',
+            bankName: row.bankName || '',
+            accountName: row.accountName || '',
+            recipientPhone: row.recipientPhone || '',
+            recipientPhoneNumber: row.recipientPhone || row.phoneNumber || '',
+            status: 'pending' as const,
+          }));
 
           console.log('✅ Parsed CSV payments:', newPayments);
 
           if (newPayments.length === 0) {
-            toast.error('No valid payment rows found in CSV. Ensure rows have Transaction Mode and Amount columns.');
+            toast.error(
+              'No valid payment rows found in CSV. Use exact Transaction Mode values (e.g. WALLET_TO_MNO, WALLET_TO_BANK, WALLET_TO_WALLET) and ensure Amount is present.'
+            );
             return;
           }
 
@@ -757,47 +782,56 @@ export default function BulkPaymentPage() {
           const wb = XLSX.read(bstr, { type: 'binary' });
           const wsname = wb.SheetNames[0];
           const ws = wb.Sheets[wsname];
-          const data = XLSX.utils.sheet_to_json(ws);
+          const rawData = XLSX.utils.sheet_to_json(ws) as Record<string, unknown>[];
+          const data = rawData.map(row => normalizeRowKeys(row));
 
           console.log('📊 Parsed Excel data:', data);
           console.log('📋 First row sample:', data[0]);
 
-          // Map template column names to expected property names
-          const mapRow = (row: any) => ({
-            // Support both template column names and simple property names
-            mode: row['Transaction Mode'] || row['mode'] || row['Mode'],
-            amount: row['Amount'] || row['Amount (UGX)'] || row['amount'],
-            description: row['Description'] || row['description'] || row['Desc'],
-            phoneNumber: row['Phone Number / Account Number'] || row['Phone Number'] || row['phoneNumber'] || row['phone'] || '',
-            recipientName: row['Name'] || row['Recipient Name'] || row['recipientName'] || row['name'] || '',
-            mnoProvider: row['Network'] || row['MNO Provider'] || row['mnoProvider'] || row['network'] || '',
-            bankName: row['Bank Name'] || row['bankName'] || '',
-            bankSortCode: row['Bank Sort Code'] || row['bankSortCode'] || '',
-            accountNumber: row['Account Number'] || row['accountNumber'] || '',
-            accountName: row['Account Name'] || row['accountName'] || '',
-            currency: row['Currency'] || row['currency'] || 'UGX',
-            recipientPhone: row['Recipient Phone'] || row['recipientPhone'] || row['recipientPhoneNumber'] || '',
-          });
+          const phoneOrAccount = (r: Record<string, unknown>) =>
+            String(r['Phone Number / Account Number'] ?? r['Phone Number'] ?? r['phoneNumber'] ?? r['phone'] ?? '').trim();
+          const mapRow = (row: Record<string, unknown>, _index: number) => {
+            const rawMode = row['Transaction Mode'] ?? row['mode'] ?? row['Mode'];
+            const mode = normalizeMode(rawMode);
+            return {
+              mode,
+              amount: row['Amount'] ?? row['Amount (UGX)'] ?? row['amount'],
+              description: row['Description'] ?? row['description'] ?? row['Desc'],
+              phoneNumber: phoneOrAccount(row),
+              recipientName: String(row['Name'] ?? row['Recipient Name'] ?? row['recipientName'] ?? row['name'] ?? '').trim(),
+              mnoProvider: String(row['Network'] ?? row['MNO Provider'] ?? row['mnoProvider'] ?? row['network'] ?? '').trim(),
+              bankName: String(row['Bank Name'] ?? row['bankName'] ?? '').trim(),
+              bankSortCode: String(row['Bank Sort Code'] ?? row['Bank Sort'] ?? row['bankSortCode'] ?? '').trim(),
+              accountNumber: String(row['Account Number'] ?? row['accountNumber'] ?? '').trim() || phoneOrAccount(row),
+              accountName: String(row['Account Name'] ?? row['accountName'] ?? row['Name'] ?? row['name'] ?? '').trim(),
+              currency: String(row['Currency'] ?? row['currency'] ?? 'UGX').trim(),
+              recipientPhone: String(row['Recipient Phone'] ?? row['recipientPhone'] ?? row['recipientPhoneNumber'] ?? '').trim(),
+            };
+          };
 
-          const newPayments: PaymentItem[] = (data as any[])
-            .map(mapRow)
-            .filter(row => {
-              const hasAmount = row.amount && Number(row.amount) > 0;
-              const hasMode = row.mode;
-              // Description is optional now - will be auto-generated if not provided
-              const isValid = hasAmount && hasMode;
-              if (!isValid) {
-                console.log('⚠️ Skipping invalid row:', row, { hasAmount, hasMode });
-              }
-              return isValid;
-            })
-            .map((row, index) => ({
+          const mapped = data.map((row, i) => ({ ...mapRow(row, i), _sourceIndex: i + 2 }));
+          const valid = mapped.filter(r => {
+            const amt = r.amount != null && r.amount !== '' ? Number(r.amount) : NaN;
+            return !Number.isNaN(amt) && amt > 0 && r.mode != null;
+          });
+          const skippedCount = mapped.length - valid.length;
+          if (skippedCount > 0) {
+            toast.warning(
+              `Skipped ${skippedCount} row(s): missing amount or invalid Transaction Mode. Use exact values (e.g. WALLET_TO_MNO, WALLET_TO_BANK).`
+            );
+          }
+
+          const newPayments: PaymentItem[] = valid.map((row, index) => {
+            const desc = (row.description != null && row.description !== '')
+              ? String(row.description).trim()
+              : '';
+            return {
               id: `upload-${Date.now()}-${index}`,
               itemId: `ITEM-${Date.now()}-${index}`,
               mode: row.mode as any,
               amount: Number(row.amount),
               currency: row.currency || 'UGX',
-              description: row.description || `Payment ${index + 1}`, // Auto-generate if empty
+              description: desc || `Payment ${index + 1}`,
               phoneNumber: row.phoneNumber || '',
               mnoProvider: getValidMnoProvider(row.mnoProvider),
               recipientName: row.recipientName || '',
@@ -806,14 +840,17 @@ export default function BulkPaymentPage() {
               bankName: row.bankName || '',
               accountName: row.accountName || '',
               recipientPhone: row.recipientPhone || '',
-              recipientPhoneNumber: row.recipientPhone || row.phoneNumber || '', // For MERCHANT_TO_WALLET
+              recipientPhoneNumber: row.recipientPhone || row.phoneNumber || '',
               status: 'pending' as const,
-            }));
+            };
+          });
 
           console.log('✅ Parsed Excel payments:', newPayments);
 
           if (newPayments.length === 0) {
-            toast.error('No valid payment rows found in Excel. Ensure rows have Mode and Amount columns.');
+            toast.error(
+              'No valid payment rows found in Excel. Use exact Transaction Mode values (e.g. WALLET_TO_MNO, WALLET_TO_BANK, WALLET_TO_WALLET) and ensure Amount is present.'
+            );
             return;
           }
 
