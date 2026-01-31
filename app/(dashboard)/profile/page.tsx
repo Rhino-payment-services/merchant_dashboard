@@ -3,7 +3,8 @@
 import React from 'react';
 import { useUserProfile } from '../UserProfileProvider';
 import { useSession } from 'next-auth/react';
-import { User, Mail, Phone, Building2, MapPin, Calendar, CreditCard, Wallet } from 'lucide-react';
+import { User, Mail, Phone, Building2, MapPin, Calendar, CreditCard, Wallet, Settings } from 'lucide-react';
+import Link from 'next/link';
 
 export default function ProfilePage() {
   const { profile, loading, error } = useUserProfile();
@@ -98,9 +99,18 @@ export default function ProfilePage() {
     <div className="min-h-screen bg-gray-50 py-10 px-4 md:px-8">
       <div className="max-w-4xl mx-auto">
         {/* Page Header */}
-        <div className="mb-8">
-          <h1 className="text-3xl font-bold text-[#08163d] mb-2">Profile</h1>
-          <p className="text-gray-600">Manage your merchant account information and settings</p>
+        <div className="mb-8 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+          <div>
+            <h1 className="text-3xl font-bold text-[#08163d] mb-2">Profile</h1>
+            <p className="text-gray-600">Manage your merchant account information and settings</p>
+          </div>
+          <Link
+            href="/settings"
+            className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-main-600 hover:bg-main-700 text-white text-sm font-medium transition-colors"
+          >
+            <Settings className="w-4 h-4" />
+            Edit profile & set password
+          </Link>
         </div>
 
         {/* Profile Header */}

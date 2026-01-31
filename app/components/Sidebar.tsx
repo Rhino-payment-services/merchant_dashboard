@@ -22,7 +22,8 @@ import {
   Briefcase,
   CheckCircle,
   FileCheck,
-  ShieldCheck
+  ShieldCheck,
+  Building2
 } from 'lucide-react';
 import Image from 'next/image';
 import { useSession } from 'next-auth/react';
@@ -65,8 +66,13 @@ export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
   const router = useRouter();
   const pathname:any = usePathname();
   // const  {data: session} = useSession()
-  const  {profile} = useUserProfile()
-  console.log("profile========>", profile)
+  const { data: session } = useSession();
+  const { profile } = useUserProfile();
+  const merchants = (session?.user as any)?.merchants || [];
+  const currentMerchantCode = (session?.user as any)?.merchantCode;
+  const currentMerchant = merchants.find((m: any) => m.merchantCode === currentMerchantCode);
+  const businessName = profile?.merchant_names || profile?.businessTradeName || currentMerchant?.businessTradeName 
+    || ((currentMerchantCode || profile?.merchant_code) ? `Business · ${currentMerchantCode || profile?.merchant_code}` : null);
   
   const handleNavigation = (path: string) => {
     router.push(path);
@@ -113,10 +119,25 @@ export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
         </div>
 
         {/* Logo */}
-        <div className="mb-8 flex items-center gap-3">
+        <div className="mb-4 flex items-center gap-3">
           <Image src="/images/logo.jpg" alt="RukaPay" width={48} height={48} className='rounded-lg shadow-sm' />
           <span className="text-2xl font-bold text-[#08163d]">RukaPay</span>
         </div>
+        {/* Current business / merchant name */}
+        {businessName && (
+          <div className="mb-6 px-3 py-2.5 rounded-lg bg-main-50 border border-main-100">
+            <div className="flex items-center gap-2 mb-1">
+              <Building2 className="w-4 h-4 text-main-600 flex-shrink-0" />
+              <p className="text-xs font-medium text-main-600 uppercase tracking-wide">Current business</p>
+            </div>
+            <p className="text-sm font-semibold text-[#08163d] truncate" title={businessName}>
+              {businessName}
+            </p>
+            {(currentMerchantCode || profile?.merchant_code) && (
+              <p className="text-xs text-main-600 mt-1">{currentMerchantCode || profile?.merchant_code}</p>
+            )}
+          </div>
+        )}
 
         {/* Navigation */}
         <nav className="flex-1 space-y-6">
@@ -155,21 +176,23 @@ export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
         {/* User Profile Section */}
         <div className="mt-auto pt-6 border-t border-gray-200">
           <div className="flex items-center gap-3 p-3 rounded-lg bg-gray-50">
-            <div className="w-8 h-8 rounded-full bg-main-600 flex items-center justify-center">
+            <div className="w-8 h-8 rounded-full bg-main-600 flex items-center justify-center flex-shrink-0">
               <span className="text-white text-sm font-semibold uppercase">
                 {(() => {
-                  const merchantName = profile?.merchant_names || profile?.merchantBusinessTradeName || profile?.businessTradeName || '';
-                  const firstInitial = merchantName?.charAt(0) || 'M';
-                  const secondInitial = merchantName?.split(" ")[1]?.charAt(0) || merchantName?.split(" ")[0]?.charAt(1) || 'M';
-                  return `${firstInitial}${secondInitial}`;
+                  const ownerName = profile?.owner_name || '';
+                  const firstInitial = ownerName?.split(" ")[0]?.[0] || 'U';
+                  const secondInitial = ownerName?.split(" ")[1]?.[0] || ownerName?.split(" ")[0]?.[1] || '';
+                  return `${firstInitial}${secondInitial}`.toUpperCase() || 'U';
                 })()}
               </span>
             </div>
-            <div className="flex-1">
-              <div className="text-sm font-medium text-gray-900">
-                {profile?.merchant_names || profile?.merchantBusinessTradeName || profile?.businessTradeName || 'Merchant'}
+            <div className="flex-1 min-w-0">
+              <div className="text-sm font-medium text-gray-900 truncate" title={profile?.merchant_names || profile?.businessTradeName || 'Business'}>
+                {profile?.merchant_names || profile?.businessTradeName || 'Business'}
               </div>
-              <div className="text-xs text-gray-500">Merchant</div>
+              <div className="text-xs text-gray-500 truncate">
+                {profile?.owner_name ? `Signed in as ${profile.owner_name}` : 'Merchant'}
+              </div>
             </div>
           </div>
         </div>

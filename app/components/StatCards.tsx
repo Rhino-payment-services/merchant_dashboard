@@ -14,48 +14,40 @@ export default function StatCards() {
   const [totalCredit, setTotalCredit] = useState<number>(0);
   const [totalDebit, setTotalDebit] = useState<number>(0);
 
-  console.log("profile", profile)
-  console.log("session user", session?.user)
-
   // Fetch wallet balance and transactions
   const fetchWalletData = async () => {
     try {
       setWalletLoading(true);
-
-      // Fetch wallet balance (works for both owners and team members now)
       const balanceData = await getWalletBalance();
-      console.log('Wallet Balance API Response:', balanceData);
       setWalletBalance(balanceData.balance);
-
-      // Fetch transactions to calculate totals (only for business owners)
       const transactionsData = await getMyTransactions({ limit: 1000 });
-      console.log('Transactions API Response:', transactionsData);
       setTotalTransactions(transactionsData.total || 0);
-
-      // Calculate total credit (incoming money - what came into the wallet)
-      const credit = transactionsData.transactions
+      const credit = (transactionsData.transactions || [])
         .filter(t => (t.direction === 'CREDIT' || t.type === 'DEPOSIT' || t.type === 'TOPUP') && t.status === 'SUCCESS')
         .reduce((sum, t) => sum + t.amount, 0);
       setTotalCredit(credit);
-
-      // Calculate total debit (outgoing money - what left the wallet including fees)
-      // For DEBIT, we use amount (which is the total that left the wallet)
-      const debit = transactionsData.transactions
+      const debit = (transactionsData.transactions || [])
         .filter(t => (t.direction === 'DEBIT' || t.type === 'WITHDRAWAL' || t.type === 'TRANSFER') && t.status === 'SUCCESS')
         .reduce((sum, t) => sum + t.amount, 0);
       setTotalDebit(debit);
-
     } catch (error) {
       console.error('Error fetching wallet data:', error);
+      setWalletBalance(0);
+      setTotalTransactions(0);
+      setTotalCredit(0);
+      setTotalDebit(0);
     } finally {
       setWalletLoading(false);
     }
   };
 
-  // Initial fetch and refetch only when user manually refreshes
+  const merchantCode = (session?.user as any)?.merchantCode;
+
+  // Fetch when merchantCode is available (avoids race after switching companies)
   useEffect(() => {
+    if (!merchantCode) return;
     fetchWalletData();
-  }, [isRefetching]);
+  }, [merchantCode, isRefetching]);
 
   // Always show wallet stats (for both owners and team members with access)
   const stats = [

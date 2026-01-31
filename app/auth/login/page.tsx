@@ -103,19 +103,44 @@ function LoginContent() {
       }
 
       if (result?.ok) {
-        // Check if user needs to change password (first login)
+        toast.success('Login successful!');
+        // Wait for session to be fully updated
+        await new Promise(resolve => setTimeout(resolve, 500));
         const session = await fetch('/api/auth/session').then(res => res.json());
-        const userData = (session?.user as any)?.userData;
-        
+        console.log('📊 Email login - Session data:', session);
+        const userData = (session?.user as any)?.userData || (session?.user as any)?.user;
+        const merchants = (session?.user as any)?.merchants || [];
+        const hasPendingMerchant = (session?.user as any)?.hasPendingMerchant === true;
+
+        console.log('📊 Email login - Merchants check:', {
+          merchantsLength: merchants.length,
+          merchants,
+          hasPendingMerchant,
+          shouldRedirectToSelect: merchants.length > 1 || (hasPendingMerchant && merchants.length === 0)
+        });
+
         if (userData?.mustChangePassword || userData?.isFirstLogin) {
           toast.info('Please set your password');
           router.push('/auth/change-password?firstLogin=true');
           return;
         }
 
-        toast.success('Login successful!');
-        router.push('/');
-        router.refresh();
+        // Always redirect to merchant selection if user has multiple merchants
+        if (merchants.length > 1) {
+          console.log('📊 Redirecting to merchant selection - multiple merchants:', merchants.length);
+          router.push('/auth/select-merchant');
+          router.refresh();
+          return;
+        } else if (hasPendingMerchant && merchants.length === 0) {
+          console.log('📊 Redirecting to merchant selection - pending merchant');
+          router.push('/auth/select-merchant');
+          router.refresh();
+          return;
+        } else {
+          console.log('📊 Redirecting to dashboard - single/no merchant');
+          router.push('/');
+          router.refresh();
+        }
       }
     } catch (error: any) {
       console.error('Login error:', error);

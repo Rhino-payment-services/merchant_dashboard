@@ -23,25 +23,25 @@ export default function Home() {
   const [recentTransactions, setRecentTransactions] = useState<Transaction[]>([]);
   const [transactionsLoading, setTransactionsLoading] = useState(true);
 
-  // Log the profile for debugging
-  console.log("Dashboard Home profile:", profile);
+  const merchantCode = (session?.user as any)?.merchantCode;
 
-  // Fetch recent transactions
+  // Fetch recent transactions when merchantCode is available (avoids race after switching)
   useEffect(() => {
+    if (!merchantCode) return;
     const fetchRecentTransactions = async () => {
       try {
         setTransactionsLoading(true);
         const data = await getMyTransactions({ limit: 5 });
-        setRecentTransactions(data.transactions);
+        setRecentTransactions(data.transactions || []);
       } catch (error) {
         console.error('Error fetching recent transactions:', error);
+        setRecentTransactions([]);
       } finally {
         setTransactionsLoading(false);
       }
     };
-
     fetchRecentTransactions();
-  }, [isRefetching]);
+  }, [merchantCode, isRefetching]);
 
   const handleRefresh = async () => {
     try {
@@ -68,9 +68,13 @@ export default function Home() {
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
             <div>
               <h1 className="text-3xl font-bold text-[#08163d] mb-2">Dashboard</h1>
-              <div className="flex flex-row gap-[10px] items-center">
-                <span className="font-[600] text-[16px] text-gray-600">Welcome back, </span>
-                <span className="font-[600] text-[16px] text-[#08163d]">{profile?.merchant_names || profile?.merchantBusinessTradeName || 'Merchant'}</span>
+              <div className="flex flex-col sm:flex-row sm:items-baseline gap-1 sm:gap-2">
+                <span className="text-base text-gray-600">
+                  Managing <span className="font-semibold text-[#08163d]">{profile?.merchant_names || profile?.merchantBusinessTradeName || profile?.businessTradeName || 'Business'}</span>
+                  {profile?.owner_name && (
+                    <span className="text-gray-500 font-normal"> · {profile.owner_name}</span>
+                  )}
+                </span>
                 {isRefetching && (
                   <span className="text-xs text-blue-600 bg-blue-50 px-2 py-1 rounded-full flex items-center gap-1">
                     <RefreshCw className="h-3 w-3 animate-spin" />

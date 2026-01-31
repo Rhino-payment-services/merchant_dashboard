@@ -31,7 +31,7 @@ export const authOptions: NextAuthOptions = {
             throw new Error(message || "OTP verification failed")
           }
 
-          // Return user data with tokens
+          // Return user data with tokens (includes merchants for selection)
           return {
             id: user.id,
             email: user.email,
@@ -41,6 +41,9 @@ export const authOptions: NextAuthOptions = {
             userType: user.userType,
             subscriberType: user.subscriberType,
             merchantCode: user.merchantCode,
+            merchants: user.merchants || [],
+            hasPendingMerchant: user.hasPendingMerchant || false,
+            hasPassword: user.hasPassword ?? !!user.password,
             accessToken,
             refreshToken,
             user: {
@@ -77,12 +80,20 @@ export const authOptions: NextAuthOptions = {
 
           const { user, accessToken, refreshToken } = response.data
 
+          console.log('📊 [Auth] Email login - Backend response:', {
+            userId: user.id,
+            email: user.email,
+            merchantCode: user.merchantCode,
+            merchants: user.merchants,
+            merchantsLength: user.merchants?.length || 0
+          })
+
           if (!accessToken || !refreshToken) {
             throw new Error("Login failed")
           }
 
-          // Return user data with tokens
-          return {
+          // Return user data with tokens (includes merchants for selection)
+          const authResult = {
             id: user.id,
             email: user.email,
             phone: user.phone,
@@ -91,6 +102,9 @@ export const authOptions: NextAuthOptions = {
             userType: user.userType,
             subscriberType: user.subscriberType,
             merchantCode: user.merchantCode,
+            merchants: user.merchants || [],
+            hasPassword: user.hasPassword ?? !!user.password,
+            hasPendingMerchant: user.hasPendingMerchant || false,
             accessToken,
             refreshToken,
             user: {
@@ -99,6 +113,8 @@ export const authOptions: NextAuthOptions = {
               isFirstLogin: user.isFirstLogin || false
             }
           }
+          console.log('📊 [Auth] Email login - Returning:', { merchants: authResult.merchants, merchantCode: authResult.merchantCode })
+          return authResult
         } catch (error: any) {
           console.error("Authorization error:", error)
           throw new Error(error.response?.data?.message || error.message || "Invalid email or password")
@@ -110,6 +126,11 @@ export const authOptions: NextAuthOptions = {
     async jwt({ token, user, trigger, session }) {
       // Initial sign in
       if (user) {
+        console.log('📊 [Auth JWT] Initial sign in - storing merchants:', {
+          merchantsCount: user.merchants?.length || 0,
+          merchants: user.merchants,
+          merchantCode: user.merchantCode
+        })
         token.accessToken = user.accessToken
         token.refreshToken = user.refreshToken
         token.user = user.user
@@ -118,10 +139,14 @@ export const authOptions: NextAuthOptions = {
         token.userType = user.userType
         token.subscriberType = user.subscriberType
         token.merchantCode = user.merchantCode
+        token.merchants = user.merchants || []
+        token.hasPendingMerchant = user.hasPendingMerchant || false
+        token.hasPassword = user.hasPassword ?? false
       }
 
-      // Handle session update
+      // Handle session update (e.g. merchant selection)
       if (trigger === "update" && session) {
+        console.log('📊 [Auth JWT] Session update:', session)
         token = { ...token, ...session }
       }
 
@@ -135,6 +160,9 @@ export const authOptions: NextAuthOptions = {
         (session.user as any).userType = token.userType as string;
         (session.user as any).subscriberType = token.subscriberType as string;
         (session.user as any).merchantCode = token.merchantCode as string;
+        (session.user as any).merchants = token.merchants as any[];
+        (session.user as any).hasPendingMerchant = token.hasPendingMerchant as boolean;
+        (session.user as any).hasPassword = token.hasPassword as boolean;
         (session.user as any).accessToken = token.accessToken as string;
         (session.user as any).refreshToken = token.refreshToken as string;
         (session.user as any).userData = token.user as any;
