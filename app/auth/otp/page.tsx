@@ -94,12 +94,13 @@ function OTPContent() {
         console.log('✅ Sign in successful!');
         toast.success('OTP verified successfully!');
         
-        // Small delay before redirect
-        await new Promise(resolve => setTimeout(resolve, 100));
+        // Small delay for session to be available
+        await new Promise(resolve => setTimeout(resolve, 300));
         
-        // Check if user needs to change password (first login - applies to both owners and team members)
         const session = await fetch('/api/auth/session').then(res => res.json());
         const userData = (session?.user as any)?.userData;
+        const merchants = (session?.user as any)?.merchants || [];
+        const hasPendingMerchant = (session?.user as any)?.hasPendingMerchant === true;
         
         if (userData?.mustChangePassword || userData?.isFirstLogin) {
           toast.info('Please set your password');
@@ -107,10 +108,16 @@ function OTPContent() {
           return;
         }
         
-        // Redirect to dashboard
-        console.log('🔄 Redirecting to dashboard...');
+        // Redirect to merchant selection when multiple merchants or pending KYC
+        if (merchants.length > 1 || (hasPendingMerchant && merchants.length === 0)) {
+          router.push('/auth/select-merchant');
+          router.refresh();
+          return;
+        }
+        
+        // Single merchant or none - go to dashboard (or select-merchant handles it)
         router.push('/');
-        router.refresh(); // Refresh to load session
+        router.refresh();
       } else {
         console.error('❌ Unexpected sign in result:', result);
         toast.error('Authentication failed. Please try again.');

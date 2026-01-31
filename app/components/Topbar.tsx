@@ -13,7 +13,8 @@ import { removeCustomerId } from "@/app/lib/mockBackend";
 import { useRouter } from "next/navigation";
 import { useMerchantAuth } from "@/lib/context/MerchantAuthContext";
 import { useUserProfile } from "../(dashboard)/UserProfileProvider";
-import { Menu, X } from "lucide-react";
+import { useSession } from "next-auth/react";
+import { Menu, X, Building2 } from "lucide-react";
 
 const mockNotifications = [
   {
@@ -43,8 +44,11 @@ interface TopbarProps {
 
 export default function Topbar({ onMenuToggle, isMenuOpen }: TopbarProps) {
   const router = useRouter();
+  const { data: session } = useSession();
+  const { profile, loading } = useUserProfile();
   const { user, logout } = useMerchantAuth();
-  
+  const merchants = (session?.user as any)?.merchants || [];
+
   const handleLogout = async () => {
     try {
       // Clear any local storage/session storage
@@ -61,8 +65,6 @@ export default function Topbar({ onMenuToggle, isMenuOpen }: TopbarProps) {
       window.location.href = '/auth/login';
     }
   };
-
-  const { profile, loading } = useUserProfile();
 
   // Set default date range to current year (January 1st to December 31st)
   const [from, setFrom] = useState<string>(() => {
@@ -93,8 +95,8 @@ export default function Topbar({ onMenuToggle, isMenuOpen }: TopbarProps) {
         </Button>
       </div>
 
-      {/* Search Bar - Hidden on mobile when menu is open */}
-      <div className={`flex-1 ${isMenuOpen ? 'hidden md:block' : 'block'}`}>
+      {/* Search Bar */}
+      <div className={`flex-1 flex items-center gap-4 ${isMenuOpen ? 'hidden md:flex' : 'flex'} min-w-0`}>
         <input
           type="text"
           placeholder="Search anything ..."
@@ -129,10 +131,10 @@ export default function Topbar({ onMenuToggle, isMenuOpen }: TopbarProps) {
                   {loading 
                     ? '...' 
                     : (() => {
-                        const merchantName = profile?.merchant_names || profile?.merchantBusinessTradeName || profile?.businessTradeName || '';
-                        const firstInitial = merchantName?.split(" ")[0]?.[0] || user?.profile?.firstName?.[0] || "M";
-                        const secondInitial = merchantName?.split(" ")[1]?.[0] || user?.profile?.lastName?.[0] || merchantName?.split(" ")[0]?.[1] || "M";
-                        return `${firstInitial}${secondInitial}`;
+                        const ownerName = profile?.owner_name || user?.profile?.firstName;
+                        const firstInitial = ownerName?.split(" ")[0]?.[0] || user?.profile?.firstName?.[0] || "U";
+                        const secondInitial = ownerName?.split(" ")[1]?.[0] || user?.profile?.lastName?.[0] || ownerName?.split(" ")[0]?.[1] || "";
+                        return `${firstInitial}${secondInitial}`.toUpperCase() || "U";
                       })()
                   }
                 </span>
@@ -140,6 +142,14 @@ export default function Topbar({ onMenuToggle, isMenuOpen }: TopbarProps) {
             </button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-44 mt-2">
+            {merchants.length > 1 && (
+              <Link href="/auth/select-merchant">
+                <DropdownMenuItem className="flex items-center gap-2">
+                  <Building2 className="w-4 h-4" />
+                  Switch Merchant
+                </DropdownMenuItem>
+              </Link>
+            )}
             <Link href="/profile">
               <DropdownMenuItem>Profile</DropdownMenuItem>
             </Link>

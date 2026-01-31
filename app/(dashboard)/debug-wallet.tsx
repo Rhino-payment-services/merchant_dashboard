@@ -65,7 +65,10 @@ export default function DebugWallet() {
           <strong>Profile Merchant ID:</strong> {profile?.merchantId || 'N/A'}
         </div>
         <div>
-          <strong>Profile Merchant Name:</strong> {profile?.merchant_names || profile?.merchantBusinessTradeName || profile?.businessTradeName || 'N/A'}
+          <strong>Business Name:</strong> {profile?.merchant_names || profile?.merchantBusinessTradeName || profile?.businessTradeName || 'N/A'}
+        </div>
+        <div>
+          <strong>Owner:</strong> {profile?.owner_name || 'N/A'}
         </div>
         <div>
           <strong>Profile Balance:</strong> {profile?.merchant_balance || 0}
@@ -75,6 +78,15 @@ export default function DebugWallet() {
         </div>
         <div>
           <strong>Is Team Member:</strong> {profile?.isTeamMember ? 'Yes' : 'No'}
+        </div>
+        <div>
+          <strong>Session Merchant Code:</strong> {(session.user as any)?.merchantCode || 'N/A'}
+        </div>
+        <div>
+          <strong>Session Merchants:</strong>
+          <pre className="bg-gray-100 p-2 rounded text-xs overflow-auto max-h-32 mt-1">
+            {JSON.stringify((session.user as any)?.merchants || [], null, 2)}
+          </pre>
         </div>
         {profile?.businessWallet && profile && (
           <div className="mt-2">

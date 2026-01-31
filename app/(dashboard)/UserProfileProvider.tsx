@@ -67,7 +67,9 @@ export function UserProfileProvider({
   const { data: session } = useSession();
   
   // Get user data from session (preferred) or MerchantAuthContext
-  const userData = (session?.user as any)?.userData || user;
+  const userData = (session?.user as any)?.userData || (session?.user as any)?.user || user;
+  const sessionMerchantCode = (session?.user as any)?.merchantCode ?? (userData as any)?.merchantCode;
+  const sessionMerchants = (session?.user as any)?.merchants || (userData as any)?.merchants || [];
 
   const {
     data: profile,
@@ -76,7 +78,7 @@ export function UserProfileProvider({
     refetch,
     isRefetching
   } = useQuery({
-    queryKey: ['userProfile', userData?.id],
+    queryKey: ['userProfile', userData?.id, sessionMerchantCode],
     queryFn: async () => {
       // Check if user is a team member by checking for wallet team membership
       const userType = (session?.user as any)?.userType || userData?.userType;
@@ -138,8 +140,26 @@ export function UserProfileProvider({
         console.error('📊 UserProfile - Error in wallet fetch:', error);
       }
 
-      // Use merchant business data from wallet or userData
-      const merchantData = businessWallet?.merchantData || userData?.merchant;
+      // When no wallet, use session merchant (selected at login)
+      if (!merchantCode && sessionMerchantCode) {
+        merchantCode = sessionMerchantCode;
+      }
+
+      // Use merchant business data from wallet, userData, or session merchants (when no wallet)
+      const effectiveCode = String(merchantCode || sessionMerchantCode || '');
+      const sessionMerchant = sessionMerchants.find((m: any) => String(m?.merchantCode || '') === effectiveCode)
+        || (sessionMerchants.length === 1 ? sessionMerchants[0] : null);
+      
+      console.log('📊 UserProfile - Session merchants debug:', {
+        sessionMerchants,
+        effectiveCode,
+        sessionMerchant,
+        sessionMerchantBusinessTradeName: sessionMerchant?.businessTradeName
+      });
+      const merchantData = businessWallet?.merchantData || userData?.merchant || (sessionMerchant ? {
+        businessTradeName: sessionMerchant.businessTradeName,
+        merchantCode: sessionMerchant.merchantCode,
+      } : null);
       
       console.log('📊 UserProfile - Merchant data check:', {
         hasWalletMerchantData: !!businessWallet?.merchantData,
@@ -149,13 +169,42 @@ export function UserProfileProvider({
         walletDescription: businessWallet?.description
       });
       
-      const businessName = merchantData?.businessTradeName || 
-                          businessWallet?.description?.replace('Business wallet for ', '') ||
-                          `${userData?.profile?.firstName || ''} ${userData?.profile?.lastName || ''}`.trim() ||
-                          'N/A';
-      const ownerName = merchantData 
-        ? `${merchantData.ownerFirstName} ${merchantData.ownerLastName}` 
-        : businessName;
+      // Business name: from wallet/merchant data, or session merchants, or API fallback
+      let businessName = merchantData?.businessTradeName || 
+                         sessionMerchant?.businessTradeName ||
+                         businessWallet?.description?.replace(/^Business wallet for\s+/i, '') ||
+                         (merchantCode || sessionMerchantCode ? `Business · ${merchantCode || sessionMerchantCode}` : null) ||
+                         'Business';
+
+      // API fallback: fetch merchant by code when we have code but no real business name yet
+      const rawCode = merchantCode || sessionMerchantCode;
+      const codeToFetch = rawCode ? String(rawCode).padStart(4, '0') : '';
+      console.log('📊 UserProfile - API fallback check:', {
+        rawCode,
+        codeToFetch,
+        currentBusinessName: businessName,
+        shouldFetch: codeToFetch && (businessName === 'Business' || businessName?.startsWith('Business ·'))
+      });
+      if (codeToFetch && (businessName === 'Business' || businessName?.startsWith('Business ·'))) {
+        try {
+          const apiClient = (await import('@/lib/api/client')).default;
+          console.log('📊 UserProfile - Calling API: /merchant-kyc/search-by-code/' + codeToFetch);
+          const res = await apiClient.get(`/merchant-kyc/search-by-code/${codeToFetch}`);
+          console.log('📊 UserProfile - API response:', res?.data);
+          const fetchedName = res?.data?.merchant?.businessTradeName || res?.data?.businessTradeName;
+          console.log('📊 UserProfile - Fetched business name:', fetchedName);
+          if (fetchedName && fetchedName !== 'Business') {
+            businessName = fetchedName;
+          }
+        } catch (err) {
+          console.error('📊 UserProfile - API fallback error:', err);
+        }
+      }
+      const ownerName = merchantData && (merchantData.ownerFirstName || merchantData.ownerLastName)
+        ? `${merchantData.ownerFirstName || ''} ${merchantData.ownerLastName || ''}`.trim()
+        : userData?.profile
+          ? `${userData.profile.firstName || ''} ${userData.profile.lastName || ''}`.trim()
+          : (session?.user as any)?.name || '';
       const businessPhone = merchantData?.registeredPhoneNumber || userData?.phone || '';
       const businessEmail = merchantData?.businessEmail || userData?.email || '';
       
@@ -182,7 +231,7 @@ export function UserProfileProvider({
       const profileData = {
         merchantId: businessWallet?.merchantId || userData?.id || '',
         merchant_names: businessName || 'N/A',
-        merchant_code: merchantCode || merchantData?.merchantCode || (userData?.merchant?.merchantCode) || '',
+        merchant_code: merchantCode || sessionMerchantCode || merchantData?.merchantCode || (userData?.merchant?.merchantCode) || '',
         owner_name: ownerName,
         merchant_phone: businessPhone,
         business_email: businessEmail,
@@ -206,11 +255,11 @@ export function UserProfileProvider({
         // Keep raw merchant data for reference
         merchantData: merchantData,
         // Additional merchant name fields for compatibility
-        merchantBusinessTradeName: merchantData?.businessTradeName,
-        businessTradeName: merchantData?.businessTradeName,
+        merchantBusinessTradeName: merchantData?.businessTradeName || sessionMerchant?.businessTradeName,
+        businessTradeName: merchantData?.businessTradeName || sessionMerchant?.businessTradeName,
         ownerPhone: businessPhone,
         ownerEmail: businessEmail,
-        merchantCode: merchantCode || merchantData?.merchantCode,
+        merchantCode: merchantCode || sessionMerchantCode || merchantData?.merchantCode,
         phone: businessPhone,
         email: businessEmail,
         businessAddress: merchantData?.businessAddress,

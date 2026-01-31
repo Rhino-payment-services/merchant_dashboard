@@ -42,7 +42,11 @@ export const getWalletBalance = async (): Promise<WalletBalance> => {
     return response.data
   } catch (error: any) {
     console.error('Error fetching wallet balance:', error)
-    throw new Error(error.response?.data?.message || 'Failed to fetch wallet balance')
+    const isNetworkError = !(error?.response)
+    const message = isNetworkError
+      ? 'Unable to reach server. Please check your connection.'
+      : (error.response?.data?.message || 'Failed to fetch wallet balance')
+    throw new Error(message)
   }
 }
 
@@ -65,7 +69,11 @@ export const getMyTransactions = async (params?: {
     return response.data
   } catch (error: any) {
     console.error('Error fetching business wallet transactions:', error)
-    throw new Error(error.response?.data?.message || 'Failed to fetch business wallet transactions')
+    const isNetworkError = !(error?.response)
+    const message = isNetworkError
+      ? 'Unable to reach server. Please check your connection.'
+      : (error.response?.data?.message || 'Failed to fetch business wallet transactions')
+    throw new Error(message)
   }
 }
 

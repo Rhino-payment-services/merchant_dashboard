@@ -40,7 +40,12 @@ apiClient.interceptors.request.use(
         if (session?.accessToken) {
           config.headers.Authorization = `Bearer ${session.accessToken}`
           console.log('🔑 [API Client] Using token from session:', session.accessToken.substring(0, 20) + '...');
-        } else {
+        }
+        const merchantCode = (session?.user as any)?.merchantCode
+        if (merchantCode) {
+          config.headers['X-Merchant-Code'] = merchantCode
+        }
+        if (!config.headers.Authorization) {
           // Fallback to localStorage for backwards compatibility
           const accessToken = localStorage.getItem('accessToken')
           console.log('🔑 [API Client] Access token from localStorage:', accessToken);

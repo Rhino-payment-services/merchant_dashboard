@@ -8,10 +8,11 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { PhoneNumberInput } from '@/components/ui/phone-input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Phone, User, Building2, ArrowLeft, ArrowRight, CheckCircle, Loader2, AlertCircle, Mail, MapPin } from 'lucide-react'
+import { Phone, User, Building2, ArrowLeft, ArrowRight, CheckCircle, Loader2, AlertCircle, Mail, MapPin, Search } from 'lucide-react'
 import Image from 'next/image'
 import { toast } from 'sonner'
 import { API_URL } from '@/lib/config'
+import { normalizePhoneForSearch } from '@/lib/utils'
 import Link from 'next/link'
 
 interface SignupFormData {
@@ -36,11 +37,15 @@ interface SignupFormData {
 
 function SignupContent() {
   const router = useRouter()
-  const [step, setStep] = useState(1)
+  const [step, setStep] = useState<number>(1)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [formErrors, setFormErrors] = useState<Record<string, string>>({})
   const [apiError, setApiError] = useState<string | null>(null)
   
+  const [existingAccountUsed, setExistingAccountUsed] = useState(false)
+  const [successMessage, setSuccessMessage] = useState<string | null>(null)
+  const [isLookingUp, setIsLookingUp] = useState(false)
+  const [searchBy, setSearchBy] = useState<'phone' | 'email'>('phone')
   const [formData, setFormData] = useState<SignupFormData>({
     firstName: '',
     lastName: '',
@@ -73,6 +78,48 @@ function SignupContent() {
       })
     }
     setApiError(null)
+  }
+
+  const handleLookup = async () => {
+    const searchValue = searchBy === 'phone' ? formData.phoneNumber.trim() : formData.email.trim()
+    if (!searchValue) {
+      toast.error(`Enter your ${searchBy === 'phone' ? 'phone number' : 'email'} to search`)
+      return
+    }
+    if (searchBy === 'email' && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(searchValue)) {
+      toast.error('Please enter a valid email address')
+      return
+    }
+    setIsLookingUp(true)
+    setApiError(null)
+    try {
+      const params = new URLSearchParams()
+      const valueToSend = searchBy === 'phone' ? normalizePhoneForSearch(searchValue) : searchValue
+      params.set(searchBy, valueToSend)
+      const response = await fetch(`${API_URL}/auth/merchant/lookup?${params.toString()}`)
+      const data = await response.json()
+      if (data.exists && data.user) {
+        const u = data.user
+        setFormData(prev => ({
+          ...prev,
+          firstName: u.firstName ?? prev.firstName,
+          lastName: u.lastName ?? prev.lastName,
+          middleName: u.middleName ?? prev.middleName,
+          dateOfBirth: u.dateOfBirth ?? prev.dateOfBirth,
+          gender: u.gender ?? prev.gender,
+          nationalId: u.nationalId ?? prev.nationalId,
+          phoneNumber: u.phone ?? prev.phoneNumber,
+          email: u.email ?? prev.email
+        }))
+        toast.success('We found your account – your details have been prefilled')
+      } else {
+        toast.info('No existing account found. Please fill in your details below.')
+      }
+    } catch (err) {
+      toast.error('Could not look up account. Please continue filling the form.')
+    } finally {
+      setIsLookingUp(false)
+    }
   }
 
   const validateStep1 = (): boolean => {
@@ -234,8 +281,11 @@ function SignupContent() {
       const data = await response.json()
 
       if ((response.ok || response.status === 201) && data.success) {
+        setExistingAccountUsed(!!data.existingAccountUsed)
+        setSuccessMessage(data.message || null)
         setStep(3)
-        toast.success('Registration successful!')
+        const message = data.message || 'Registration successful!'
+        toast.success(message, { duration: 5000 })
       } else {
         // Handle success response but with error message
         const errorMessage = data.message || 'Registration failed'
@@ -337,111 +387,179 @@ function SignupContent() {
           {step === 1 && (
             <div className="space-y-4">
               <h2 className="text-lg font-semibold text-gray-900 mb-4">Personal Information</h2>
+              <p className="text-sm text-gray-600 mb-4">Enter your phone or email to search for your existing account and prefill your details.</p>
               
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-1">
-                  <Label htmlFor="firstName">First Name *</Label>
-                  <Input
-                    id="firstName"
-                    value={formData.firstName}
-                    onChange={(e) => handleChange('firstName', e.target.value)}
-                    placeholder="John"
-                    className={formErrors.firstName ? 'border-red-500' : ''}
-                  />
-                  {formErrors.firstName && <p className="text-xs text-red-500">{formErrors.firstName}</p>}
+              <div className="flex gap-2 mb-3">
+                <Button
+                  type="button"
+                  variant={searchBy === 'phone' ? 'default' : 'outline'}
+                  size="sm"
+                  onClick={() => setSearchBy('phone')}
+                >
+                  <Phone className="w-4 h-4 mr-2" />
+                  Phone
+                </Button>
+                <Button
+                  type="button"
+                  variant={searchBy === 'email' ? 'default' : 'outline'}
+                  size="sm"
+                  onClick={() => setSearchBy('email')}
+                >
+                  <Mail className="w-4 h-4 mr-2" />
+                  Email
+                </Button>
+              </div>
+              
+              <div className="flex gap-2">
+                <div className="flex-1">
+                  {searchBy === 'phone' ? (
+                    <PhoneNumberInput
+                      value={formData.phoneNumber}
+                      onChange={(value) => handleChange('phoneNumber', value)}
+                      placeholder="700 123 456"
+                      defaultCountry="ug"
+                    />
+                  ) : (
+                    <div className="relative">
+                      <Mail className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
+                      <Input
+                        id="searchEmail"
+                        type="email"
+                        value={formData.email}
+                        onChange={(e) => handleChange('email', e.target.value)}
+                        placeholder="merchant@example.com"
+                        className="pl-10"
+                      />
+                    </div>
+                  )}
+                </div>
+                <Button
+                  type="button"
+                  onClick={handleLookup}
+                  disabled={isLookingUp || (searchBy === 'phone' ? !formData.phoneNumber.trim() : !formData.email.trim())}
+                >
+                  {isLookingUp ? (
+                    <>
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      Searching...
+                    </>
+                  ) : (
+                    <>
+                      <Search className="w-4 h-4 mr-2" />
+                      Search
+                    </>
+                  )}
+                </Button>
+              </div>
+              
+              <div className="border-t pt-4 mt-4">
+                <p className="text-sm font-medium text-gray-700 mb-3">Your details</p>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <Label htmlFor="firstName">First Name *</Label>
+                    <Input
+                      id="firstName"
+                      value={formData.firstName}
+                      onChange={(e) => handleChange('firstName', e.target.value)}
+                      placeholder="John"
+                      className={formErrors.firstName ? 'border-red-500' : ''}
+                    />
+                    {formErrors.firstName && <p className="text-xs text-red-500">{formErrors.firstName}</p>}
+                  </div>
+                  
+                  <div className="space-y-1">
+                    <Label htmlFor="lastName">Last Name *</Label>
+                    <Input
+                      id="lastName"
+                      value={formData.lastName}
+                      onChange={(e) => handleChange('lastName', e.target.value)}
+                      placeholder="Doe"
+                      className={formErrors.lastName ? 'border-red-500' : ''}
+                    />
+                    {formErrors.lastName && <p className="text-xs text-red-500">{formErrors.lastName}</p>}
+                  </div>
                 </div>
                 
-                <div className="space-y-1">
-                  <Label htmlFor="lastName">Last Name *</Label>
-                  <Input
-                    id="lastName"
-                    value={formData.lastName}
-                    onChange={(e) => handleChange('lastName', e.target.value)}
-                    placeholder="Doe"
-                    className={formErrors.lastName ? 'border-red-500' : ''}
-                  />
-                  {formErrors.lastName && <p className="text-xs text-red-500">{formErrors.lastName}</p>}
-                </div>
-              </div>
-              
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-1">
-                  <Label htmlFor="middleName">Middle Name</Label>
-                  <Input
-                    id="middleName"
-                    value={formData.middleName}
-                    onChange={(e) => handleChange('middleName', e.target.value)}
-                    placeholder="Optional"
-                  />
-                </div>
-                
-                <div className="space-y-1">
-                  <Label htmlFor="dateOfBirth">Date of Birth *</Label>
-                  <Input
-                    id="dateOfBirth"
-                    type="date"
-                    value={formData.dateOfBirth}
-                    onChange={(e) => handleChange('dateOfBirth', e.target.value)}
-                    className={formErrors.dateOfBirth ? 'border-red-500' : ''}
-                  />
-                  {formErrors.dateOfBirth && <p className="text-xs text-red-500">{formErrors.dateOfBirth}</p>}
-                </div>
-              </div>
-              
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-1">
-                  <Label htmlFor="gender">Gender *</Label>
-                  <Select value={formData.gender} onValueChange={(value) => handleChange('gender', value)}>
-                    <SelectTrigger className={formErrors.gender ? 'border-red-500' : ''}>
-                      <SelectValue placeholder="Select" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="MALE">Male</SelectItem>
-                      <SelectItem value="FEMALE">Female</SelectItem>
-                      <SelectItem value="OTHER">Other</SelectItem>
-                    </SelectContent>
-                  </Select>
-                  {formErrors.gender && <p className="text-xs text-red-500">{formErrors.gender}</p>}
+                <div className="grid grid-cols-2 gap-3 mt-3">
+                  <div className="space-y-1">
+                    <Label htmlFor="middleName">Middle Name</Label>
+                    <Input
+                      id="middleName"
+                      value={formData.middleName}
+                      onChange={(e) => handleChange('middleName', e.target.value)}
+                      placeholder="Optional"
+                    />
+                  </div>
+                  
+                  <div className="space-y-1">
+                    <Label htmlFor="dateOfBirth">Date of Birth *</Label>
+                    <Input
+                      id="dateOfBirth"
+                      type="date"
+                      value={formData.dateOfBirth}
+                      onChange={(e) => handleChange('dateOfBirth', e.target.value)}
+                      className={formErrors.dateOfBirth ? 'border-red-500' : ''}
+                    />
+                    {formErrors.dateOfBirth && <p className="text-xs text-red-500">{formErrors.dateOfBirth}</p>}
+                  </div>
                 </div>
                 
-                <div className="space-y-1">
-                  <Label htmlFor="nationalId">National ID *</Label>
-                  <Input
-                    id="nationalId"
-                    value={formData.nationalId}
-                    onChange={(e) => handleChange('nationalId', e.target.value)}
-                    placeholder="CM12345678ABC"
-                    className={formErrors.nationalId ? 'border-red-500' : ''}
-                  />
-                  {formErrors.nationalId && <p className="text-xs text-red-500">{formErrors.nationalId}</p>}
+                <div className="grid grid-cols-2 gap-3 mt-3">
+                  <div className="space-y-1">
+                    <Label htmlFor="gender">Gender *</Label>
+                    <Select value={formData.gender} onValueChange={(value) => handleChange('gender', value)}>
+                      <SelectTrigger className={formErrors.gender ? 'border-red-500' : ''}>
+                        <SelectValue placeholder="Select" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="MALE">Male</SelectItem>
+                        <SelectItem value="FEMALE">Female</SelectItem>
+                        <SelectItem value="OTHER">Other</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    {formErrors.gender && <p className="text-xs text-red-500">{formErrors.gender}</p>}
+                  </div>
+                  
+                  <div className="space-y-1">
+                    <Label htmlFor="nationalId">National ID *</Label>
+                    <Input
+                      id="nationalId"
+                      value={formData.nationalId}
+                      onChange={(e) => handleChange('nationalId', e.target.value)}
+                      placeholder="CM12345678ABC"
+                      className={formErrors.nationalId ? 'border-red-500' : ''}
+                    />
+                    {formErrors.nationalId && <p className="text-xs text-red-500">{formErrors.nationalId}</p>}
+                  </div>
                 </div>
-              </div>
-              
-              <div className="space-y-1">
-                <Label htmlFor="phoneNumber">Phone Number *</Label>
-                <PhoneNumberInput
-                  value={formData.phoneNumber}
-                  onChange={(value) => handleChange('phoneNumber', value)}
-                  placeholder="700 123 456"
-                  defaultCountry="ug"
-                />
-                {formErrors.phoneNumber && <p className="text-xs text-red-500">{formErrors.phoneNumber}</p>}
-              </div>
-              
-              <div className="space-y-1">
-                <Label htmlFor="email">Email Address *</Label>
-                <div className="relative">
-                  <Mail className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
-                  <Input
-                    id="email"
-                    type="email"
-                    value={formData.email}
-                    onChange={(e) => handleChange('email', e.target.value)}
-                    placeholder="merchant@example.com"
-                    className={`pl-10 ${formErrors.email ? 'border-red-500' : ''}`}
-                  />
+                
+                <div className="grid grid-cols-2 gap-3 mt-3">
+                  <div className="space-y-1">
+                    <Label htmlFor="phoneNumber">Phone Number *</Label>
+                    <PhoneNumberInput
+                      value={formData.phoneNumber}
+                      onChange={(value) => handleChange('phoneNumber', value)}
+                      placeholder="700 123 456"
+                      defaultCountry="ug"
+                    />
+                    {formErrors.phoneNumber && <p className="text-xs text-red-500">{formErrors.phoneNumber}</p>}
+                  </div>
+                  <div className="space-y-1">
+                    <Label htmlFor="email">Email Address *</Label>
+                    <div className="relative">
+                      <Mail className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
+                      <Input
+                        id="email"
+                        type="email"
+                        value={formData.email}
+                        onChange={(e) => handleChange('email', e.target.value)}
+                        placeholder="merchant@example.com"
+                        className={`pl-10 ${formErrors.email ? 'border-red-500' : ''}`}
+                      />
+                    </div>
+                    {formErrors.email && <p className="text-xs text-red-500">{formErrors.email}</p>}
+                  </div>
                 </div>
-                {formErrors.email && <p className="text-xs text-red-500">{formErrors.email}</p>}
               </div>
               
               <Button onClick={handleNextStep} className="w-full mt-4">
@@ -489,8 +607,8 @@ function SignupContent() {
                   <SelectContent>
                     <SelectItem value="SOLE_PROPRIETORSHIP">Sole Proprietorship</SelectItem>
                     <SelectItem value="PARTNERSHIP">Partnership</SelectItem>
-                    <SelectItem value="LIMITED_LIABILITY">Limited Liability Company</SelectItem>
-                    <SelectItem value="CORPORATION">Corporation</SelectItem>
+                    <SelectItem value="LIMITED_COMPANY">Limited Liability Company</SelectItem>
+                    <SelectItem value="PUBLIC_COMPANY">Public Company</SelectItem>
                     <SelectItem value="COOPERATIVE">Cooperative</SelectItem>
                     <SelectItem value="NGO">NGO</SelectItem>
                     <SelectItem value="OTHER">Other</SelectItem>
@@ -569,9 +687,18 @@ function SignupContent() {
                 <CheckCircle className="w-10 h-10 text-green-600" />
               </div>
               <h2 className="text-2xl font-bold text-gray-900 mb-2">Registration Successful!</h2>
-              <p className="text-gray-600 mb-6">
-                Your merchant account has been created. You can now login with your phone number to access your dashboard.
+              <p className="text-gray-600 mb-4">
+                {existingAccountUsed
+                  ? (successMessage || 'Your new business has been linked to your existing account. Please login to complete KYC.')
+                  : 'Your merchant account has been created. You can now login with your phone number to access your dashboard.'}
               </p>
+              {existingAccountUsed && (
+                <div className="mb-4 p-4 rounded-lg bg-amber-50 border border-amber-200 text-left">
+                  <p className="text-sm text-amber-800">
+                    <strong>Existing account detected:</strong> Your phone number or email is already registered. Your new business has been linked to that account. Use your existing credentials to login.
+                  </p>
+                </div>
+              )}
               <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6 text-left">
                 <h4 className="font-medium text-blue-900 mb-2">Next Steps:</h4>
                 <ol className="text-sm text-blue-800 space-y-2">
