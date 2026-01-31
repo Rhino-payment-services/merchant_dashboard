@@ -126,22 +126,23 @@ export const authOptions: NextAuthOptions = {
     async jwt({ token, user, trigger, session }) {
       // Initial sign in
       if (user) {
+        const u = user as any
         console.log('📊 [Auth JWT] Initial sign in - storing merchants:', {
-          merchantsCount: user.merchants?.length || 0,
-          merchants: user.merchants,
-          merchantCode: user.merchantCode
+          merchantsCount: u.merchants?.length || 0,
+          merchants: u.merchants,
+          merchantCode: u.merchantCode
         })
-        token.accessToken = user.accessToken
-        token.refreshToken = user.refreshToken
-        token.user = user.user
-        token.id = user.id
-        token.role = user.role
-        token.userType = user.userType
-        token.subscriberType = user.subscriberType
-        token.merchantCode = user.merchantCode
-        token.merchants = user.merchants || []
-        token.hasPendingMerchant = user.hasPendingMerchant || false
-        token.hasPassword = user.hasPassword ?? false
+        token.accessToken = u.accessToken
+        token.refreshToken = u.refreshToken
+        token.user = u.user
+        token.id = u.id
+        token.role = u.role
+        token.userType = u.userType
+        token.subscriberType = u.subscriberType
+        token.merchantCode = u.merchantCode
+        token.merchants = u.merchants || []
+        token.hasPendingMerchant = u.hasPendingMerchant || false
+        token.hasPassword = u.hasPassword ?? false
       }
 
       // Handle session update (e.g. merchant selection)
