@@ -158,11 +158,11 @@ export default function Home() {
         sessionMerchants: sessionMerchants.map((m: any) => ({
           id: m.id,
           code: m.merchantCode,
-          name: m.businessTradeName
-        }))
+          name: m.businessTradeName,
+        })),
       });
     }
-  }, [loading, currentMerchantId, merchantCode, isSuperMerchant, superMerchantLoading, profile?.merchantId, sessionMerchantId]);
+  }, [loading, currentMerchantId, merchantCode, isSuperMerchant, superMerchantLoading, profile?.merchantId, sessionMerchantId, sessionMerchants]);
 
   // Regular merchant dashboard content
   const RegularDashboard = () => (

@@ -256,7 +256,8 @@ export default function SuperMerchantDashboard({ merchantId, merchantName }: Sup
         <div className="flex-1">
           <h2 className="text-xl font-bold text-gray-900">Super Merchant Dashboard</h2>
           <p className="text-gray-500">
-            Aggregate view including {merchantName} and {dashboardData.totalChildMerchants} assigned child merchant{dashboardData.totalChildMerchants !== 1 ? 's' : ''}
+            Aggregate view including {merchantName} and {dashboardData.totalChildMerchants} assigned child merchant
+            {dashboardData.totalChildMerchants !== 1 ? 's' : ''}
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -278,44 +279,48 @@ export default function SuperMerchantDashboard({ merchantId, merchantName }: Sup
               </SelectTrigger>
               <SelectContent>
                 {/* User's Own Accounts */}
-                {allMerchants.filter((m: MerchantItem) => m.isOwnAccount).map((merchant) => (
-                  <SelectItem key={merchant.id} value={merchant.id}>
-                    <div className="flex items-center gap-2 w-full">
-                      {merchant.isSuperMerchant ? (
-                        <Crown className="h-4 w-4 text-yellow-600" />
-                      ) : (
-                        <Building2 className="h-4 w-4 text-gray-400" />
-                      )}
-                      <span className="flex-1">{merchant.businessTradeName}</span>
-                      {merchant.isSuperMerchant ? (
-                        <Badge variant="outline" className="text-yellow-600 border-yellow-600">
-                          Super Merchant
-                        </Badge>
-                      ) : (
-                        <Badge variant="outline" className="text-gray-600">
-                          My Account
-                        </Badge>
-                      )}
-                    </div>
-                  </SelectItem>
-                ))}
+                {allMerchants
+                  .filter((m: MerchantItem) => m.isOwnAccount)
+                  .map((merchant) => (
+                    <SelectItem key={merchant.id} value={merchant.id}>
+                      <div className="flex items-center gap-2 w-full">
+                        {merchant.isSuperMerchant ? (
+                          <Crown className="h-4 w-4 text-yellow-600" />
+                        ) : (
+                          <Building2 className="h-4 w-4 text-gray-400" />
+                        )}
+                        <span className="flex-1">{merchant.businessTradeName}</span>
+                        {merchant.isSuperMerchant ? (
+                          <Badge variant="outline" className="text-yellow-600 border-yellow-600">
+                            Super Merchant
+                          </Badge>
+                        ) : (
+                          <Badge variant="outline" className="text-gray-600">
+                            My Account
+                          </Badge>
+                        )}
+                      </div>
+                    </SelectItem>
+                  ))}
                 {/* Child Merchants */}
                 {allMerchants.filter((m: MerchantItem) => !m.isOwnAccount).length > 0 && (
                   <>
                     <div className="px-2 py-1.5 text-xs font-semibold text-gray-500 border-t mt-1">
                       Child Merchants
                     </div>
-                    {allMerchants.filter((m: MerchantItem) => !m.isOwnAccount).map((merchant) => (
-                      <SelectItem key={merchant.id} value={merchant.id}>
-                        <div className="flex items-center gap-2 w-full">
-                          <Building2 className="h-4 w-4 text-gray-400" />
-                          <span className="flex-1">{merchant.businessTradeName}</span>
-                          <Badge variant="outline" className="text-blue-600">
-                            Child
-                          </Badge>
-                        </div>
-                      </SelectItem>
-                    ))}
+                    {allMerchants
+                      .filter((m: MerchantItem) => !m.isOwnAccount)
+                      .map((merchant) => (
+                        <SelectItem key={merchant.id} value={merchant.id}>
+                          <div className="flex items-center gap-2 w-full">
+                            <Building2 className="h-4 w-4 text-gray-400" />
+                            <span className="flex-1">{merchant.businessTradeName}</span>
+                            <Badge variant="outline" className="text-blue-600">
+                              Child
+                            </Badge>
+                          </div>
+                        </SelectItem>
+                      ))}
                   </>
                 )}
               </SelectContent>
@@ -369,7 +374,8 @@ export default function SuperMerchantDashboard({ merchantId, merchantName }: Sup
               {formatCurrency(dashboardData.totalWalletBalance)}
             </div>
             <p className="text-xs text-gray-500 mt-1">
-              Includes super merchant + {dashboardData.totalChildMerchants} child merchant{dashboardData.totalChildMerchants !== 1 ? 's' : ''}
+              Includes super merchant + {dashboardData.totalChildMerchants} child merchant
+              {dashboardData.totalChildMerchants !== 1 ? 's' : ''}
             </p>
           </CardContent>
         </Card>
@@ -468,9 +474,7 @@ export default function SuperMerchantDashboard({ merchantId, merchantName }: Sup
                         )}
                       </div>
                     </TableCell>
-                    <TableCell className="text-gray-500">
-                      -
-                    </TableCell>
+                    <TableCell className="text-gray-500">-</TableCell>
                     <TableCell className="text-right">
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
@@ -479,15 +483,36 @@ export default function SuperMerchantDashboard({ merchantId, merchantName }: Sup
                           </Button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
-                          <DropdownMenuItem onClick={() => handleViewChildMerchantTransactions(dashboardData.superMerchant.id, dashboardData.superMerchant.merchantCode)}>
+                          <DropdownMenuItem
+                            onClick={() =>
+                              handleViewChildMerchantTransactions(
+                                dashboardData.superMerchant.id,
+                                dashboardData.superMerchant.merchantCode
+                              )
+                            }
+                          >
                             <Activity className="h-4 w-4 mr-2" />
                             View Transactions
                           </DropdownMenuItem>
-                          <DropdownMenuItem onClick={() => handleViewChildMerchantReports(dashboardData.superMerchant.id, dashboardData.superMerchant.merchantCode)}>
+                          <DropdownMenuItem
+                            onClick={() =>
+                              handleViewChildMerchantReports(
+                                dashboardData.superMerchant.id,
+                                dashboardData.superMerchant.merchantCode
+                              )
+                            }
+                          >
                             <FileText className="h-4 w-4 mr-2" />
                             View Reports
                           </DropdownMenuItem>
-                          <DropdownMenuItem onClick={() => handleViewChildMerchantQR(dashboardData.superMerchant.merchantCode, dashboardData.superMerchant.businessTradeName)}>
+                          <DropdownMenuItem
+                            onClick={() =>
+                              handleViewChildMerchantQR(
+                                dashboardData.superMerchant.merchantCode,
+                                dashboardData.superMerchant.businessTradeName
+                              )
+                            }
+                          >
                             <QrCode className="h-4 w-4 mr-2" />
                             View QR Code
                           </DropdownMenuItem>
@@ -551,33 +576,52 @@ export default function SuperMerchantDashboard({ merchantId, merchantName }: Sup
                       )}
                     </div>
                   </TableCell>
-                    <TableCell className="text-gray-500">
-                      -
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button variant="ghost" size="sm">
-                            <MoreVertical className="h-4 w-4" />
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          <DropdownMenuItem onClick={() => handleViewChildMerchantTransactions(dashboardData.superMerchant.id, dashboardData.superMerchant.merchantCode)}>
-                            <Activity className="h-4 w-4 mr-2" />
-                            View Transactions
-                          </DropdownMenuItem>
-                          <DropdownMenuItem onClick={() => handleViewChildMerchantReports(dashboardData.superMerchant.id, dashboardData.superMerchant.merchantCode)}>
-                            <FileText className="h-4 w-4 mr-2" />
-                            View Reports
-                          </DropdownMenuItem>
-                          <DropdownMenuItem onClick={() => handleViewChildMerchantQR(dashboardData.superMerchant.merchantCode, dashboardData.superMerchant.businessTradeName)}>
-                            <QrCode className="h-4 w-4 mr-2" />
-                            View QR Code
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    </TableCell>
-                  </TableRow>
+                  <TableCell className="text-gray-500">-</TableCell>
+                  <TableCell className="text-right">
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button variant="ghost" size="sm">
+                          <MoreVertical className="h-4 w-4" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuItem
+                          onClick={() =>
+                            handleViewChildMerchantTransactions(
+                              dashboardData.superMerchant.id,
+                              dashboardData.superMerchant.merchantCode
+                            )
+                          }
+                        >
+                          <Activity className="h-4 w-4 mr-2" />
+                          View Transactions
+                        </DropdownMenuItem>
+                        <DropdownMenuItem
+                          onClick={() =>
+                            handleViewChildMerchantReports(
+                              dashboardData.superMerchant.id,
+                              dashboardData.superMerchant.merchantCode
+                            )
+                          }
+                        >
+                          <FileText className="h-4 w-4 mr-2" />
+                          View Reports
+                        </DropdownMenuItem>
+                        <DropdownMenuItem
+                          onClick={() =>
+                            handleViewChildMerchantQR(
+                              dashboardData.superMerchant.merchantCode,
+                              dashboardData.superMerchant.businessTradeName
+                            )
+                          }
+                        >
+                          <QrCode className="h-4 w-4 mr-2" />
+                          View QR Code
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </TableCell>
+                </TableRow>
                 {/* Child Merchants */}
                 {dashboardData.childMerchants.map((merchant) => (
                   <TableRow key={merchant.id}>
@@ -624,15 +668,25 @@ export default function SuperMerchantDashboard({ merchantId, merchantName }: Sup
                           </Button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
-                          <DropdownMenuItem onClick={() => handleViewChildMerchantTransactions(merchant.id, merchant.merchantCode)}>
+                          <DropdownMenuItem
+                            onClick={() =>
+                              handleViewChildMerchantTransactions(merchant.id, merchant.merchantCode)
+                            }
+                          >
                             <Activity className="h-4 w-4 mr-2" />
                             View Transactions
                           </DropdownMenuItem>
-                          <DropdownMenuItem onClick={() => handleViewChildMerchantReports(merchant.id, merchant.merchantCode)}>
+                          <DropdownMenuItem
+                            onClick={() => handleViewChildMerchantReports(merchant.id, merchant.merchantCode)}
+                          >
                             <FileText className="h-4 w-4 mr-2" />
                             View Reports
                           </DropdownMenuItem>
-                          <DropdownMenuItem onClick={() => handleViewChildMerchantQR(merchant.merchantCode, merchant.businessTradeName)}>
+                          <DropdownMenuItem
+                            onClick={() =>
+                              handleViewChildMerchantQR(merchant.merchantCode, merchant.businessTradeName)
+                            }
+                          >
                             <QrCode className="h-4 w-4 mr-2" />
                             View QR Code
                           </DropdownMenuItem>
