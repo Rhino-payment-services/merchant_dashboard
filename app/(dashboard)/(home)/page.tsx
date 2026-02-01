@@ -8,13 +8,16 @@ import StatsOverviewChart from "@/app/components/StatsOverviewChart";
 import RecentTransactions from "@/app/components/RecentTransactions";
 import TopLocationMap from "@/app/components/TopLocationMap";
 import QRCodeButton from "@/app/components/QRCodeButton";
+import SuperMerchantDashboard from "@/app/components/SuperMerchantDashboard";
 import { useUserProfile } from "../UserProfileProvider";
 import { useSession } from "next-auth/react";
-import { RefreshCw } from "lucide-react";
+import { RefreshCw, Crown } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { getMyTransactions, Transaction } from "@/lib/api/wallet.api";
+import { checkMerchantIsSuperMerchant } from "@/lib/api/super-merchant.api";
 import DebugWallet from "../debug-wallet";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 export default function Home() {
   const router = useRouter();
@@ -22,8 +25,36 @@ export default function Home() {
   const { profile, loading, error, refetch, isRefetching } = useUserProfile();
   const [recentTransactions, setRecentTransactions] = useState<Transaction[]>([]);
   const [transactionsLoading, setTransactionsLoading] = useState(true);
+  const [isSuperMerchant, setIsSuperMerchant] = useState(false);
+  const [superMerchantLoading, setSuperMerchantLoading] = useState(true);
 
   const merchantCode = (session?.user as any)?.merchantCode;
+  const userId = (session?.user as any)?.id;
+  // Get merchant ID from profile (loaded async)
+  const currentMerchantIdForCheck = profile?.merchantId || '';
+  
+  // Check if current merchant is a SUPER_MERCHANT (at merchant level, not user level)
+  useEffect(() => {
+    const checkSuperMerchantStatus = async () => {
+      // Check via API using current merchant ID (merchant-level check)
+      if (currentMerchantIdForCheck) {
+        try {
+          const result = await checkMerchantIsSuperMerchant(currentMerchantIdForCheck);
+          setIsSuperMerchant(result);
+        } catch (err) {
+          console.error('Error checking super merchant status:', err);
+          setIsSuperMerchant(false);
+        }
+      } else {
+        setIsSuperMerchant(false);
+      }
+      setSuperMerchantLoading(false);
+    };
+    
+    if (!loading) {
+      checkSuperMerchantStatus();
+    }
+  }, [currentMerchantIdForCheck, loading]);
 
   // Fetch recent transactions when merchantCode is available (avoids race after switching)
   useEffect(() => {
@@ -52,7 +83,44 @@ export default function Home() {
     }
   };
 
-  // Mock merchant data - in real app this would come from API/context
+  // Get merchant ID from profile
+  const currentMerchantId = profile?.merchantId || '';
+
+  // Regular merchant dashboard content
+  const RegularDashboard = () => (
+    <>
+      {/* Stat Cards */}
+      <div className="relative">
+        {isRefetching && (
+          <div className="absolute top-2 right-2 z-10">
+            <div className="bg-blue-50 border border-blue-200 rounded-lg px-3 py-1 flex items-center gap-2">
+              <RefreshCw className="h-3 w-3 animate-spin text-blue-600" />
+              <span className="text-xs text-blue-600 font-medium">Updating dashboard...</span>
+            </div>
+          </div>
+        )}
+        {process.env.NODE_ENV === 'development' && <DebugWallet />}
+        <StatCards />
+      </div>
+      
+      <div className="grid grid-cols-1 gap-6">
+        {/* Recent Transactions */}
+        <div className="lg:col-span-2 bg-white rounded-xl shadow p-4">
+          {transactionsLoading ? (
+            <div className="flex items-center justify-center p-8">
+              <RefreshCw className="h-6 w-6 animate-spin text-blue-600" />
+              <span className="ml-2 text-gray-600">Loading transactions...</span>
+            </div>
+          ) : (
+            <RecentTransactions 
+              transactions={recentTransactions as any} 
+              isNewFormat={true}
+            />
+          )}
+        </div>
+      </div>
+    </>
+  );
 
   return (
     <>
@@ -67,7 +135,15 @@ export default function Home() {
         <div className="mb-8">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
             <div>
-              <h1 className="text-3xl font-bold text-[#08163d] mb-2">Dashboard</h1>
+              <div className="flex items-center gap-2 mb-2">
+                <h1 className="text-3xl font-bold text-[#08163d]">Dashboard</h1>
+                {isSuperMerchant && (
+                  <span className="inline-flex items-center gap-1 px-2 py-1 bg-yellow-100 text-yellow-700 text-xs font-medium rounded-full">
+                    <Crown className="h-3 w-3" />
+                    Super Merchant
+                  </span>
+                )}
+              </div>
               <div className="flex flex-col sm:flex-row sm:items-baseline gap-1 sm:gap-2">
                 <span className="text-base text-gray-600">
                   Managing <span className="font-semibold text-[#08163d]">{profile?.merchant_names || profile?.merchantBusinessTradeName || profile?.businessTradeName || 'Business'}</span>
@@ -104,41 +180,33 @@ export default function Home() {
           </div>
         </div>
 
-        {/* Stat Cards */}
-        <div className="relative">
-          {isRefetching && (
-            <div className="absolute top-2 right-2 z-10">
-              <div className="bg-blue-50 border border-blue-200 rounded-lg px-3 py-1 flex items-center gap-2">
-                <RefreshCw className="h-3 w-3 animate-spin text-blue-600" />
-                <span className="text-xs text-blue-600 font-medium">Updating dashboard...</span>
-              </div>
-            </div>
-          )}
-          {process.env.NODE_ENV === 'development' && <DebugWallet />}
-          <StatCards />
-        </div>
-        {/* Merchant Monthly Summary - Disabled for now */}
-        {/* <div className="grid grid-cols-1  gap-6">
-          <div className="lg:col-span-2 bg-white rounded-xl shadow p-4">
-            <StatsOverviewChart />
-          </div>
-        </div> */}
-        <div className="grid grid-cols-1 gap-6">
-          {/* Recent Transactions */}
-          <div className="lg:col-span-2 bg-white rounded-xl shadow p-4">
-            {transactionsLoading ? (
-              <div className="flex items-center justify-center p-8">
-                <RefreshCw className="h-6 w-6 animate-spin text-blue-600" />
-                <span className="ml-2 text-gray-600">Loading transactions...</span>
-              </div>
-            ) : (
-              <RecentTransactions 
-                transactions={recentTransactions as any} 
-                isNewFormat={true}
+        {/* Super Merchant gets tabs, regular merchants get standard dashboard */}
+        {!superMerchantLoading && isSuperMerchant && currentMerchantId ? (
+          <Tabs defaultValue="aggregate" className="w-full">
+            <TabsList className="mb-6">
+              <TabsTrigger value="aggregate" className="flex items-center gap-2">
+                <Crown className="h-4 w-4" />
+                Aggregate View
+              </TabsTrigger>
+              <TabsTrigger value="own" className="flex items-center gap-2">
+                My Business
+              </TabsTrigger>
+            </TabsList>
+            
+            <TabsContent value="aggregate">
+              <SuperMerchantDashboard 
+                merchantId={currentMerchantId}
+                merchantName={profile?.merchant_names || profile?.businessTradeName || 'Business'}
               />
-            )}
-          </div>
-        </div>
+            </TabsContent>
+            
+            <TabsContent value="own">
+              <RegularDashboard />
+            </TabsContent>
+          </Tabs>
+        ) : (
+          <RegularDashboard />
+        )}
       </main>
     </div>
     </>
