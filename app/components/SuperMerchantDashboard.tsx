@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -12,12 +12,12 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { 
-  Building2, 
-  Users, 
-  Wallet, 
-  TrendingUp, 
-  CheckCircle, 
+import {
+  Building2,
+  Users,
+  Wallet,
+  TrendingUp,
+  CheckCircle,
   Clock,
   Crown,
   RefreshCw,
@@ -26,10 +26,9 @@ import {
   Activity,
   FileText,
   QrCode,
-  MoreVertical
+  MoreVertical,
 } from 'lucide-react';
 import { getSuperMerchantDashboard, SuperMerchantDashboard as DashboardData } from '@/lib/api/super-merchant.api';
-import Link from 'next/link';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -173,7 +172,6 @@ export default function SuperMerchantDashboard({ merchantId, merchantName }: Sup
       router.refresh();
     }
   };
-
   if (loading) {
     return (
       <div className="flex items-center justify-center p-12">
