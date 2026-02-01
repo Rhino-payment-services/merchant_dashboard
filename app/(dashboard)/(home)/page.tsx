@@ -22,7 +22,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 export default function Home() {
   const router = useRouter();
   const { data: session } = useSession();
-  const { profile, loading, error, refetch } = useUserProfile();
+  const { profile, loading, error, refetch, isRefetching } = useUserProfile();
   const [recentTransactions, setRecentTransactions] = useState<Transaction[]>([]);
   const [transactionsLoading, setTransactionsLoading] = useState(true);
   const [isSuperMerchant, setIsSuperMerchant] = useState(false);
@@ -281,7 +281,6 @@ export default function Home() {
             </ul>
           </div>
         )}
-
         {/* Super Merchant gets tabs, regular merchants get standard dashboard */}
         {!superMerchantLoading && isSuperMerchant && currentMerchantId ? (
           <Tabs defaultValue="aggregate" className="w-full">
