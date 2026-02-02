@@ -188,7 +188,6 @@ export default function BulkPaymentPage() {
       </div>
     );
   }
-
   // Show access denied message if not a super merchant
   if (session && !isSuperMerchant) {
     return (
