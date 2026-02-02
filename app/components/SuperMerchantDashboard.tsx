@@ -99,7 +99,6 @@ export default function SuperMerchantDashboard({ merchantId, merchantName }: Sup
     isSuperMerchant: m.isSuperMerchant || false,
     isOwnAccount: true,
   }));
-  
   // Get current selected merchant
   const currentMerchant =
     allMerchants.find((m: MerchantItem) => m.merchantCode === currentMerchantCode) || allMerchants[0];
@@ -280,48 +279,44 @@ export default function SuperMerchantDashboard({ merchantId, merchantName }: Sup
               </SelectTrigger>
               <SelectContent>
                 {/* User's Own Accounts */}
-                {allMerchants
-                  .filter((m: MerchantItem) => m.isOwnAccount)
-                  .map((merchant) => (
-                    <SelectItem key={merchant.id} value={merchant.id}>
-                      <div className="flex items-center gap-2 w-full">
-                        {merchant.isSuperMerchant ? (
-                          <Crown className="h-4 w-4 text-yellow-600" />
-                        ) : (
-                          <Building2 className="h-4 w-4 text-gray-400" />
-                        )}
-                        <span className="flex-1">{merchant.businessTradeName}</span>
-                        {merchant.isSuperMerchant ? (
-                          <Badge variant="outline" className="text-yellow-600 border-yellow-600">
-                            Super Merchant
-                          </Badge>
-                        ) : (
-                          <Badge variant="outline" className="text-gray-600">
-                            My Account
-                          </Badge>
-                        )}
-                      </div>
-                    </SelectItem>
-                  ))}
+                {allMerchants.filter((m: MerchantItem) => m.isOwnAccount).map((merchant) => (
+                  <SelectItem key={merchant.id} value={merchant.id}>
+                    <div className="flex items-center gap-2 w-full">
+                      {merchant.isSuperMerchant ? (
+                        <Crown className="h-4 w-4 text-yellow-600" />
+                      ) : (
+                        <Building2 className="h-4 w-4 text-gray-400" />
+                      )}
+                      <span className="flex-1">{merchant.businessTradeName}</span>
+                      {merchant.isSuperMerchant ? (
+                        <Badge variant="outline" className="text-yellow-600 border-yellow-600">
+                          Super Merchant
+                        </Badge>
+                      ) : (
+                        <Badge variant="outline" className="text-gray-600">
+                          My Account
+                        </Badge>
+                      )}
+                    </div>
+                  </SelectItem>
+                ))}
                 {/* Child Merchants */}
                 {allMerchants.filter((m: MerchantItem) => !m.isOwnAccount).length > 0 && (
                   <>
                     <div className="px-2 py-1.5 text-xs font-semibold text-gray-500 border-t mt-1">
                       Child Merchants
                     </div>
-                    {allMerchants
-                      .filter((m: MerchantItem) => !m.isOwnAccount)
-                      .map((merchant) => (
-                        <SelectItem key={merchant.id} value={merchant.id}>
-                          <div className="flex items-center gap-2 w-full">
-                            <Building2 className="h-4 w-4 text-gray-400" />
-                            <span className="flex-1">{merchant.businessTradeName}</span>
-                            <Badge variant="outline" className="text-blue-600">
-                              Child
-                            </Badge>
-                          </div>
-                        </SelectItem>
-                      ))}
+                    {allMerchants.filter((m: MerchantItem) => !m.isOwnAccount).map((merchant) => (
+                      <SelectItem key={merchant.id} value={merchant.id}>
+                        <div className="flex items-center gap-2 w-full">
+                          <Building2 className="h-4 w-4 text-gray-400" />
+                          <span className="flex-1">{merchant.businessTradeName}</span>
+                          <Badge variant="outline" className="text-blue-600">
+                            Child
+                          </Badge>
+                        </div>
+                      </SelectItem>
+                    ))}
                   </>
                 )}
               </SelectContent>
