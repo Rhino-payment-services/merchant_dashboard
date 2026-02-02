@@ -81,7 +81,7 @@ const getMyTransactions = async (
   filter: TransactionFilter = {},
   childMerchantId?: string,
   /** Current business merchant code – sent so backend returns that business's transactions */
-  merchantCode?: string | null
+  merchantCode?: string | null,
 ): Promise<TransactionsResponse> => {
   const params = new URLSearchParams()
   
@@ -171,10 +171,11 @@ export const useMyTransactions = (
   filter?: TransactionFilter,
   childMerchantId?: string,
   /** Current business merchant code – when this changes (e.g. user switches business), query key changes so we refetch that business's transactions instead of reusing cache */
-  merchantCode?: string | null
-) => useQuery({
-  queryKey: ['transactions', 'my-transactions', filter, childMerchantId, merchantCode],
-  queryFn: () => getMyTransactions(filter, childMerchantId, merchantCode),
+  merchantCode?: string | null,
+) =>
+  useQuery({
+    queryKey: ['transactions', 'my-transactions', filter, childMerchantId, merchantCode],
+    queryFn: () => getMyTransactions(filter, childMerchantId, merchantCode),
   staleTime: 30000, // 30 seconds
   retry: 3,
   refetchOnWindowFocus: false,

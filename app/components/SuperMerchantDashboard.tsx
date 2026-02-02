@@ -101,7 +101,8 @@ export default function SuperMerchantDashboard({ merchantId, merchantName }: Sup
   }));
   
   // Get current selected merchant
-  const currentMerchant = allMerchants.find((m: MerchantItem) => m.merchantCode === currentMerchantCode) || allMerchants[0];
+  const currentMerchant =
+    allMerchants.find((m: MerchantItem) => m.merchantCode === currentMerchantCode) || allMerchants[0];
   const currentContextId = currentMerchant?.id || selectedMerchantContext;
 
   const fetchDashboardData = async () => {
@@ -487,7 +488,7 @@ export default function SuperMerchantDashboard({ merchantId, merchantName }: Sup
                             onClick={() =>
                               handleViewChildMerchantTransactions(
                                 dashboardData.superMerchant.id,
-                                dashboardData.superMerchant.merchantCode
+                                dashboardData.superMerchant.merchantCode,
                               )
                             }
                           >
@@ -498,7 +499,7 @@ export default function SuperMerchantDashboard({ merchantId, merchantName }: Sup
                             onClick={() =>
                               handleViewChildMerchantReports(
                                 dashboardData.superMerchant.id,
-                                dashboardData.superMerchant.merchantCode
+                                dashboardData.superMerchant.merchantCode,
                               )
                             }
                           >
@@ -509,7 +510,7 @@ export default function SuperMerchantDashboard({ merchantId, merchantName }: Sup
                             onClick={() =>
                               handleViewChildMerchantQR(
                                 dashboardData.superMerchant.merchantCode,
-                                dashboardData.superMerchant.businessTradeName
+                                dashboardData.superMerchant.businessTradeName,
                               )
                             }
                           >
@@ -589,7 +590,7 @@ export default function SuperMerchantDashboard({ merchantId, merchantName }: Sup
                           onClick={() =>
                             handleViewChildMerchantTransactions(
                               dashboardData.superMerchant.id,
-                              dashboardData.superMerchant.merchantCode
+                              dashboardData.superMerchant.merchantCode,
                             )
                           }
                         >
@@ -600,7 +601,7 @@ export default function SuperMerchantDashboard({ merchantId, merchantName }: Sup
                           onClick={() =>
                             handleViewChildMerchantReports(
                               dashboardData.superMerchant.id,
-                              dashboardData.superMerchant.merchantCode
+                              dashboardData.superMerchant.merchantCode,
                             )
                           }
                         >
@@ -611,7 +612,7 @@ export default function SuperMerchantDashboard({ merchantId, merchantName }: Sup
                           onClick={() =>
                             handleViewChildMerchantQR(
                               dashboardData.superMerchant.merchantCode,
-                              dashboardData.superMerchant.businessTradeName
+                              dashboardData.superMerchant.businessTradeName,
                             )
                           }
                         >

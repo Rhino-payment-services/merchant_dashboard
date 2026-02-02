@@ -141,7 +141,6 @@ export default function Home() {
       setRefreshing(false);
     }
   };
-
   // Get merchant ID - prioritize session merchant ID (the actual selected merchant)
   const currentMerchantId = sessionMerchantId || profile?.merchantId || '';
   
@@ -162,7 +161,16 @@ export default function Home() {
         })),
       });
     }
-  }, [loading, currentMerchantId, merchantCode, isSuperMerchant, superMerchantLoading, profile?.merchantId, sessionMerchantId, sessionMerchants]);
+  }, [
+    loading,
+    currentMerchantId,
+    merchantCode,
+    isSuperMerchant,
+    superMerchantLoading,
+    profile?.merchantId,
+    sessionMerchantId,
+    sessionMerchants,
+  ]);
 
   // Regular merchant dashboard content
   const RegularDashboard = () => (
@@ -273,6 +281,7 @@ export default function Home() {
             </ul>
           </div>
         )}
+
         {/* Super Merchant gets tabs, regular merchants get standard dashboard */}
         {!superMerchantLoading && isSuperMerchant && currentMerchantId ? (
           <Tabs defaultValue="aggregate" className="w-full">
