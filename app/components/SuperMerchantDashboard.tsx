@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -29,6 +29,7 @@ import {
   MoreVertical,
 } from 'lucide-react';
 import { getSuperMerchantDashboard, SuperMerchantDashboard as DashboardData } from '@/lib/api/super-merchant.api';
+import Link from 'next/link';
 import {
   DropdownMenu,
   DropdownMenuContent,
