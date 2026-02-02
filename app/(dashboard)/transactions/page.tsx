@@ -195,7 +195,6 @@ export default function TransactionsPage() {
       }
     }
   }, []);
-
   // When user switches business, reset to first page so we don't show wrong pagination
   React.useEffect(() => {
     setCurrentPage(1);
