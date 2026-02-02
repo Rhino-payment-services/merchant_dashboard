@@ -1,6 +1,6 @@
 "use client"
 
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { Button } from '../../components/ui/button';
 import { useRouter, usePathname } from 'next/navigation';
 import { 
@@ -28,6 +28,7 @@ import {
 import Image from 'next/image';
 import { useSession } from 'next-auth/react';
 import { useUserProfile } from '../(dashboard)/UserProfileProvider';
+import { checkMerchantIsSuperMerchant } from '@/lib/api/super-merchant.api';
 
 const navLinks = [
   { section: 'GENERAL', links: [
@@ -70,9 +71,76 @@ export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
   const { profile } = useUserProfile();
   const merchants = (session?.user as any)?.merchants || [];
   const currentMerchantCode = (session?.user as any)?.merchantCode;
-  const currentMerchant = merchants.find((m: any) => m.merchantCode === currentMerchantCode);
+  const profileMerchantCode = profile?.merchant_code || profile?.merchantCode;
+  const effectiveMerchantCode = currentMerchantCode || profileMerchantCode;
+  
+  // Improved merchant matching (handles padding and string comparison like home page)
+  const currentMerchant = effectiveMerchantCode 
+    ? merchants.find((m: any) => {
+        const mCode = String(m?.merchantCode || '').trim();
+        const eCode = String(effectiveMerchantCode || '').trim();
+        return mCode === eCode || mCode === eCode.padStart(4, '0') || eCode === mCode.padStart(4, '0');
+      })
+    : merchants[0];
+  
+  // State for super merchant status
+  const [isSuperMerchant, setIsSuperMerchant] = useState(false);
+  
+  // Check super merchant status - similar to home page logic
+  useEffect(() => {
+    const checkSuperMerchantStatus = async () => {
+      // First, check if session merchants array has isSuperMerchant field (fastest check)
+      if (currentMerchant && typeof currentMerchant.isSuperMerchant === 'boolean') {
+        console.log('✅ Sidebar: Using isSuperMerchant from session merchant data:', currentMerchant.isSuperMerchant);
+        setIsSuperMerchant(currentMerchant.isSuperMerchant);
+        return;
+      }
+      
+      // Fallback: check if any merchant in the session is a super merchant
+      const anySuperMerchant = merchants.some((m: any) => m.isSuperMerchant === true);
+      if (anySuperMerchant) {
+        console.log('✅ Sidebar: Found super merchant in merchants array');
+        setIsSuperMerchant(true);
+        return;
+      }
+      
+      // Final fallback: Check via API using current merchant ID
+      const currentMerchantId = currentMerchant?.id || profile?.merchantId;
+      if (currentMerchantId) {
+        try {
+          console.log('🔍 Sidebar: Checking super merchant status via API for merchantId:', currentMerchantId);
+          const result = await checkMerchantIsSuperMerchant(currentMerchantId);
+          console.log('🔍 Sidebar: Super merchant check result:', result);
+          setIsSuperMerchant(result);
+        } catch (err: any) {
+          console.error('❌ Sidebar: Error checking super merchant status:', err);
+          setIsSuperMerchant(false);
+        }
+      } else {
+        console.warn('⚠️ Sidebar: No merchant ID available for super merchant check');
+        setIsSuperMerchant(false);
+      }
+    };
+    
+    if (session && merchants.length > 0) {
+      checkSuperMerchantStatus();
+    }
+  }, [session, currentMerchant, merchants, profile?.merchantId]);
+  
   const businessName = profile?.merchant_names || profile?.businessTradeName || currentMerchant?.businessTradeName 
-    || ((currentMerchantCode || profile?.merchant_code) ? `Business · ${currentMerchantCode || profile?.merchant_code}` : null);
+    || ((effectiveMerchantCode) ? `Business · ${effectiveMerchantCode}` : null);
+  
+  // Filter navLinks based on super merchant status
+  const filteredNavLinks = navLinks.map(section => ({
+    ...section,
+    links: section.links.filter(link => {
+      // Only show Payment link for super merchants
+      if (link.path === '/bulk-payment') {
+        return isSuperMerchant;
+      }
+      return true;
+    })
+  })).filter(section => section.links.length > 0); // Remove empty sections
   
   const handleNavigation = (path: string) => {
     router.push(path);
@@ -133,15 +201,15 @@ export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
             <p className="text-sm font-semibold text-[#08163d] truncate" title={businessName}>
               {businessName}
             </p>
-            {(currentMerchantCode || profile?.merchant_code) && (
-              <p className="text-xs text-main-600 mt-1">{currentMerchantCode || profile?.merchant_code}</p>
+            {effectiveMerchantCode && (
+              <p className="text-xs text-main-600 mt-1">{effectiveMerchantCode}</p>
             )}
           </div>
         )}
 
         {/* Navigation */}
         <nav className="flex-1 space-y-6">
-          {navLinks.map((section) => (
+          {filteredNavLinks.map((section) => (
             <div key={section.section}>
               <div className="text-xs text-gray-400 font-semibold mb-2 uppercase tracking-wider">{section.section}</div>
               <ul className="space-y-1">

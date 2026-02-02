@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -8,9 +8,10 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { 
   Upload, Download, Plus, Trash2, Users, CheckCircle2, 
   XCircle, Clock, Send, AlertCircle, Info, Loader2,
-  Wallet, Phone, Building2, Zap, Edit, RefreshCw, AlertTriangle
+  Wallet, Phone, Building2, Zap, Edit, RefreshCw, AlertTriangle, ShieldX
 } from "lucide-react";
 import { useSession } from "next-auth/react";
+import { useRouter } from "next/navigation";
 import { toast } from 'sonner';
 import * as XLSX from 'xlsx';
 import { processSinglePayment, validateTransaction, SinglePaymentDto, TransactionResponseDto, FeePreviewResponseDto } from "@/lib/api/single-payment.api";
@@ -60,9 +61,48 @@ interface PaymentItem extends Partial<BulkTransactionItem> {
 
 export default function BulkPaymentPage() {
   const { data: session } = useSession();
+  const router = useRouter();
   const [payments, setPayments] = useState<PaymentItem[]>([]);
   const [bulkDescription, setBulkDescription] = useState('');
   const [bulkReference, setBulkReference] = useState('');
+  
+  // Check if user is a super merchant
+  const merchants = (session?.user as any)?.merchants || [];
+  const currentMerchantCode = (session?.user as any)?.merchantCode;
+  const currentMerchant = merchants.find((m: any) => m.merchantCode === currentMerchantCode);
+  const isSuperMerchant = currentMerchant?.isSuperMerchant || false;
+  
+  // Redirect non-super merchants
+  useEffect(() => {
+    if (session && !isSuperMerchant) {
+      toast.error('Access denied. This feature is only available for super merchants.');
+      router.push('/');
+    }
+  }, [session, isSuperMerchant, router]);
+  
+  // Show access denied message if not a super merchant
+  if (session && !isSuperMerchant) {
+    return (
+      <div className="flex items-center justify-center min-h-[60vh] px-4">
+        <Card className="max-w-md w-full">
+          <CardHeader>
+            <div className="flex items-center gap-3 mb-2">
+              <ShieldX className="h-8 w-8 text-red-500" />
+              <CardTitle>Access Denied</CardTitle>
+            </div>
+            <CardDescription>
+              This feature is only available for super merchants.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Button onClick={() => router.push('/')} className="w-full">
+              Return to Dashboard
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
   
   // Single Payment State
   const [singlePayment, setSinglePayment] = useState<SinglePaymentDto>({
