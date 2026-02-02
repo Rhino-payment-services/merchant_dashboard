@@ -51,6 +51,14 @@ interface SuperMerchantDashboardProps {
   merchantName: string;
 }
 
+interface MerchantItem {
+  id: string;
+  merchantCode: string;
+  businessTradeName: string;
+  isSuperMerchant: boolean;
+  isOwnAccount: boolean;
+}
+
 export default function SuperMerchantDashboard({ merchantId, merchantName }: SuperMerchantDashboardProps) {
   const router = useRouter();
   const { data: session, update: updateSession } = useSession();
@@ -65,7 +73,7 @@ export default function SuperMerchantDashboard({ merchantId, merchantName }: Sup
   const currentMerchantCode = (session?.user as any)?.merchantCode;
   
   // Get all available merchants (user's own accounts + child merchants)
-  const allMerchants = dashboardData ? [
+  const allMerchants: MerchantItem[] = dashboardData ? [
     // User's own merchant accounts (from session)
     ...sessionMerchants.map((m: any) => ({
       id: m.id,
@@ -93,7 +101,7 @@ export default function SuperMerchantDashboard({ merchantId, merchantName }: Sup
   }));
   
   // Get current selected merchant
-  const currentMerchant = allMerchants.find(m => m.merchantCode === currentMerchantCode) || allMerchants[0];
+  const currentMerchant = allMerchants.find((m: MerchantItem) => m.merchantCode === currentMerchantCode) || allMerchants[0];
   const currentContextId = currentMerchant?.id || selectedMerchantContext;
 
   const fetchDashboardData = async () => {
@@ -217,7 +225,7 @@ export default function SuperMerchantDashboard({ merchantId, merchantName }: Sup
             <Select
               value={currentContextId}
               onValueChange={(value) => {
-                const merchant = allMerchants.find(m => m.id === value);
+                const merchant = allMerchants.find((m: MerchantItem) => m.id === value);
                 if (merchant) {
                   handleSwitchMerchant(merchant.id, merchant.merchantCode);
                 }
@@ -230,7 +238,7 @@ export default function SuperMerchantDashboard({ merchantId, merchantName }: Sup
               </SelectTrigger>
               <SelectContent>
                 {/* User's Own Accounts */}
-                {allMerchants.filter(m => m.isOwnAccount).map((merchant) => (
+                {allMerchants.filter((m: MerchantItem) => m.isOwnAccount).map((merchant) => (
                   <SelectItem key={merchant.id} value={merchant.id}>
                     <div className="flex items-center gap-2 w-full">
                       {merchant.isSuperMerchant ? (
@@ -252,12 +260,12 @@ export default function SuperMerchantDashboard({ merchantId, merchantName }: Sup
                   </SelectItem>
                 ))}
                 {/* Child Merchants */}
-                {allMerchants.filter(m => !m.isOwnAccount).length > 0 && (
+                {allMerchants.filter((m: MerchantItem) => !m.isOwnAccount).length > 0 && (
                   <>
                     <div className="px-2 py-1.5 text-xs font-semibold text-gray-500 border-t mt-1">
                       Child Merchants
                     </div>
-                    {allMerchants.filter(m => !m.isOwnAccount).map((merchant) => (
+                    {allMerchants.filter((m: MerchantItem) => !m.isOwnAccount).map((merchant) => (
                       <SelectItem key={merchant.id} value={merchant.id}>
                         <div className="flex items-center gap-2 w-full">
                           <Building2 className="h-4 w-4 text-gray-400" />
