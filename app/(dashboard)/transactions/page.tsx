@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '../../../components/ui/input';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useMyTransactions, TransactionFilter } from '@/lib/api/transactions.api';
-import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, RefreshCw, Activity, BarChart3, Clock, CheckCircle, XCircle, AlertCircle, TrendingUp, TrendingDown, DollarSign, Eye, Search, Printer, CreditCard, Info, Users, AlertTriangle } from 'lucide-react';
+import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, RefreshCw, Activity, BarChart3, Clock, CheckCircle, XCircle, AlertCircle, TrendingUp, TrendingDown, DollarSign, Eye, Search, Printer, CreditCard, Info, Users, AlertTriangle, Building2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useSession } from 'next-auth/react';
 import { getBulkTransactionStatus, getBulkTransactionList, viewBulkTransactions } from '@/lib/api/bulk-payment.api';
@@ -53,6 +53,23 @@ export default function TransactionsPage() {
   const [status, setStatus] = useState<string>("");
   const [currentPage, setCurrentPage] = useState(1);
   const [currentLimit, setCurrentLimit] = useState(10);
+  
+  // Support for viewing child merchant transactions (for super merchants)
+  const [childMerchantId, setChildMerchantId] = useState<string | null>(null);
+  const [childMerchantCode, setChildMerchantCode] = useState<string | null>(null);
+  
+  // Check URL params for child merchant context
+  React.useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      const merchantId = params.get('merchantId');
+      const merchantCode = params.get('merchantCode');
+      if (merchantId && merchantCode) {
+        setChildMerchantId(merchantId);
+        setChildMerchantCode(merchantCode);
+      }
+    }
+  }, []);
 
   // Receipt state
   const [selectedTransaction, setSelectedTransaction] = useState<any>(null);
@@ -90,7 +107,7 @@ export default function TransactionsPage() {
     error, 
     refetch, 
     isRefetching 
-  } = useMyTransactions(filter);
+  } = useMyTransactions(filter, childMerchantId || undefined);
 
   // Debug logging
   console.log('Transactions Page - API Response:', transactionsData);
@@ -456,6 +473,39 @@ export default function TransactionsPage() {
               Refresh
             </Button>
           </div>
+          
+          {/* Child Merchant Context Banner */}
+          {childMerchantId && childMerchantCode && (
+            <div className="mt-4 p-4 bg-yellow-50 border border-yellow-200 rounded-lg flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <Building2 className="h-5 w-5 text-yellow-600" />
+                <div>
+                  <p className="text-sm font-medium text-yellow-900">
+                    Viewing transactions for child merchant: <span className="font-semibold">{childMerchantCode}</span>
+                  </p>
+                  <p className="text-xs text-yellow-700 mt-1">
+                    You are viewing transactions as a super merchant
+                  </p>
+                </div>
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  setChildMerchantId(null);
+                  setChildMerchantCode(null);
+                  // Remove query params from URL
+                  const url = new URL(window.location.href);
+                  url.searchParams.delete('merchantId');
+                  url.searchParams.delete('merchantCode');
+                  window.history.replaceState({}, '', url.toString());
+                }}
+                className="text-yellow-700 border-yellow-300 hover:bg-yellow-100"
+              >
+                View My Transactions
+              </Button>
+            </div>
+          )}
         </div>
 
         {/* Tabs */}

@@ -75,7 +75,7 @@ export interface TransactionsResponse {
 }
 
 // API functions
-const getMyTransactions = async (filter: TransactionFilter = {}): Promise<TransactionsResponse> => {
+const getMyTransactions = async (filter: TransactionFilter = {}, childMerchantId?: string): Promise<TransactionsResponse> => {
   const params = new URLSearchParams()
   
   // Add filter parameters
@@ -90,11 +90,20 @@ const getMyTransactions = async (filter: TransactionFilter = {}): Promise<Transa
   if (filter.maxAmount) params.append('maxAmount', filter.maxAmount.toString())
   if (filter.page) params.append('page', filter.page.toString())
   if (filter.limit) params.append('limit', filter.limit.toString())
+  
+  // If viewing child merchant transactions (for super merchants)
+  if (childMerchantId) {
+    params.append('merchantId', childMerchantId)
+  }
 
   // Use explicit BUSINESS wallet transactions endpoint
   // This ensures that ONLY business wallet transactions are shown in merchant dashboard
   // Personal wallet transactions will NEVER appear here
-  const response = await apiClient.get(`/wallet/me/business/transactions?${params.toString()}`)
+  // For super merchants viewing child merchant transactions, use the child merchant endpoint
+  const endpoint = childMerchantId 
+    ? `/super-merchant/child-merchant/${childMerchantId}/transactions`
+    : `/wallet/me/business/transactions`
+  const response = await apiClient.get(`${endpoint}?${params.toString()}`)
   
   // Transform backend response to match frontend expected format
   const backendData = response.data
@@ -144,9 +153,9 @@ const getTransactionById = async (transactionId: string): Promise<Transaction> =
 }
 
 // React Query hooks
-export const useMyTransactions = (filter?: TransactionFilter) => useQuery({
-  queryKey: ['transactions', 'my-transactions', filter],
-  queryFn: () => getMyTransactions(filter),
+export const useMyTransactions = (filter?: TransactionFilter, childMerchantId?: string) => useQuery({
+  queryKey: ['transactions', 'my-transactions', filter, childMerchantId],
+  queryFn: () => getMyTransactions(filter, childMerchantId),
   staleTime: 30000, // 30 seconds
   retry: 3,
   refetchOnWindowFocus: false, // Only refetch when user explicitly refreshes
