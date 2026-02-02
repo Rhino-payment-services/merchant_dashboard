@@ -173,7 +173,7 @@ export default function SuperMerchantDashboard({ merchantId, merchantName }: Sup
       router.refresh();
     }
   };
-  
+
   if (loading) {
     return (
       <div className="flex items-center justify-center p-12">

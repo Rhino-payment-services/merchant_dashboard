@@ -265,6 +265,7 @@ export default function Home() {
             </ul>
           </div>
         )}
+
         {/* Super Merchant gets tabs, regular merchants get standard dashboard */}
         {!superMerchantLoading && isSuperMerchant && currentMerchantId ? (
           <Tabs defaultValue="aggregate" className="w-full">
