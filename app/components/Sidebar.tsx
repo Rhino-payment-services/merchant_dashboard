@@ -1,6 +1,6 @@
 "use client"
 
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { Button } from '../../components/ui/button';
 import { useRouter, usePathname } from 'next/navigation';
 import { 
@@ -28,6 +28,7 @@ import {
 import Image from 'next/image';
 import { useSession } from 'next-auth/react';
 import { useUserProfile } from '../(dashboard)/UserProfileProvider';
+import { checkMerchantIsSuperMerchant } from '@/lib/api/super-merchant.api';
 
 const navLinks = [
   { section: 'GENERAL', links: [
