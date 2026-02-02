@@ -101,13 +101,58 @@ export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
   // Payment, Payroll, Withdrawal: require featureLiquidation or featureBulkPayments (backward compat)
   const canLiquidate = featureLiquidation || featureBulkPayments;
 
-  // Filter navLinks: Payment only when enabled for this merchant; same for Payroll and Payroll Approvals.
+  // State for super merchant status
+  const [isSuperMerchant, setIsSuperMerchant] = useState(false);
+  
+  // Check super merchant status - similar to home page logic
+  useEffect(() => {
+    const checkSuperMerchantStatus = async () => {
+      // First, check if session merchants array has isSuperMerchant field (fastest check)
+      if (currentMerchant && typeof currentMerchant.isSuperMerchant === 'boolean') {
+        console.log('✅ Sidebar: Using isSuperMerchant from session merchant data:', currentMerchant.isSuperMerchant);
+        setIsSuperMerchant(currentMerchant.isSuperMerchant);
+        return;
+      }
+      
+      // Fallback: check if any merchant in the session is a super merchant
+      const anySuperMerchant = merchants.some((m: any) => m.isSuperMerchant === true);
+      if (anySuperMerchant) {
+        console.log('✅ Sidebar: Found super merchant in merchants array');
+        setIsSuperMerchant(true);
+        return;
+      }
+      
+      // Final fallback: Check via API using current merchant ID
+      const currentMerchantId = currentMerchant?.id || profile?.merchantId;
+      if (currentMerchantId) {
+        try {
+          console.log('🔍 Sidebar: Checking super merchant status via API for merchantId:', currentMerchantId);
+          const result = await checkMerchantIsSuperMerchant(currentMerchantId);
+          console.log('🔍 Sidebar: Super merchant check result:', result);
+          setIsSuperMerchant(result);
+        } catch (err: any) {
+          console.error('❌ Sidebar: Error checking super merchant status:', err);
+          setIsSuperMerchant(false);
+        }
+      } else {
+        console.warn('⚠️ Sidebar: No merchant ID available for super merchant check');
+        setIsSuperMerchant(false);
+      }
+    };
+    
+    if (session && merchants.length > 0) {
+      checkSuperMerchantStatus();
+    }
+  }, [session, currentMerchant, merchants, profile?.merchantId]);
+  
+  // Filter navLinks based on both feature flags and super merchant status
   const filteredNavLinks = navLinks.map(section => ({
     ...section,
     links: section.links.filter(link => {
-      if (link.path === '/bulk-payment') return canLiquidate;
-      if (link.path === '/payroll') return featurePayroll && canLiquidate;
-      if (link.path === '/payroll/approvals') return featurePayrollApprovals && canLiquidate;
+      // Only show Payment/Payroll-related links when merchant is allowed and is a super merchant
+      if (link.path === '/bulk-payment') return isSuperMerchant && canLiquidate;
+      if (link.path === '/payroll') return isSuperMerchant && featurePayroll && canLiquidate;
+      if (link.path === '/payroll/approvals') return isSuperMerchant && featurePayrollApprovals && canLiquidate;
       return true;
     })
   })).filter(section => section.links.length > 0); // Remove empty sections
