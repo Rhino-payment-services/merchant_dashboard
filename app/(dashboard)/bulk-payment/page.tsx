@@ -16,6 +16,7 @@ import { toast } from 'sonner';
 import * as XLSX from 'xlsx';
 import { processSinglePayment, validateTransaction, SinglePaymentDto, TransactionResponseDto, FeePreviewResponseDto } from "@/lib/api/single-payment.api";
 import { processBulkTransactionAsync, validateBulkRecipients, getBulkTransactionStatus, BulkTransactionItem, BulkTransactionItemResult } from "@/lib/api/bulk-payment.api";
+import { checkMerchantIsSuperMerchant } from "@/lib/api/super-merchant.api";
 
 const TRANSACTION_TYPES = [
   { value: 'WALLET_TO_MNO', label: 'Mobile Money', icon: Phone, color: 'text-blue-600', bg: 'bg-blue-50' },
@@ -28,6 +29,8 @@ const UGANDAN_BANKS = [
   { bankName: "Bank of Baroda", bankSortCode: "020147" },
   { bankName: "Stanbic Bank Ltd", bankSortCode: "040147" },
   { bankName: "DFCU Bank", bankSortCode: "050147" },
+  { bankName: "Exim Bank", bankSortCode: "320147" },
+  { bankName: "I & M Bank", bankSortCode: "110147" },
   { bankName: "Tropical Africa Bank", bankSortCode: "060147" },
   { bankName: "Standard Chartered Bank", bankSortCode: "080147" },
   { bankName: "Orient Bank", bankSortCode: "110147" },
@@ -66,20 +69,50 @@ export default function BulkPaymentPage() {
   const [bulkDescription, setBulkDescription] = useState('');
   const [bulkReference, setBulkReference] = useState('');
   
-  // Check if user is a super merchant
+  // Check if user is a super merchant (session first, then API fallback for existing sessions)
   const merchants = (session?.user as any)?.merchants || [];
   const currentMerchantCode = (session?.user as any)?.merchantCode;
   const currentMerchant = merchants.find((m: any) => m.merchantCode === currentMerchantCode);
-  const isSuperMerchant = currentMerchant?.isSuperMerchant || false;
-  
-  // Redirect non-super merchants
+  const [apiSuperMerchant, setApiSuperMerchant] = useState<boolean | null>(null);
+
+  const checkComplete =
+    typeof currentMerchant?.isSuperMerchant === 'boolean' ||
+    apiSuperMerchant !== null ||
+    (!!session && !currentMerchant);
+  const isSuperMerchant = (currentMerchant?.isSuperMerchant === true) || (apiSuperMerchant === true);
+
+  // API fallback when session doesn't have isSuperMerchant (e.g. before re-login after backend fix)
   useEffect(() => {
-    if (session && !isSuperMerchant) {
+    if (!session || !currentMerchant?.id || typeof currentMerchant?.isSuperMerchant === 'boolean') return;
+    let cancelled = false;
+    checkMerchantIsSuperMerchant(currentMerchant.id).then((result) => {
+      if (!cancelled) setApiSuperMerchant(result);
+    });
+    return () => { cancelled = true; };
+  }, [session, currentMerchant?.id, currentMerchant?.isSuperMerchant]);
+
+  // Redirect non-super merchants once we know (session or API)
+  useEffect(() => {
+    if (session && checkComplete && !isSuperMerchant) {
       toast.error('Access denied. This feature is only available for super merchants.');
       router.push('/');
     }
-  }, [session, isSuperMerchant, router]);
-  
+  }, [session, checkComplete, isSuperMerchant, router]);
+
+  // Loading while checking super merchant status via API
+  if (session && currentMerchant && !checkComplete) {
+    return (
+      <div className="flex items-center justify-center min-h-[60vh] px-4">
+        <Card className="max-w-md w-full">
+          <CardContent className="flex flex-col items-center gap-4 pt-8 pb-8">
+            <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+            <p className="text-sm text-muted-foreground">Checking access...</p>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
   // Show access denied message if not a super merchant
   if (session && !isSuperMerchant) {
     return (

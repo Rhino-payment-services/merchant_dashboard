@@ -15,6 +15,8 @@ const UGANDAN_BANKS = [
   { bankName: "Bank of Baroda", bankSortCode: "020147" },
   { bankName: "Stanbic Bank Ltd", bankSortCode: "040147" },
   { bankName: "DFCU Bank", bankSortCode: "050147" },
+  { bankName: "Exim Bank", bankSortCode: "320147" },
+  { bankName: "I & M Bank", bankSortCode: "110147" },
   { bankName: "Tropical Africa Bank", bankSortCode: "060147" },
   { bankName: "Standard Chartered Bank", bankSortCode: "080147" },
   { bankName: "Orient Bank", bankSortCode: "110147" },
