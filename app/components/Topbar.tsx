@@ -9,12 +9,20 @@ import {
   DropdownMenuItem,
   DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { removeCustomerId } from "@/app/lib/mockBackend";
 import { useRouter } from "next/navigation";
 import { useMerchantAuth } from "@/lib/context/MerchantAuthContext";
 import { useUserProfile } from "../(dashboard)/UserProfileProvider";
 import { useSession } from "next-auth/react";
 import { Menu, X, Building2, ChevronDown } from "lucide-react";
+import { toast } from "sonner";
 
 const mockNotifications = [
   {
@@ -60,6 +68,17 @@ export default function Topbar({ onMenuToggle, isMenuOpen }: TopbarProps) {
     : merchants[0];
   const businessDisplayName = profile?.merchant_names || profile?.businessTradeName || currentMerchant?.businessTradeName || (effectiveMerchantCode ? `Business · ${effectiveMerchantCode}` : 'Select business');
 
+  const handleSwitchMerchant = async (merchantCode: string) => {
+    if (merchantCode === currentMerchantCode) return;
+    try {
+      await updateSession({ merchantCode });
+      toast.success("Company switched");
+      router.refresh();
+    } catch {
+      toast.error("Failed to switch company");
+    }
+  };
+
   const handleLogout = async () => {
     try {
       // Clear any local storage/session storage
@@ -74,15 +93,6 @@ export default function Topbar({ onMenuToggle, isMenuOpen }: TopbarProps) {
       console.error('Logout error:', error);
       // Fallback: force redirect even if logout fails
       window.location.href = '/auth/login';
-    }
-  };
-
-  const handleSwitchMerchant = async (merchantCode: string) => {
-    try {
-      await updateSession({ merchantCode });
-      router.refresh();
-    } catch (err) {
-      console.error('Failed to switch merchant:', err);
     }
   };
 
