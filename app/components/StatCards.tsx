@@ -53,7 +53,7 @@ export default function StatCards() {
   const stats = [
     {
       label: 'Current balance',
-      value: walletLoading ? '...' : `${walletBalance.toLocaleString()} UGX`,
+      value: walletLoading ? '...' : `${Number(walletBalance ?? 0).toLocaleString()} UGX`,
       change: '+15,7%',
       changeType: 'up',
       icon: '💰',
@@ -67,7 +67,7 @@ export default function StatCards() {
     },
     {
       label: 'Total Credit',
-      value: walletLoading ? '.....' : `${totalCredit.toLocaleString()} UGX`,
+      value: walletLoading ? '.....' : `${Number(totalCredit ?? 0).toLocaleString()} UGX`,
       change: '-2,5%',
       changeType: 'down',
       icon: '📦',
@@ -75,7 +75,7 @@ export default function StatCards() {
 
     {
       label: 'Total Debit',
-      value: walletLoading ? '....' : `${totalDebit.toLocaleString()} UGX`,
+      value: walletLoading ? '....' : `${Number(totalDebit ?? 0).toLocaleString()} UGX`,
       change: '+32,6%',
       changeType: 'up',
       icon: '👥',

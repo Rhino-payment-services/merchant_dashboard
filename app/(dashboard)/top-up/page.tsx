@@ -190,7 +190,7 @@ export default function TopUpPage() {
                     </div>
                   ) : (
                     <div className="text-3xl font-bold">
-                      {walletBalance.toLocaleString()} UGX
+                      {Number(walletBalance ?? 0).toLocaleString()} UGX
                     </div>
                   )}
                 </div>
