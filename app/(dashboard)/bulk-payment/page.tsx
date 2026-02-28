@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -63,16 +63,19 @@ interface PaymentItem extends Partial<BulkTransactionItem> {
 }
 
 export default function BulkPaymentPage() {
-  const { data: session } = useSession();
+  const { data: session, status: sessionStatus } = useSession();
   const router = useRouter();
   const [payments, setPayments] = useState<PaymentItem[]>([]);
   const [bulkDescription, setBulkDescription] = useState('');
   const [bulkReference, setBulkReference] = useState('');
   
-  // Check if user is a super merchant (session first, then API fallback for existing sessions)
-  const merchants = (session?.user as any)?.merchants || [];
-  const currentMerchantCode = (session?.user as any)?.merchantCode;
-  const currentMerchant = merchants.find((m: any) => m.merchantCode === currentMerchantCode);
+  // Safe session-derived values (never throw)
+  const merchants = (session?.user as any)?.merchants ?? [];
+  const currentMerchantCode = (session?.user as any)?.merchantCode ?? undefined;
+  const currentMerchant = useMemo(() => {
+    if (!currentMerchantCode || !Array.isArray(merchants)) return undefined;
+    return merchants.find((m: any) => m?.merchantCode === currentMerchantCode);
+  }, [currentMerchantCode, merchants]);
   const [apiSuperMerchant, setApiSuperMerchant] = useState<boolean | null>(null);
 
   const checkComplete =
@@ -81,12 +84,21 @@ export default function BulkPaymentPage() {
     (!!session && !currentMerchant);
   const isSuperMerchant = (currentMerchant?.isSuperMerchant === true) || (apiSuperMerchant === true);
 
+  // Redirect when unauthenticated (must run before early returns so it runs in all cases)
+  useEffect(() => {
+    if (sessionStatus === 'unauthenticated' || session === null) {
+      router.replace('/');
+    }
+  }, [sessionStatus, session, router]);
+
   // API fallback when session doesn't have isSuperMerchant (e.g. before re-login after backend fix)
   useEffect(() => {
     if (!session || !currentMerchant?.id || typeof currentMerchant?.isSuperMerchant === 'boolean') return;
     let cancelled = false;
     checkMerchantIsSuperMerchant(currentMerchant.id).then((result) => {
-      if (!cancelled) setApiSuperMerchant(result);
+      if (!cancelled) setApiSuperMerchant(!!result);
+    }).catch(() => {
+      if (!cancelled) setApiSuperMerchant(false);
     });
     return () => { cancelled = true; };
   }, [session, currentMerchant?.id, currentMerchant?.isSuperMerchant]);
@@ -98,6 +110,34 @@ export default function BulkPaymentPage() {
       router.push('/');
     }
   }, [session, checkComplete, isSuperMerchant, router]);
+
+  // Session loading: show neutral loading so we don't run logic that assumes session
+  if (sessionStatus === 'loading' || session === undefined) {
+    return (
+      <div className="flex items-center justify-center min-h-[60vh] px-4">
+        <Card className="max-w-md w-full">
+          <CardContent className="flex flex-col items-center gap-4 pt-8 pb-8">
+            <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+            <p className="text-sm text-muted-foreground">Loading...</p>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  // Unauthenticated: show loading and redirect via useEffect (avoid side effect in render)
+  if (sessionStatus === 'unauthenticated' || !session) {
+    return (
+      <div className="flex items-center justify-center min-h-[60vh] px-4">
+        <Card className="max-w-md w-full">
+          <CardContent className="flex flex-col items-center gap-4 pt-8 pb-8">
+            <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+            <p className="text-sm text-muted-foreground">Redirecting...</p>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
 
   // Loading while checking super merchant status via API
   if (session && currentMerchant && !checkComplete) {
@@ -230,7 +270,7 @@ export default function BulkPaymentPage() {
 
     setSinglePaymentLoading(true);
     try {
-      const result = await processSinglePayment(singlePayment, (session.user as any).id);
+      const result = await processSinglePayment(singlePayment, (session?.user as any)?.id);
       toast.success('Payment processed successfully!');
       console.log('Single payment result:', result);
       
@@ -1034,7 +1074,7 @@ export default function BulkPaymentPage() {
   const pendingCount = payments.filter(p => p.status === 'pending').length;
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 p-6">
+    <div key={currentMerchantCode ?? 'default'} className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 p-6">
       <div className="max-w-7xl mx-auto space-y-6">
         {/* Page Header */}
         <div className="mb-8">
