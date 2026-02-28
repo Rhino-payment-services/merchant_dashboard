@@ -13,10 +13,10 @@ import {
 import { useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import { toast } from 'sonner';
-import * as XLSX from 'xlsx';
-import { processSinglePayment, validateTransaction, SinglePaymentDto, TransactionResponseDto, FeePreviewResponseDto } from "@/lib/api/single-payment.api";
+import { readSheetFromBinaryString, writeWorkbookToFile } from "@/lib/excel-utils";
 import { processBulkTransactionAsync, validateBulkRecipients, getBulkTransactionStatus, BulkTransactionItem, BulkTransactionItemResult } from "@/lib/api/bulk-payment.api";
 import { checkMerchantIsSuperMerchant } from "@/lib/api/super-merchant.api";
+import { SinglePaymentDto, FeePreviewResponseDto, processSinglePayment, validateTransaction } from "@/lib/api/single-payment.api";
 
 const TRANSACTION_TYPES = [
   { value: 'WALLET_TO_MNO', label: 'Mobile Money', icon: Phone, color: 'text-blue-600', bg: 'bg-blue-50' },
@@ -884,7 +884,7 @@ export default function BulkPaymentPage() {
     } else {
       // Handle Excel file
       const reader = new FileReader();
-      reader.onload = (evt) => {
+      reader.onload = async (evt) => {
         try {
           const bstr = evt.target?.result;
           if (!bstr) {
@@ -892,10 +892,7 @@ export default function BulkPaymentPage() {
             return;
           }
 
-          const wb = XLSX.read(bstr, { type: 'binary' });
-          const wsname = wb.SheetNames[0];
-          const ws = wb.Sheets[wsname];
-          const rawData = XLSX.utils.sheet_to_json(ws) as Record<string, unknown>[];
+          const rawData = await readSheetFromBinaryString(bstr as string);
           const data = rawData.map(row => normalizeRowKeys(row));
 
           console.log('📊 Parsed Excel data:', data);
@@ -986,7 +983,7 @@ export default function BulkPaymentPage() {
     e.target.value = '';
   };
 
-  const downloadTemplate = (format: 'excel' | 'csv' = 'csv') => {
+  const downloadTemplate = async (format: 'excel' | 'csv' = 'csv') => {
     const templateData = [
       {
         'Transaction Mode': 'WALLET_TO_MNO',
@@ -1059,11 +1056,8 @@ export default function BulkPaymentPage() {
       URL.revokeObjectURL(link.href);
       toast.success('CSV template downloaded successfully');
     } else {
-      // Generate Excel file
-      const ws = XLSX.utils.json_to_sheet(templateData);
-      const wb = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(wb, ws, 'BulkPaymentTemplate');
-      XLSX.writeFile(wb, 'rukapay-bulk-payment-template.xlsx');
+      // Generate Excel file (templateData is defined above)
+      await writeWorkbookToFile('BulkPaymentTemplate', templateData, 'rukapay-bulk-payment-template.xlsx');
       toast.success('Excel template downloaded successfully');
     }
   };
