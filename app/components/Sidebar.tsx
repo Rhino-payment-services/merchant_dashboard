@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useState, useEffect } from 'react';
+import React from 'react';
 import { Button } from '../../components/ui/button';
 import { useRouter, usePathname } from 'next/navigation';
 import { 
@@ -28,14 +28,13 @@ import {
 import Image from 'next/image';
 import { useSession } from 'next-auth/react';
 import { useUserProfile } from '../(dashboard)/UserProfileProvider';
-import { checkMerchantIsSuperMerchant } from '@/lib/api/super-merchant.api';
 
 const navLinks = [
   { section: 'GENERAL', links: [
     { name: 'Dashboard', path: '/', icon: LayoutDashboard },
     { name: 'Transaction', path: '/transactions', icon: CreditCard },
     // { name: 'Withdraw', path: '/transfer', icon: ArrowRightLeft },
-    { name: 'Top Up', path: '/top-up', icon: ArrowDown },
+    { name: 'Request Payment', path: '/top-up', icon: ArrowDown },
     { name: 'QR Code', path: '/qr-code', icon: QrCode },
     // { name: 'Save', path: '/save', icon: BarChart3 },
     // { name: 'Employees', path: '/employees', icon: Package },
@@ -83,61 +82,26 @@ export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
       })
     : merchants[0];
   
-  // State for super merchant status
-  const [isSuperMerchant, setIsSuperMerchant] = useState(false);
-  
-  // Check super merchant status - similar to home page logic
-  useEffect(() => {
-    const checkSuperMerchantStatus = async () => {
-      // First, check if session merchants array has isSuperMerchant field (fastest check)
-      if (currentMerchant && typeof currentMerchant.isSuperMerchant === 'boolean') {
-        console.log('✅ Sidebar: Using isSuperMerchant from session merchant data:', currentMerchant.isSuperMerchant);
-        setIsSuperMerchant(currentMerchant.isSuperMerchant);
-        return;
-      }
-      
-      // Fallback: check if any merchant in the session is a super merchant
-      const anySuperMerchant = merchants.some((m: any) => m.isSuperMerchant === true);
-      if (anySuperMerchant) {
-        console.log('✅ Sidebar: Found super merchant in merchants array');
-        setIsSuperMerchant(true);
-        return;
-      }
-      
-      // Final fallback: Check via API using current merchant ID
-      const currentMerchantId = currentMerchant?.id || profile?.merchantId;
-      if (currentMerchantId) {
-        try {
-          console.log('🔍 Sidebar: Checking super merchant status via API for merchantId:', currentMerchantId);
-          const result = await checkMerchantIsSuperMerchant(currentMerchantId);
-          console.log('🔍 Sidebar: Super merchant check result:', result);
-          setIsSuperMerchant(result);
-        } catch (err: any) {
-          console.error('❌ Sidebar: Error checking super merchant status:', err);
-          setIsSuperMerchant(false);
-        }
-      } else {
-        console.warn('⚠️ Sidebar: No merchant ID available for super merchant check');
-        setIsSuperMerchant(false);
-      }
-    };
-    
-    if (session && merchants.length > 0) {
-      checkSuperMerchantStatus();
-    }
-  }, [session, currentMerchant, merchants, profile?.merchantId]);
-  
   const businessName = profile?.merchant_names || profile?.businessTradeName || currentMerchant?.businessTradeName 
     || ((effectiveMerchantCode) ? `Business · ${effectiveMerchantCode}` : null);
   
-  // Filter navLinks based on super merchant status
+  // Feature flags — prefer live wallet data (profile.merchantData) so admin changes
+  // take effect without requiring the merchant to re-login.
+  const liveMerchantData = profile?.merchantData || profile?.businessWallet?.merchant;
+  const featureBulkPayments =
+    (liveMerchantData?.featureBulkPayments ?? currentMerchant?.featureBulkPayments) === true;
+  const featurePayroll =
+    (liveMerchantData?.featurePayroll ?? currentMerchant?.featurePayroll) === true;
+  const featurePayrollApprovals =
+    (liveMerchantData?.featurePayrollApprovals ?? currentMerchant?.featurePayrollApprovals) === true;
+  
+  // Filter navLinks: Payment, Payroll, Payroll Approvals only when enabled for this merchant
   const filteredNavLinks = navLinks.map(section => ({
     ...section,
     links: section.links.filter(link => {
-      // Only show Payment link for super merchants
-      if (link.path === '/bulk-payment') {
-        return isSuperMerchant;
-      }
+      if (link.path === '/bulk-payment') return featureBulkPayments;
+      if (link.path === '/payroll') return featurePayroll;
+      if (link.path === '/payroll/approvals') return featurePayrollApprovals;
       return true;
     })
   })).filter(section => section.links.length > 0); // Remove empty sections

@@ -111,6 +111,42 @@ export default function BulkPaymentPage() {
     }
   }, [session, checkComplete, isSuperMerchant, router]);
 
+  // Single Payment State (must be before any early return to satisfy Rules of Hooks)
+  const [singlePayment, setSinglePayment] = useState<SinglePaymentDto>({
+    mode: 'WALLET_TO_MNO',
+    amount: 0,
+    currency: 'UGX',
+    walletType: 'BUSINESS'
+  });
+  const [singlePaymentLoading, setSinglePaymentLoading] = useState(false);
+  const [validatingTransaction, setValidatingTransaction] = useState(false);
+  const [feePreview, setFeePreview] = useState<FeePreviewResponseDto | null>(null);
+  const [validationInfo, setValidationInfo] = useState<{
+    recipientName?: string;
+    partnerCode?: string;
+    partnerName?: string;
+    isValid?: boolean;
+  } | null>(null);
+
+  // Bulk payment state (must be before any early return to satisfy Rules of Hooks)
+  const [bulkTransactionId, setBulkTransactionId] = useState<string | null>(null);
+  const [processing, setProcessing] = useState(false);
+  const [progressStats, setProgressStats] = useState({
+    total: 0,
+    successful: 0,
+    failed: 0,
+    pending: 0,
+    percentage: 0
+  });
+  const [validating, setValidating] = useState(false);
+  const [showAddForm, setShowAddForm] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [formData, setFormData] = useState<Partial<PaymentItem>>({
+    mode: 'WALLET_TO_MNO',
+    currency: 'UGX',
+    walletType: 'BUSINESS', // ✅ Hardcoded to BUSINESS wallet for merchant dashboard
+  });
+
   // Session loading: show neutral loading so we don't run logic that assumes session
   if (sessionStatus === 'loading' || session === undefined) {
     return (
@@ -176,23 +212,31 @@ export default function BulkPaymentPage() {
       </div>
     );
   }
+
+  // Require feature flag: bulk payments must be enabled for this merchant (admin-controlled)
+  if (session && currentMerchant && currentMerchant.featureBulkPayments !== true) {
+    return (
+      <div className="flex items-center justify-center min-h-[60vh] px-4">
+        <Card className="max-w-md w-full">
+          <CardHeader>
+            <div className="flex items-center gap-3 mb-2">
+              <ShieldX className="h-8 w-8 text-red-500" />
+              <CardTitle>Access Denied</CardTitle>
+            </div>
+            <CardDescription>
+              Bulk payments are not enabled for this merchant. Contact your administrator.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Button onClick={() => router.push('/')} className="w-full">
+              Return to Dashboard
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
   
-  // Single Payment State
-  const [singlePayment, setSinglePayment] = useState<SinglePaymentDto>({
-    mode: 'WALLET_TO_MNO',
-    amount: 0,
-    currency: 'UGX',
-    walletType: 'BUSINESS'
-  });
-  const [singlePaymentLoading, setSinglePaymentLoading] = useState(false);
-  const [validatingTransaction, setValidatingTransaction] = useState(false);
-  const [feePreview, setFeePreview] = useState<FeePreviewResponseDto | null>(null);
-  const [validationInfo, setValidationInfo] = useState<{
-    recipientName?: string;
-    partnerCode?: string;
-    partnerName?: string;
-    isValid?: boolean;
-  } | null>(null);
   // Single Payment Functions
   const handleSinglePaymentChange = (field: keyof SinglePaymentDto, value: any) => {
     setSinglePayment(prev => ({
@@ -290,25 +334,6 @@ export default function BulkPaymentPage() {
       setSinglePaymentLoading(false);
     }
   };
-  const [bulkTransactionId, setBulkTransactionId] = useState<string | null>(null);
-  const [processing, setProcessing] = useState(false);
-  const [progressStats, setProgressStats] = useState({
-    total: 0,
-    successful: 0,
-    failed: 0,
-    pending: 0,
-    percentage: 0
-  });
-  const [validating, setValidating] = useState(false);
-  const [showAddForm, setShowAddForm] = useState(false);
-  const [editingId, setEditingId] = useState<string | null>(null);
-  
-  // Form state
-  const [formData, setFormData] = useState<Partial<PaymentItem>>({
-    mode: 'WALLET_TO_MNO',
-    currency: 'UGX',
-    walletType: 'BUSINESS', // ✅ Hardcoded to BUSINESS wallet for merchant dashboard
-  });
 
   const handleAddPayment = () => {
     // ✅ Description is now optional - only validate amount
