@@ -101,7 +101,7 @@ const getMyTransactions = async (
     params.append('merchantId', childMerchantId)
   }
   if (merchantCode) {
-    params.append('merchantCode', merchantCode)
+    params.append('merchantCode', String(merchantCode).trim())
   }
 
   // Use explicit BUSINESS wallet transactions endpoint
@@ -113,7 +113,7 @@ const getMyTransactions = async (
     : `/wallet/me/business/transactions`
   const config: { headers?: Record<string, string> } = {}
   if (merchantCode) {
-    config.headers = { 'X-Merchant-Code': merchantCode }
+    config.headers = { 'X-Merchant-Code': String(merchantCode).trim() }
   }
   const response = await apiClient.get(`${endpoint}?${params.toString()}`, config)
   

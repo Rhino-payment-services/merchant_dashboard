@@ -42,8 +42,8 @@ apiClient.interceptors.request.use(
           console.log('🔑 [API Client] Using token from session:', session.accessToken.substring(0, 20) + '...');
         }
         const merchantCode = (session?.user as any)?.merchantCode
-        if (merchantCode) {
-          config.headers['X-Merchant-Code'] = merchantCode
+        if (merchantCode != null && String(merchantCode).trim() !== '') {
+          config.headers['X-Merchant-Code'] = String(merchantCode).trim()
         }
         if (!config.headers.Authorization) {
           // Fallback to localStorage for backwards compatibility

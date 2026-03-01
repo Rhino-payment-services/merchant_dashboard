@@ -69,9 +69,10 @@ export default function Topbar({ onMenuToggle, isMenuOpen }: TopbarProps) {
   const businessDisplayName = profile?.merchant_names || profile?.businessTradeName || currentMerchant?.businessTradeName || (effectiveMerchantCode ? `Business · ${effectiveMerchantCode}` : 'Select business');
 
   const handleSwitchMerchant = async (merchantCode: string) => {
-    if (merchantCode === currentMerchantCode) return;
+    const code = String(merchantCode || '').trim();
+    if (!code || code === currentMerchantCode) return;
     try {
-      await updateSession({ merchantCode });
+      await updateSession({ merchantCode: code });
       toast.success("Company switched");
       router.refresh();
     } catch {
@@ -144,7 +145,7 @@ export default function Topbar({ onMenuToggle, isMenuOpen }: TopbarProps) {
             merchants.map((m: any) => (
               <DropdownMenuItem
                 key={m.merchantCode || m.id}
-                onClick={() => handleSwitchMerchant(m.merchantCode)}
+                onClick={() => handleSwitchMerchant(m.merchantCode ?? m.id)}
                 className="cursor-pointer"
               >
                 <Building2 className="w-4 h-4 mr-2 text-main-600" />

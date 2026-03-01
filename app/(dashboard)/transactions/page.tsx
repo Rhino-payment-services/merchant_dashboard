@@ -47,8 +47,12 @@ interface BulkTransaction {
 export default function TransactionsPage() {
   const { data: session } = useSession();
   const { profile } = useUserProfile();
-  // Current business context: ensures we refetch transactions when user switches business (query key includes this)
-  const currentMerchantCode = (session?.user as any)?.merchantCode ?? profile?.merchant_code ?? profile?.merchantCode ?? null;
+  // Use ONLY session for which merchant's transactions to load (never profile – profile can be a single merchant and would show same data when switching)
+  const sessionMerchantCode = (session?.user as any)?.merchantCode;
+  const firstSessionMerchantCode = (session?.user as any)?.merchants?.[0]?.merchantCode;
+  const currentMerchantCode = sessionMerchantCode != null
+    ? String(sessionMerchantCode)
+    : (firstSessionMerchantCode != null ? String(firstSessionMerchantCode) : (profile?.merchant_code ?? profile?.merchantCode) != null ? String(profile?.merchant_code ?? profile?.merchantCode ?? '') : null);
   const [search, setSearch] = useState('');
   const [from, setFrom] = useState<string>("");
   const [to, setTo] = useState<string>("");
