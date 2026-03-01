@@ -168,7 +168,7 @@ const getTransactionById = async (transactionId: string): Promise<Transaction> =
 export const useMyTransactions = (
   filter?: TransactionFilter,
   childMerchantId?: string,
-  /** Current business merchant code – when this changes (e.g. user switches business), we refetch that business's transactions */
+  /** Current business merchant code – when this changes (e.g. user switches business), query key changes so we refetch that business's transactions instead of reusing cache */
   merchantCode?: string | null
 ) => useQuery({
   queryKey: ['transactions', 'my-transactions', filter, childMerchantId, merchantCode],

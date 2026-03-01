@@ -47,7 +47,7 @@ interface BulkTransaction {
 export default function TransactionsPage() {
   const { data: session } = useSession();
   const { profile } = useUserProfile();
-  // Current business: ensures we fetch and display the selected business's transactions (not a cached other business)
+  // Current business context: ensures we refetch transactions when user switches business (query key includes this)
   const currentMerchantCode = (session?.user as any)?.merchantCode ?? profile?.merchant_code ?? profile?.merchantCode ?? null;
   const [search, setSearch] = useState('');
   const [from, setFrom] = useState<string>("");
@@ -73,7 +73,7 @@ export default function TransactionsPage() {
     }
   }, []);
 
-  // When user switches business, reset to first page
+  // When user switches business, reset to first page so we don't show wrong pagination
   React.useEffect(() => {
     setCurrentPage(1);
   }, [currentMerchantCode]);
