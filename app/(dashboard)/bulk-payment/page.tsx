@@ -16,6 +16,7 @@ import { toast } from 'sonner';
 import { readSheetFromBinaryString, writeWorkbookToFile } from "@/lib/excel-utils";
 import { processBulkTransactionAsync, validateBulkRecipients, getBulkTransactionStatus, BulkTransactionItem, BulkTransactionItemResult } from "@/lib/api/bulk-payment.api";
 import { SinglePaymentDto, FeePreviewResponseDto, processSinglePayment, validateTransaction } from "@/lib/api/single-payment.api";
+import { normalizePhoneToUganda } from "@/lib/utils";
 
 const TRANSACTION_TYPES = [
   { value: 'WALLET_TO_MNO', label: 'Mobile Money', icon: Phone, color: 'text-blue-600', bg: 'bg-blue-50' },
@@ -163,7 +164,16 @@ export default function BulkPaymentPage() {
 
     setValidatingTransaction(true);
     try {
-      const validation = await validateTransaction(singlePayment);
+      const payload: SinglePaymentDto = {
+        ...singlePayment,
+        phoneNumber: singlePayment.mode === 'WALLET_TO_MNO' && singlePayment.phoneNumber
+          ? normalizePhoneToUganda(singlePayment.phoneNumber)
+          : singlePayment.phoneNumber,
+        recipientPhoneNumber: singlePayment.mode === 'MERCHANT_TO_WALLET' && singlePayment.recipientPhoneNumber
+          ? normalizePhoneToUganda(singlePayment.recipientPhoneNumber)
+          : singlePayment.recipientPhoneNumber,
+      };
+      const validation = await validateTransaction(payload);
       console.log('Validation result:', validation);
       
       // Store validation info - PRESERVE user-entered name if validation doesn't return one (SAME AS BULK)
@@ -224,7 +234,16 @@ export default function BulkPaymentPage() {
 
     setSinglePaymentLoading(true);
     try {
-      const result = await processSinglePayment(singlePayment, (session?.user as any)?.id);
+      const payload: SinglePaymentDto = {
+        ...singlePayment,
+        phoneNumber: singlePayment.mode === 'WALLET_TO_MNO' && singlePayment.phoneNumber
+          ? normalizePhoneToUganda(singlePayment.phoneNumber)
+          : singlePayment.phoneNumber,
+        recipientPhoneNumber: singlePayment.mode === 'MERCHANT_TO_WALLET' && singlePayment.recipientPhoneNumber
+          ? normalizePhoneToUganda(singlePayment.recipientPhoneNumber)
+          : singlePayment.recipientPhoneNumber,
+      };
+      const result = await processSinglePayment(payload, (session?.user as any)?.id);
       toast.success('Payment processed successfully!');
       console.log('Single payment result:', result);
       
@@ -328,24 +347,25 @@ export default function BulkPaymentPage() {
 
     try {
       // Don't send walletType to validation endpoint - it's only needed for processing
-      const items: BulkTransactionItem[] = payments.map(p => ({
-        itemId: p.itemId!,
-        mode: p.mode!,
-        amount: p.amount!,
-        currency: p.currency!,
-        description: p.description,
-        // walletType is not needed for validation, only for processing
-        phoneNumber: p.phoneNumber,
-        mnoProvider: p.mnoProvider,
-        recipientName: p.recipientName,
-        accountNumber: p.accountNumber,
-        bankSortCode: p.bankSortCode,
-        accountName: p.accountName,
-        bankName: p.bankName,
-        recipientPhone: p.recipientPhone,
-        // ✅ Add recipientPhoneNumber for MERCHANT_TO_WALLET
-        recipientPhoneNumber: p.recipientPhoneNumber,
-      }));
+      const items: BulkTransactionItem[] = payments.map(p => {
+        const base = {
+          itemId: p.itemId!,
+          mode: p.mode!,
+          amount: p.amount!,
+          currency: p.currency!,
+          description: p.description,
+          phoneNumber: p.mode === 'WALLET_TO_MNO' && p.phoneNumber ? normalizePhoneToUganda(p.phoneNumber) : p.phoneNumber,
+          mnoProvider: p.mnoProvider,
+          recipientName: p.recipientName,
+          accountNumber: p.accountNumber,
+          bankSortCode: p.bankSortCode,
+          accountName: p.accountName,
+          bankName: p.bankName,
+          recipientPhone: p.recipientPhone ? normalizePhoneToUganda(p.recipientPhone) : p.recipientPhone,
+          recipientPhoneNumber: p.recipientPhoneNumber ? normalizePhoneToUganda(p.recipientPhoneNumber) : p.recipientPhoneNumber,
+        };
+        return base as BulkTransactionItem;
+      });
 
       console.log('🔍 Validating recipients:', items);
       
@@ -578,7 +598,7 @@ export default function BulkPaymentPage() {
 
           // Add fields based on mode
           if (p.mode === 'WALLET_TO_MNO') {
-            transaction.phoneNumber = p.phoneNumber;
+            transaction.phoneNumber = normalizePhoneToUganda(p.phoneNumber || '');
             transaction.mnoProvider = p.mnoProvider;
             transaction.recipientName = p.recipientName;
           } else if (p.mode === 'WALLET_TO_BANK') {
@@ -589,19 +609,12 @@ export default function BulkPaymentPage() {
             transaction.swiftCode = p.swiftCode;
           } else if (p.mode === 'MERCHANT_TO_WALLET') {
             // For MERCHANT_TO_WALLET, only send recipientPhoneNumber, not recipientPhone
-            const phoneNumber = p.recipientPhoneNumber || p.recipientPhone;
-            console.log('🔍 MERCHANT_TO_WALLET payment data:', {
-              recipientPhoneNumber: p.recipientPhoneNumber,
-              recipientPhone: p.recipientPhone,
-              finalPhoneNumber: phoneNumber,
-              recipientUserId: p.recipientUserId,
-              fullPayment: p
-            });
-            transaction.recipientPhoneNumber = phoneNumber;
+            const rawPhone = p.recipientPhoneNumber || p.recipientPhone;
+            transaction.recipientPhoneNumber = normalizePhoneToUganda(rawPhone || '');
             transaction.recipientUserId = p.recipientUserId;
           } else {
             // Other modes
-            transaction.phoneNumber = p.phoneNumber;
+            transaction.phoneNumber = p.phoneNumber ? normalizePhoneToUganda(p.phoneNumber) : p.phoneNumber;
             transaction.mnoProvider = p.mnoProvider;
             transaction.recipientName = p.recipientName;
             transaction.accountNumber = p.accountNumber;
@@ -610,7 +623,7 @@ export default function BulkPaymentPage() {
             transaction.accountName = p.accountName;
             transaction.swiftCode = p.swiftCode;
             if (p.recipientPhoneNumber) {
-              transaction.recipientPhoneNumber = p.recipientPhoneNumber;
+              transaction.recipientPhoneNumber = normalizePhoneToUganda(p.recipientPhoneNumber);
             }
             if (p.recipientUserId) {
               transaction.recipientUserId = p.recipientUserId;
@@ -1181,7 +1194,7 @@ export default function BulkPaymentPage() {
                       <Input
                         value={singlePayment.phoneNumber || ''}
                         onChange={(e) => handleSinglePaymentChange('phoneNumber', e.target.value)}
-                        placeholder="e.g., +256700000000"
+                        placeholder="e.g., 0700000000 or 256700000000"
                         className="w-full"
                       />
                     </div>
@@ -1615,7 +1628,7 @@ export default function BulkPaymentPage() {
                       <Input
                         value={formData.phoneNumber || ''}
                         onChange={(e) => setFormData(prev => ({ ...prev, phoneNumber: e.target.value }))}
-                        placeholder="256700123456"
+                        placeholder="e.g., 0700123456 or 256700123456"
                       />
                     </div>
                     <div>
@@ -1698,7 +1711,7 @@ export default function BulkPaymentPage() {
                       <Input
                         value={formData.recipientPhoneNumber || ''}
                         onChange={(e) => setFormData(prev => ({ ...prev, recipientPhoneNumber: e.target.value }))}
-                        placeholder="256700123456"
+                        placeholder="e.g., 0700123456 or 256700123456"
                       />
                       <p className="text-xs text-green-600 mt-1">
                         💰 FREE! No fees for merchants sending to individuals
