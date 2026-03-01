@@ -118,6 +118,7 @@ export default function BulkPaymentPage() {
     mode: 'WALLET_TO_MNO',
     currency: 'UGX',
     walletType: 'BUSINESS', // ✅ Hardcoded to BUSINESS wallet for merchant dashboard
+    mnoProvider: 'MTN', // default network so user doesn't have to touch the select
   });
 
   // Session loading: show neutral loading so we don't run logic that assumes session
@@ -272,8 +273,8 @@ export default function BulkPaymentPage() {
     }
 
     // Validate based on mode
-    if (formData.mode === 'WALLET_TO_MNO' && (!formData.phoneNumber || !formData.mnoProvider)) {
-      toast.error('Phone number and network are required for mobile money');
+    if (formData.mode === 'WALLET_TO_MNO' && !formData.phoneNumber) {
+      toast.error('Phone number is required for mobile money');
       return;
     }
 
@@ -316,7 +317,7 @@ export default function BulkPaymentPage() {
       toast.success('Payment added to list');
     }
 
-    setFormData({ mode: 'WALLET_TO_MNO', currency: 'UGX', walletType: 'BUSINESS' });
+    setFormData({ mode: 'WALLET_TO_MNO', currency: 'UGX', walletType: 'BUSINESS', mnoProvider: 'MTN' });
     setShowAddForm(false);
   };
 
@@ -328,7 +329,7 @@ export default function BulkPaymentPage() {
   };
 
   const handleCancelEdit = () => {
-    setFormData({ mode: 'WALLET_TO_MNO', currency: 'UGX', walletType: 'BUSINESS' });
+    setFormData({ mode: 'WALLET_TO_MNO', currency: 'UGX', walletType: 'BUSINESS', mnoProvider: 'MTN' });
     setEditingId(null);
     setShowAddForm(false);
   };
@@ -355,7 +356,7 @@ export default function BulkPaymentPage() {
           currency: p.currency!,
           description: p.description,
           phoneNumber: p.mode === 'WALLET_TO_MNO' && p.phoneNumber ? normalizePhoneToUganda(p.phoneNumber) : p.phoneNumber,
-          mnoProvider: p.mnoProvider,
+          mnoProvider: p.mnoProvider || 'MTN',
           recipientName: p.recipientName,
           accountNumber: p.accountNumber,
           bankSortCode: p.bankSortCode,
@@ -599,7 +600,7 @@ export default function BulkPaymentPage() {
           // Add fields based on mode
           if (p.mode === 'WALLET_TO_MNO') {
             transaction.phoneNumber = normalizePhoneToUganda(p.phoneNumber || '');
-            transaction.mnoProvider = p.mnoProvider;
+            transaction.mnoProvider = p.mnoProvider || 'MTN';
             transaction.recipientName = p.recipientName;
           } else if (p.mode === 'WALLET_TO_BANK') {
             transaction.accountNumber = p.accountNumber;
@@ -615,7 +616,7 @@ export default function BulkPaymentPage() {
           } else {
             // Other modes
             transaction.phoneNumber = p.phoneNumber ? normalizePhoneToUganda(p.phoneNumber) : p.phoneNumber;
-            transaction.mnoProvider = p.mnoProvider;
+            transaction.mnoProvider = p.mnoProvider || 'MTN';
             transaction.recipientName = p.recipientName;
             transaction.accountNumber = p.accountNumber;
             transaction.bankSortCode = p.bankSortCode;
