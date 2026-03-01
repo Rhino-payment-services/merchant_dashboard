@@ -228,32 +228,48 @@ export const validateTransaction = async (paymentData: SinglePaymentDto): Promis
   console.log('API: Validating transaction:', validationData);
     const response = await apiClient.post('/transactions/validate', validationData);
     console.log('API: Validation response:', response.data);
-    
+
+    const data = response.data;
+    if (!data || typeof data !== 'object') {
+      return {
+        isValid: false,
+        errors: ['Invalid validation response'],
+        warnings: [],
+        recipientName: undefined,
+        partnerCode: undefined,
+        partnerName: undefined,
+        validationResult: {},
+        feePreview: undefined,
+      };
+    }
+
     // Transform response to match expected format
-    const validationResult = response.data.validationResult || {};
-    const recipientName = validationResult.accountName || 
-                          validationResult.data?.accountName || 
-                          validationResult.data?.name || 
+    const validationResult = data.validationResult || {};
+    const recipientName = validationResult.accountName ||
+                          validationResult.customerName ||
+                          validationResult.data?.accountName ||
+                          validationResult.data?.name ||
+                          validationResult.data?.customerName ||
                           validationResult.data?.recipientName;
 
     return {
-      isValid: response.data.success || false,
-      errors: response.data.error ? [response.data.error] : [],
-      warnings: response.data.warnings || [],
+      isValid: data.success || false,
+      errors: data.error ? [data.error] : [],
+      warnings: data.warnings || [],
       recipientName: recipientName,
-      partnerCode: response.data.partnerCode,
-      partnerName: response.data.partnerName,
+      partnerCode: data.partnerCode,
+      partnerName: data.partnerName,
       validationResult: validationResult,
-      feePreview: response.data.feeDetails ? {
+      feePreview: data.feeDetails ? {
         tariffId: '',
         tariffName: '',
-        feeAmount: response.data.feeDetails.feeAmount,
-        feePercentage: response.data.feeDetails.feePercentage || 0,
-        totalFee: response.data.feeDetails.feeAmount,
-        netAmount: response.data.feeDetails.totalAmount - response.data.feeDetails.feeAmount,
-        currency: response.data.feeDetails.currency,
-        rukapayFee: response.data.feeDetails.platformRevenue || 0,
-        partnerFee: response.data.feeDetails.partnerRevenue || 0,
+        feeAmount: data.feeDetails.feeAmount,
+        feePercentage: data.feeDetails.feePercentage || 0,
+        totalFee: data.feeDetails.feeAmount,
+        netAmount: (data.feeDetails.totalAmount ?? 0) - (data.feeDetails.feeAmount ?? 0),
+        currency: data.feeDetails.currency,
+        rukapayFee: data.feeDetails.platformRevenue || 0,
+        partnerFee: data.feeDetails.partnerRevenue || 0,
         governmentTax: 0,
         telecomBankCharge: 0,
         calculationDetails: {}

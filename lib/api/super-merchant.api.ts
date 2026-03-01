@@ -43,7 +43,7 @@ export interface HasSuperMerchantAccountResponse {
 export const checkMerchantIsSuperMerchant = async (merchantId: string): Promise<boolean> => {
   try {
     const response = await apiClient.get<IsSuperMerchantResponse>(`/super-merchant/is-super-merchant/merchant/${merchantId}`)
-    return response.data.isSuperMerchant
+    return response.data?.isSuperMerchant ?? false
   } catch (error: any) {
     console.error('Error checking merchant super merchant status:', error)
     return false

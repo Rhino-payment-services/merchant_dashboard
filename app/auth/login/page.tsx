@@ -48,14 +48,20 @@ function LoginContent() {
     
     try {
       // Request OTP from backend
-      console.log('🔗 Calling API:', `${API_URL}/auth/merchant/login`);
-      const response = await fetch(`${API_URL}/auth/merchant/login`, {
+      const url = `${API_URL}/auth/merchant/login`;
+      console.log('🔗 Calling API:', url);
+      const response = await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ phoneNumber: ownerData.phoneNumber })
       });
 
-      const data = await response.json();
+      let data: { success?: boolean; message?: string; expiresIn?: number };
+      try {
+        data = await response.json();
+      } catch {
+        throw new Error(response.ok ? 'Invalid response from server' : `Server error ${response.status}`);
+      }
 
       if (data.success) {
         toast.success('OTP sent to your phone!');
@@ -64,9 +70,14 @@ function LoginContent() {
       } else {
         toast.error(data.message || 'Failed to send OTP');
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Login error:', error);
-      toast.error('Failed to send OTP. Please try again.');
+      const message = error instanceof Error ? error.message : '';
+      if (message.includes('fetch') || message === 'Failed to fetch') {
+        toast.error(`Cannot reach the API at ${API_URL}. Is the backend running?`);
+      } else {
+        toast.error(message || 'Failed to send OTP. Please try again.');
+      }
     } finally {
       setIsLoading(false);
     }

@@ -15,7 +15,8 @@ import {
   TrendingUp,
   AlertCircle,
   Play,
-  FileText
+  FileText,
+  ShieldX
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -26,9 +27,25 @@ export default function PayrollDashboard() {
   const [pendingBatches, setPendingBatches] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
+  const merchants = (session?.user as any)?.merchants ?? [];
+  const currentMerchantCode = (session?.user as any)?.merchantCode;
+  const currentMerchant = currentMerchantCode
+    ? merchants.find((m: any) => m?.merchantCode === currentMerchantCode)
+    : merchants[0];
+  const featurePayroll = currentMerchant?.featurePayroll === true;
+
   useEffect(() => {
-    loadPayrollData();
-  }, []);
+    if (session && currentMerchant && featurePayroll === false) {
+      toast.error('Payroll is not enabled for this merchant.');
+      router.replace('/');
+      return;
+    }
+    if (session && featurePayroll) {
+      loadPayrollData();
+    } else {
+      setLoading(false);
+    }
+  }, [session, currentMerchant, featurePayroll, router]);
 
   const loadPayrollData = async () => {
     try {
@@ -56,6 +73,29 @@ export default function PayrollDashboard() {
       minimumFractionDigits: 0
     }).format(amount);
   };
+
+  if (session && currentMerchant && featurePayroll !== true) {
+    return (
+      <div className="flex items-center justify-center min-h-[60vh] px-4">
+        <Card className="max-w-md w-full">
+          <CardHeader>
+            <div className="flex items-center gap-3 mb-2">
+              <ShieldX className="h-8 w-8 text-red-500" />
+              <CardTitle>Access Denied</CardTitle>
+            </div>
+            <CardDescription>
+              Payroll is not enabled for this merchant. Contact your administrator.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Button onClick={() => router.push('/')} className="w-full">
+              Return to Dashboard
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
 
   return (
     <div className="container mx-auto py-8 px-4">

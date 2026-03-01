@@ -14,7 +14,7 @@ import { useRouter } from "next/navigation";
 import { useMerchantAuth } from "@/lib/context/MerchantAuthContext";
 import { useUserProfile } from "../(dashboard)/UserProfileProvider";
 import { useSession } from "next-auth/react";
-import { Menu, X, Building2 } from "lucide-react";
+import { Menu, X, Building2, ChevronDown } from "lucide-react";
 
 const mockNotifications = [
   {
@@ -44,10 +44,21 @@ interface TopbarProps {
 
 export default function Topbar({ onMenuToggle, isMenuOpen }: TopbarProps) {
   const router = useRouter();
-  const { data: session } = useSession();
+  const { data: session, update: updateSession } = useSession();
   const { profile, loading } = useUserProfile();
   const { user, logout } = useMerchantAuth();
   const merchants = (session?.user as any)?.merchants || [];
+  const currentMerchantCode = (session?.user as any)?.merchantCode;
+  const profileMerchantCode = profile?.merchant_code || profile?.merchantCode;
+  const effectiveMerchantCode = currentMerchantCode || profileMerchantCode;
+  const currentMerchant = effectiveMerchantCode
+    ? merchants.find((m: any) => {
+        const mCode = String(m?.merchantCode || '').trim();
+        const eCode = String(effectiveMerchantCode || '').trim();
+        return mCode === eCode || mCode === eCode.padStart(4, '0') || eCode === mCode.padStart(4, '0');
+      })
+    : merchants[0];
+  const businessDisplayName = profile?.merchant_names || profile?.businessTradeName || currentMerchant?.businessTradeName || (effectiveMerchantCode ? `Business · ${effectiveMerchantCode}` : 'Select business');
 
   const handleLogout = async () => {
     try {
@@ -63,6 +74,15 @@ export default function Topbar({ onMenuToggle, isMenuOpen }: TopbarProps) {
       console.error('Logout error:', error);
       // Fallback: force redirect even if logout fails
       window.location.href = '/auth/login';
+    }
+  };
+
+  const handleSwitchMerchant = async (merchantCode: string) => {
+    try {
+      await updateSession({ merchantCode });
+      router.refresh();
+    } catch (err) {
+      console.error('Failed to switch merchant:', err);
     }
   };
 
@@ -94,6 +114,43 @@ export default function Topbar({ onMenuToggle, isMenuOpen }: TopbarProps) {
           )}
         </Button>
       </div>
+
+      {/* Business selector dropdown (matches staging) */}
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <button
+            type="button"
+            className="flex items-center gap-2 min-w-0 max-w-[200px] sm:max-w-[260px] px-3 py-2 rounded-lg border border-gray-200 bg-white hover:bg-gray-50 text-left focus:outline-none focus:ring-2 focus:ring-main-200"
+          >
+            <Building2 className="w-4 h-4 text-main-600 flex-shrink-0" />
+            <span className="truncate text-sm font-medium text-gray-900">
+              {loading ? '...' : businessDisplayName}
+            </span>
+            <ChevronDown className="w-4 h-4 text-gray-500 flex-shrink-0 ml-auto" />
+          </button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="start" className="w-56 mt-2">
+          {merchants.length > 0 ? (
+            merchants.map((m: any) => (
+              <DropdownMenuItem
+                key={m.merchantCode || m.id}
+                onClick={() => handleSwitchMerchant(m.merchantCode)}
+                className="cursor-pointer"
+              >
+                <Building2 className="w-4 h-4 mr-2 text-main-600" />
+                <span className="truncate">{m.businessTradeName || m.merchantCode || 'Merchant'}</span>
+              </DropdownMenuItem>
+            ))
+          ) : (
+            <Link href="/auth/select-merchant">
+              <DropdownMenuItem className="flex items-center gap-2 cursor-pointer">
+                <Building2 className="w-4 h-4" />
+                Switch Merchant
+              </DropdownMenuItem>
+            </Link>
+          )}
+        </DropdownMenuContent>
+      </DropdownMenu>
 
       {/* Search Bar */}
       <div className={`flex-1 flex items-center gap-4 ${isMenuOpen ? 'hidden md:flex' : 'flex'} min-w-0`}>

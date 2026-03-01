@@ -21,7 +21,6 @@ import {
   CheckCircle,
   User,
 } from "lucide-react";
-import * as XLSX from "xlsx";
 import { UGANDAN_BANKS } from "@/app/lib/bankList";
 import { useUserProfile } from "../UserProfileProvider";
 import {

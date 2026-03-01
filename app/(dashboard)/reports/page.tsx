@@ -25,7 +25,7 @@ import {
   ChevronsRight
 } from 'lucide-react';
 import { Chart } from '../../components/chart';
-import * as XLSX from 'xlsx';
+import { writeWorkbookWithSheetsToFile } from '@/lib/excel-utils';
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
 import { toast } from 'sonner';
@@ -232,7 +232,7 @@ export default function ReportsPage() {
   };
 
   // Export to Excel
-  const exportToExcel = () => {
+  const exportToExcel = async () => {
     setIsExporting(true);
     try {
       if (filteredTransactions.length === 0) {
@@ -256,26 +256,7 @@ export default function ReportsPage() {
         };
       });
 
-      // Create transactions worksheet
-      const ws = XLSX.utils.json_to_sheet(exportData);
-      
-      // Set column widths for better readability
-      const columnWidths = [
-        { wch: 25 }, // Transaction ID
-        { wch: 12 }, // Date
-        { wch: 12 }, // Time
-        { wch: 30 }, // Sender Name
-        { wch: 15 }, // Transaction Type
-        { wch: 15 }, // Amount
-        { wch: 12 }, // Status
-        { wch: 25 }, // Date (Full)
-      ];
-      ws['!cols'] = columnWidths;
-
-      const wb = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(wb, ws, 'Transactions');
-      
-      // Add summary sheet with formatted values
+      // Build summary data
       const summaryData = [
         { 'Metric': 'Total Revenue', 'Value': summary.totalRevenue, 'Currency': 'UGX', 'Formatted': `UGX ${Number(summary.totalRevenue).toLocaleString()}` },
         { 'Metric': 'Total Expenses', 'Value': summary.totalExpenses, 'Currency': 'UGX', 'Formatted': `UGX ${Number(summary.totalExpenses).toLocaleString()}` },
@@ -286,15 +267,6 @@ export default function ReportsPage() {
         { 'Metric': 'Average Transaction', 'Value': summary.averageTransaction, 'Currency': 'UGX', 'Formatted': `UGX ${Number(summary.averageTransaction).toLocaleString()}` },
         { 'Metric': 'Success Rate', 'Value': summary.successRate, 'Currency': '%', 'Formatted': `${summary.successRate.toFixed(1)}%` }
       ];
-      
-      const summaryWs = XLSX.utils.json_to_sheet(summaryData);
-      summaryWs['!cols'] = [
-        { wch: 25 }, // Metric
-        { wch: 15 }, // Value
-        { wch: 10 }, // Currency
-        { wch: 20 }, // Formatted
-      ];
-      XLSX.utils.book_append_sheet(wb, summaryWs, 'Summary');
 
       // Generate filename with merchant name and date
       const merchantName = profile?.merchant_names || profile?.merchantBusinessTradeName || profile?.businessTradeName || 'Merchant';
@@ -302,7 +274,13 @@ export default function ReportsPage() {
       const dateStr = new Date().toISOString().split('T')[0];
       const filename = `${sanitizedMerchantName}-transactions-${dateStr}.xlsx`;
 
-      XLSX.writeFile(wb, filename);
+      await writeWorkbookWithSheetsToFile(
+        [
+          { name: 'Transactions', data: exportData },
+          { name: 'Summary', data: summaryData },
+        ],
+        filename
+      );
       toast.success('Excel file exported successfully');
     } catch (error) {
       console.error('Excel export failed:', error);
