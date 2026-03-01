@@ -8,7 +8,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { 
   Upload, Download, Plus, Trash2, Users, CheckCircle2, 
   XCircle, Clock, Send, AlertCircle, Info, Loader2,
-  Wallet, Phone, Building2, Zap, Edit, RefreshCw, AlertTriangle, ShieldX
+  Wallet, Phone, Building2, Zap, Edit, RefreshCw, AlertTriangle,
 } from "lucide-react";
 import { useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
@@ -147,30 +147,6 @@ export default function BulkPaymentPage() {
     );
   }
 
-  // Require feature flag: bulk payments must be enabled for this merchant (admin-controlled)
-  if (session && currentMerchant && currentMerchant.featureBulkPayments !== true) {
-    return (
-      <div className="flex items-center justify-center min-h-[60vh] px-4">
-        <Card className="max-w-md w-full">
-          <CardHeader>
-            <div className="flex items-center gap-3 mb-2">
-              <ShieldX className="h-8 w-8 text-red-500" />
-              <CardTitle>Access Denied</CardTitle>
-            </div>
-            <CardDescription>
-              Bulk payments are not enabled for this merchant. Contact your administrator.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <Button onClick={() => router.push('/')} className="w-full">
-              Return to Dashboard
-            </Button>
-          </CardContent>
-        </Card>
-      </div>
-    );
-  }
-  
   // Single Payment Functions
   const handleSinglePaymentChange = (field: keyof SinglePaymentDto, value: any) => {
     setSinglePayment(prev => ({
