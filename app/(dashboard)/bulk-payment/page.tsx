@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import { useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
+import { useUserProfile } from "../UserProfileProvider";
 import { toast } from 'sonner';
 import { readSheetFromBinaryString, writeWorkbookToFile } from "@/lib/excel-utils";
 import { processBulkTransactionAsync, validateBulkRecipients, getBulkTransactionStatus, BulkTransactionItem, BulkTransactionItemResult } from "@/lib/api/bulk-payment.api";
@@ -76,6 +77,11 @@ export default function BulkPaymentPage() {
     if (!currentMerchantCode || !Array.isArray(merchants)) return undefined;
     return merchants.find((m: any) => m?.merchantCode === currentMerchantCode);
   }, [currentMerchantCode, merchants]);
+
+  const { profile } = useUserProfile();
+  const liveMerchantData = profile?.merchantData || (profile as any)?.businessWallet?.merchant;
+  const featureBulkPayments =
+    (liveMerchantData?.featureBulkPayments ?? currentMerchant?.featureBulkPayments) === true;
 
   // Redirect when unauthenticated (must run before early returns so it runs in all cases)
   useEffect(() => {
@@ -1016,6 +1022,29 @@ export default function BulkPaymentPage() {
   const failedCount = payments.filter(p => p.status === 'failed').length;
   const pendingCount = payments.filter(p => p.status === 'pending').length;
 
+  if (session && currentMerchant && featureBulkPayments !== true) {
+    return (
+      <div className="flex items-center justify-center min-h-[60vh] px-4">
+        <Card className="max-w-md w-full">
+          <CardHeader>
+            <div className="flex items-center gap-3 mb-2">
+              <AlertTriangle className="h-8 w-8 text-amber-500" />
+              <CardTitle>Access Denied</CardTitle>
+            </div>
+            <CardDescription>
+              Bulk payments are not enabled for this merchant. Contact your administrator.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Button onClick={() => router.push('/')} className="w-full">
+              Return to Dashboard
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
   return (
     <div key={currentMerchantCode ?? 'default'} className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 p-6">
       <div className="max-w-7xl mx-auto space-y-6">
@@ -1212,6 +1241,12 @@ export default function BulkPaymentPage() {
                         <option value="MTN">MTN</option>
                         <option value="Airtel">Airtel</option>
                       </select>
+                      {singlePayment.mnoProvider === 'MTN' && (
+                        <p className="text-xs text-amber-700 mt-1">Recipient is not an Airtel user.</p>
+                      )}
+                      {singlePayment.mnoProvider === 'Airtel' && (
+                        <p className="text-xs text-gray-600 mt-1">Airtel user.</p>
+                      )}
                     </div>
                   </div>
                 )}
@@ -1644,6 +1679,12 @@ export default function BulkPaymentPage() {
                         <option value="MTN">MTN</option>
                         <option value="Airtel">Airtel</option>
                       </select>
+                      {(formData.mnoProvider || 'MTN') === 'MTN' && (
+                        <p className="text-xs text-amber-700 mt-1">Recipient is not an Airtel user.</p>
+                      )}
+                      {formData.mnoProvider === 'Airtel' && (
+                        <p className="text-xs text-gray-600 mt-1">Airtel user.</p>
+                      )}
                     </div>
                     <div>
                       <label className="block text-sm font-semibold text-gray-700 mb-2">
@@ -1879,6 +1920,13 @@ export default function BulkPaymentPage() {
                               </span>
                             )}
                           </div>
+                          {payment.mode === 'WALLET_TO_MNO' && (
+                            <p className="text-xs text-gray-600 mt-0.5">
+                              {payment.mnoProvider === 'Airtel'
+                                ? 'Airtel user'
+                                : 'MTN user — Not an Airtel user'}
+                            </p>
+                          )}
                         </div>
                         <div>
                           <p className="text-xs text-gray-500">Amount</p>

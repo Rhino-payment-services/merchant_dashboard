@@ -88,16 +88,18 @@ export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
   // Feature flags — prefer live wallet data (profile.merchantData) so admin changes
   // take effect without requiring the merchant to re-login.
   const liveMerchantData = profile?.merchantData || profile?.businessWallet?.merchant;
+  const featureBulkPayments =
+    (liveMerchantData?.featureBulkPayments ?? currentMerchant?.featureBulkPayments) === true;
   const featurePayroll =
     (liveMerchantData?.featurePayroll ?? currentMerchant?.featurePayroll) === true;
   const featurePayrollApprovals =
     (liveMerchantData?.featurePayrollApprovals ?? currentMerchant?.featurePayrollApprovals) === true;
   
-  // Filter navLinks: Payroll and Payroll Approvals only when enabled for this merchant.
-  // Payment (bulk/single) is available to all merchants.
+  // Filter navLinks: Payment only when enabled for this merchant; same for Payroll and Payroll Approvals.
   const filteredNavLinks = navLinks.map(section => ({
     ...section,
     links: section.links.filter(link => {
+      if (link.path === '/bulk-payment') return featureBulkPayments;
       if (link.path === '/payroll') return featurePayroll;
       if (link.path === '/payroll/approvals') return featurePayrollApprovals;
       return true;
