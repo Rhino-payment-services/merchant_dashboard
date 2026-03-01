@@ -15,7 +15,6 @@ import { useRouter } from "next/navigation";
 import { toast } from 'sonner';
 import { readSheetFromBinaryString, writeWorkbookToFile } from "@/lib/excel-utils";
 import { processBulkTransactionAsync, validateBulkRecipients, getBulkTransactionStatus, BulkTransactionItem, BulkTransactionItemResult } from "@/lib/api/bulk-payment.api";
-import { checkMerchantIsSuperMerchant } from "@/lib/api/super-merchant.api";
 import { SinglePaymentDto, FeePreviewResponseDto, processSinglePayment, validateTransaction } from "@/lib/api/single-payment.api";
 
 const TRANSACTION_TYPES = [
@@ -76,13 +75,6 @@ export default function BulkPaymentPage() {
     if (!currentMerchantCode || !Array.isArray(merchants)) return undefined;
     return merchants.find((m: any) => m?.merchantCode === currentMerchantCode);
   }, [currentMerchantCode, merchants]);
-  const [apiSuperMerchant, setApiSuperMerchant] = useState<boolean | null>(null);
-
-  const checkComplete =
-    typeof currentMerchant?.isSuperMerchant === 'boolean' ||
-    apiSuperMerchant !== null ||
-    (!!session && !currentMerchant);
-  const isSuperMerchant = (currentMerchant?.isSuperMerchant === true) || (apiSuperMerchant === true);
 
   // Redirect when unauthenticated (must run before early returns so it runs in all cases)
   useEffect(() => {
@@ -90,26 +82,6 @@ export default function BulkPaymentPage() {
       router.replace('/');
     }
   }, [sessionStatus, session, router]);
-
-  // API fallback when session doesn't have isSuperMerchant (e.g. before re-login after backend fix)
-  useEffect(() => {
-    if (!session || !currentMerchant?.id || typeof currentMerchant?.isSuperMerchant === 'boolean') return;
-    let cancelled = false;
-    checkMerchantIsSuperMerchant(currentMerchant.id).then((result) => {
-      if (!cancelled) setApiSuperMerchant(!!result);
-    }).catch(() => {
-      if (!cancelled) setApiSuperMerchant(false);
-    });
-    return () => { cancelled = true; };
-  }, [session, currentMerchant?.id, currentMerchant?.isSuperMerchant]);
-
-  // Redirect non-super merchants once we know (session or API)
-  useEffect(() => {
-    if (session && checkComplete && !isSuperMerchant) {
-      toast.error('Access denied. This feature is only available for super merchants.');
-      router.push('/');
-    }
-  }, [session, checkComplete, isSuperMerchant, router]);
 
   // Single Payment State (must be before any early return to satisfy Rules of Hooks)
   const [singlePayment, setSinglePayment] = useState<SinglePaymentDto>({
@@ -169,43 +141,6 @@ export default function BulkPaymentPage() {
           <CardContent className="flex flex-col items-center gap-4 pt-8 pb-8">
             <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
             <p className="text-sm text-muted-foreground">Redirecting...</p>
-          </CardContent>
-        </Card>
-      </div>
-    );
-  }
-
-  // Loading while checking super merchant status via API
-  if (session && currentMerchant && !checkComplete) {
-    return (
-      <div className="flex items-center justify-center min-h-[60vh] px-4">
-        <Card className="max-w-md w-full">
-          <CardContent className="flex flex-col items-center gap-4 pt-8 pb-8">
-            <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-            <p className="text-sm text-muted-foreground">Checking access...</p>
-          </CardContent>
-        </Card>
-      </div>
-    );
-  }
-  // Show access denied message if not a super merchant
-  if (session && !isSuperMerchant) {
-    return (
-      <div className="flex items-center justify-center min-h-[60vh] px-4">
-        <Card className="max-w-md w-full">
-          <CardHeader>
-            <div className="flex items-center gap-3 mb-2">
-              <ShieldX className="h-8 w-8 text-red-500" />
-              <CardTitle>Access Denied</CardTitle>
-            </div>
-            <CardDescription>
-              This feature is only available for super merchants.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <Button onClick={() => router.push('/')} className="w-full">
-              Return to Dashboard
-            </Button>
           </CardContent>
         </Card>
       </div>
