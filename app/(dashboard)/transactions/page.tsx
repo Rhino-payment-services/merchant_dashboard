@@ -47,6 +47,8 @@ interface BulkTransaction {
 export default function TransactionsPage() {
   const { data: session } = useSession();
   const { profile } = useUserProfile();
+  // Current business: ensures we fetch and display the selected business's transactions (not a cached other business)
+  const currentMerchantCode = (session?.user as any)?.merchantCode ?? profile?.merchant_code ?? profile?.merchantCode ?? null;
   const [search, setSearch] = useState('');
   const [from, setFrom] = useState<string>("");
   const [to, setTo] = useState<string>("");
@@ -70,6 +72,11 @@ export default function TransactionsPage() {
       }
     }
   }, []);
+
+  // When user switches business, reset to first page
+  React.useEffect(() => {
+    setCurrentPage(1);
+  }, [currentMerchantCode]);
 
   // Receipt state
   const [selectedTransaction, setSelectedTransaction] = useState<any>(null);
@@ -107,7 +114,7 @@ export default function TransactionsPage() {
     error, 
     refetch, 
     isRefetching 
-  } = useMyTransactions(filter, childMerchantId || undefined);
+  } = useMyTransactions(filter, childMerchantId || undefined, currentMerchantCode);
 
   // Debug logging
   console.log('Transactions Page - API Response:', transactionsData);

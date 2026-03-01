@@ -75,7 +75,12 @@ export interface TransactionsResponse {
 }
 
 // API functions
-const getMyTransactions = async (filter: TransactionFilter = {}, childMerchantId?: string): Promise<TransactionsResponse> => {
+const getMyTransactions = async (
+  filter: TransactionFilter = {},
+  childMerchantId?: string,
+  /** Current business merchant code – sent so backend returns that business's transactions */
+  merchantCode?: string | null
+): Promise<TransactionsResponse> => {
   const params = new URLSearchParams()
   
   // Add filter parameters
@@ -95,6 +100,9 @@ const getMyTransactions = async (filter: TransactionFilter = {}, childMerchantId
   if (childMerchantId) {
     params.append('merchantId', childMerchantId)
   }
+  if (merchantCode) {
+    params.append('merchantCode', merchantCode)
+  }
 
   // Use explicit BUSINESS wallet transactions endpoint
   // This ensures that ONLY business wallet transactions are shown in merchant dashboard
@@ -103,7 +111,11 @@ const getMyTransactions = async (filter: TransactionFilter = {}, childMerchantId
   const endpoint = childMerchantId 
     ? `/super-merchant/child-merchant/${childMerchantId}/transactions`
     : `/wallet/me/business/transactions`
-  const response = await apiClient.get(`${endpoint}?${params.toString()}`)
+  const config: { headers?: Record<string, string> } = {}
+  if (merchantCode) {
+    config.headers = { 'X-Merchant-Code': merchantCode }
+  }
+  const response = await apiClient.get(`${endpoint}?${params.toString()}`, config)
   
   // Transform backend response to match frontend expected format
   const backendData = response.data
@@ -153,12 +165,17 @@ const getTransactionById = async (transactionId: string): Promise<Transaction> =
 }
 
 // React Query hooks
-export const useMyTransactions = (filter?: TransactionFilter, childMerchantId?: string) => useQuery({
-  queryKey: ['transactions', 'my-transactions', filter, childMerchantId],
-  queryFn: () => getMyTransactions(filter, childMerchantId),
+export const useMyTransactions = (
+  filter?: TransactionFilter,
+  childMerchantId?: string,
+  /** Current business merchant code – when this changes (e.g. user switches business), we refetch that business's transactions */
+  merchantCode?: string | null
+) => useQuery({
+  queryKey: ['transactions', 'my-transactions', filter, childMerchantId, merchantCode],
+  queryFn: () => getMyTransactions(filter, childMerchantId, merchantCode),
   staleTime: 30000, // 30 seconds
   retry: 3,
-  refetchOnWindowFocus: false, // Only refetch when user explicitly refreshes
+  refetchOnWindowFocus: false,
 })
 
 export const useTransaction = (transactionId: string, enabled = true) => useQuery({
