@@ -90,18 +90,23 @@ export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
   const liveMerchantData = profile?.merchantData || profile?.businessWallet?.merchant;
   const featureBulkPayments =
     (liveMerchantData?.featureBulkPayments ?? currentMerchant?.featureBulkPayments) === true;
+  const featureLiquidation =
+    (liveMerchantData?.featureLiquidation ?? (currentMerchant as any)?.featureLiquidation) === true;
   const featurePayroll =
     (liveMerchantData?.featurePayroll ?? currentMerchant?.featurePayroll) === true;
   const featurePayrollApprovals =
     (liveMerchantData?.featurePayrollApprovals ?? currentMerchant?.featurePayrollApprovals) === true;
-  
+
+  // Payment, Payroll, Withdrawal: require featureLiquidation or featureBulkPayments (backward compat)
+  const canLiquidate = featureLiquidation || featureBulkPayments;
+
   // Filter navLinks: Payment only when enabled for this merchant; same for Payroll and Payroll Approvals.
   const filteredNavLinks = navLinks.map(section => ({
     ...section,
     links: section.links.filter(link => {
-      if (link.path === '/bulk-payment') return featureBulkPayments;
-      if (link.path === '/payroll') return featurePayroll;
-      if (link.path === '/payroll/approvals') return featurePayrollApprovals;
+      if (link.path === '/bulk-payment') return canLiquidate;
+      if (link.path === '/payroll') return featurePayroll && canLiquidate;
+      if (link.path === '/payroll/approvals') return featurePayrollApprovals && canLiquidate;
       return true;
     })
   })).filter(section => section.links.length > 0); // Remove empty sections

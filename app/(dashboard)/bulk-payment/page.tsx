@@ -82,6 +82,9 @@ export default function BulkPaymentPage() {
   const liveMerchantData = profile?.merchantData || (profile as any)?.businessWallet?.merchant;
   const featureBulkPayments =
     (liveMerchantData?.featureBulkPayments ?? currentMerchant?.featureBulkPayments) === true;
+  const featureLiquidation =
+    (liveMerchantData?.featureLiquidation ?? (currentMerchant as any)?.featureLiquidation) === true;
+  const canLiquidate = featureLiquidation || featureBulkPayments;
 
   // Redirect when unauthenticated (must run before early returns so it runs in all cases)
   useEffect(() => {
@@ -1022,7 +1025,7 @@ export default function BulkPaymentPage() {
   const failedCount = payments.filter(p => p.status === 'failed').length;
   const pendingCount = payments.filter(p => p.status === 'pending').length;
 
-  if (session && currentMerchant && featureBulkPayments !== true) {
+  if (session && currentMerchant && !canLiquidate) {
     return (
       <div className="flex items-center justify-center min-h-[60vh] px-4">
         <Card className="max-w-md w-full">
