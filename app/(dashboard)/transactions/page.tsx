@@ -612,7 +612,7 @@ export default function TransactionsPage() {
         {/* Transactions Table */}
         <Card>
           <div className="overflow-x-auto">
-            <Table>
+            <Table className="min-w-[900px]">
               <TableHeader>
                 <TableRow>
                   <TableHead>Reference ID</TableHead>
@@ -898,7 +898,8 @@ export default function TransactionsPage() {
             <Card>
               <div className="p-4">
                 <h3 className="text-lg font-semibold text-gray-900 mb-4">Bulk Transactions</h3>
-                <Table>
+                <div className="overflow-x-auto">
+                <Table className="min-w-[800px]">
                   <TableHeader>
                     <TableRow>
                       <TableHead>Bulk ID</TableHead>
@@ -1033,6 +1034,7 @@ export default function TransactionsPage() {
                     ))}
                   </TableBody>
                 </Table>
+                </div>
 
                 {filteredBulkTransactions.length === 0 && (
                   <div className="text-center py-12">
