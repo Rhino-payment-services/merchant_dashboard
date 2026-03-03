@@ -6,7 +6,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { ArrowDown, Smartphone, Wallet, CheckCircle2, AlertCircle, Info, RefreshCw } from "lucide-react";
 import { useSession } from "next-auth/react";
 import { useProcessTransaction } from "@/lib/api/payment.api";
-import { getWalletBalance } from "@/lib/api/wallet.api";
+import { getWalletBalance, WalletBalance } from "@/lib/api/wallet.api";
 import { toast } from 'sonner';
 
 interface TopUpForm {
@@ -19,7 +19,7 @@ export default function TopUpPage() {
   const { data: session } = useSession();
   const processTransaction = useProcessTransaction();
 
-  const [walletBalance, setWalletBalance] = useState<number>(0);
+  const [walletData, setWalletData] = useState<WalletBalance | null>(null);
   const [balanceLoading, setBalanceLoading] = useState(true);
 
   const [topUpForm, setTopUpForm] = useState<TopUpForm>({
@@ -38,7 +38,7 @@ export default function TopUpPage() {
       try {
         setBalanceLoading(true);
         const data = await getWalletBalance();
-        setWalletBalance(data.balance);
+        setWalletData(data);
       } catch (error) {
         console.error('Error fetching wallet balance:', error);
         toast.error('Failed to load wallet balance');
@@ -98,6 +98,7 @@ export default function TopUpPage() {
     
     try {
       const merchantId = (session?.user as any)?.id || (session?.user as any)?.user?.id;
+      const merchantCode = (session?.user as any)?.merchantCode;
       
       if (!merchantId) {
         throw new Error("Merchant ID not found. Please try logging in again.");
@@ -117,8 +118,9 @@ export default function TopUpPage() {
         mnoProvider: mnoProvider,
         narration: topUpForm.narration || "Mobile money collection",
         userName: (session?.user as any)?.userData?.profile?.firstName || session?.user?.name || "Merchant",
-        walletType: "BUSINESS",           // ✅ Explicitly route to BUSINESS wallet
-        channel: "MERCHANT_PORTAL"        // ✅ Identify source channel
+        walletType: "BUSINESS",
+        channel: "MERCHANT_PORTAL",
+        ...(merchantCode && { merchantCode }),
       };
       
       console.log("Transaction Data (rdbs_core):", transactionData);
@@ -177,24 +179,33 @@ export default function TopUpPage() {
             <CardHeader className="pb-3">
               <CardTitle className="text-sm font-medium text-green-100 flex items-center gap-2">
                 <Wallet className="w-4 h-4" />
-                Current Balance
+                Wallet Balance
               </CardTitle>
             </CardHeader>
-            <CardContent className="pt-0">
-              <div className="flex items-end justify-between">
-                <div>
-                  {balanceLoading ? (
-                    <div className="flex items-center gap-2">
-                      <RefreshCw className="w-5 h-5 animate-spin" />
-                      <span className="text-lg">Loading...</span>
-                    </div>
-                  ) : (
+            <CardContent className="pt-0 space-y-3">
+              {balanceLoading ? (
+                <div className="flex items-center gap-2">
+                  <RefreshCw className="w-5 h-5 animate-spin" />
+                  <span className="text-lg">Loading...</span>
+                </div>
+              ) : (
+                <>
+                  <div>
+                    <p className="text-xs text-green-200 mb-0.5">Collection balance</p>
                     <div className="text-3xl font-bold">
-                      {walletBalance.toLocaleString()} UGX
+                      {((walletData as any)?.collectionBalance ?? walletData?.balance ?? 0).toLocaleString()} UGX
+                    </div>
+                  </div>
+                  {(walletData as any)?.disbursementBalance !== undefined && (
+                    <div className="border-t border-green-500/50 pt-2">
+                      <p className="text-xs text-green-200 mb-0.5">Disbursement balance</p>
+                      <div className="text-lg font-semibold">
+                        {(walletData as any).disbursementBalance.toLocaleString()} UGX
+                      </div>
                     </div>
                   )}
-                </div>
-              </div>
+                </>
+              )}
             </CardContent>
           </Card>
           </div>

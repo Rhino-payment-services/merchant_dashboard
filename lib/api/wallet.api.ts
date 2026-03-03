@@ -3,6 +3,8 @@
 export interface WalletBalance {
   userId: string
   balance: number
+  collectionBalance?: number
+  disbursementBalance?: number
   currency: string
   updatedAt: string
 }

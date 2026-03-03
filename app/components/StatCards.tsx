@@ -9,6 +9,8 @@ export default function StatCards() {
   const {profile, loading, isRefetching} = useUserProfile()
   const { data: session } = useSession();
   const [walletBalance, setWalletBalance] = useState<number>(0);
+  const [collectionBalance, setCollectionBalance] = useState<number | null>(null);
+  const [disbursementBalance, setDisbursementBalance] = useState<number | null>(null);
   const [walletLoading, setWalletLoading] = useState(true);
   const [totalTransactions, setTotalTransactions] = useState<number>(0);
   const [totalCredit, setTotalCredit] = useState<number>(0);
@@ -20,6 +22,8 @@ export default function StatCards() {
       setWalletLoading(true);
       const balanceData = await getWalletBalance();
       setWalletBalance(balanceData.balance);
+      setCollectionBalance(balanceData.collectionBalance ?? null);
+      setDisbursementBalance(balanceData.disbursementBalance ?? null);
       const transactionsData = await getMyTransactions({ limit: 1000 });
       setTotalTransactions(transactionsData.total || 0);
       const credit = (transactionsData.transactions || [])
@@ -49,38 +53,70 @@ export default function StatCards() {
     fetchWalletData();
   }, [merchantCode, isRefetching]);
 
-  // Always show wallet stats (for both owners and team members with access)
-  const stats = [
-    {
-      label: 'Current balance',
-      value: walletLoading ? '...' : `${walletBalance.toLocaleString()} UGX`,
-      change: '+15,7%',
-      changeType: 'up',
-      icon: '💰',
-    },
-    {
-      label: 'Total transactions',
-      value: walletLoading ? '....' : `${totalTransactions}`,
-      change: '+1,5%',
-      changeType: 'up',
-      icon: '🛒',
-    },
-    {
-      label: 'Total Credit',
-      value: walletLoading ? '.....' : `${totalCredit.toLocaleString()} UGX`,
-      change: '-2,5%',
-      changeType: 'down',
-      icon: '📦',
-    },
+  const hasSplitBalances = collectionBalance !== null && disbursementBalance !== null;
 
-    {
-      label: 'Total Debit',
-      value: walletLoading ? '....' : `${totalDebit.toLocaleString()} UGX`,
-      change: '+32,6%',
-      changeType: 'up',
-      icon: '👥',
-    },
-  ];
+  // Always show wallet stats (for both owners and team members with access)
+  const stats = hasSplitBalances
+    ? [
+        {
+          label: 'Collection balance',
+          value: walletLoading ? '...' : `${(collectionBalance ?? 0).toLocaleString()} UGX`,
+          change: 'Incoming payments',
+          changeType: 'neutral',
+          icon: '📥',
+        },
+        {
+          label: 'Disbursement balance',
+          value: walletLoading ? '...' : `${(disbursementBalance ?? 0).toLocaleString()} UGX`,
+          change: 'Outgoing payments',
+          changeType: 'neutral',
+          icon: '📤',
+        },
+        {
+          label: 'Total transactions',
+          value: walletLoading ? '....' : `${totalTransactions}`,
+          change: '+1,5%',
+          changeType: 'up',
+          icon: '🛒',
+        },
+        {
+          label: 'Total Credit',
+          value: walletLoading ? '.....' : `${totalCredit.toLocaleString()} UGX`,
+          change: '-2,5%',
+          changeType: 'down',
+          icon: '📦',
+        },
+      ]
+    : [
+        {
+          label: 'Current balance',
+          value: walletLoading ? '...' : `${walletBalance.toLocaleString()} UGX`,
+          change: '+15,7%',
+          changeType: 'up',
+          icon: '💰',
+        },
+        {
+          label: 'Total transactions',
+          value: walletLoading ? '....' : `${totalTransactions}`,
+          change: '+1,5%',
+          changeType: 'up',
+          icon: '🛒',
+        },
+        {
+          label: 'Total Credit',
+          value: walletLoading ? '.....' : `${totalCredit.toLocaleString()} UGX`,
+          change: '-2,5%',
+          changeType: 'down',
+          icon: '📦',
+        },
+        {
+          label: 'Total Debit',
+          value: walletLoading ? '....' : `${totalDebit.toLocaleString()} UGX`,
+          change: '+32,6%',
+          changeType: 'up',
+          icon: '👥',
+        },
+      ];
 
   return (
     <div className="space-y-4">
