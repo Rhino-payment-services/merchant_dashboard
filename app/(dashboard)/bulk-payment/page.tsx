@@ -234,6 +234,9 @@ export default function BulkPaymentPage() {
       toast.success('Payment processed successfully!');
       console.log('Single payment result:', result);
       
+      // Navigate to transactions page after successful payment
+      router.push('/transactions');
+      
       // Reset form and validation
       setSinglePayment({
         mode: 'WALLET_TO_MNO',
@@ -701,6 +704,9 @@ export default function BulkPaymentPage() {
         toast.error(`❌ All ${failCount} payments failed`);
       }
       // Don't show toast if both counts are 0 (initial state)
+
+      // Navigate to transactions page after bulk processing finishes
+      router.push('/transactions');
 
     } catch (error: any) {
       console.error('❌ Bulk payment error:', error);
