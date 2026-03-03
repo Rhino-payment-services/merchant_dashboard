@@ -8,6 +8,16 @@ import { getWalletBalance, getMyTransactions } from '@/lib/api/wallet.api';
 export default function StatCards() {
   const {profile, loading, isRefetching} = useUserProfile()
   const { data: session } = useSession();
+
+  // Determine whether this merchant has bulk payments (disbursement wallet) enabled
+  const merchants = (session?.user as any)?.merchants ?? [];
+  const currentMerchantCode = (session?.user as any)?.merchantCode;
+  const currentMerchant = Array.isArray(merchants)
+    ? merchants.find((m: any) => m?.merchantCode === currentMerchantCode)
+    : undefined;
+  const liveMerchantData = profile?.merchantData || (profile as any)?.businessWallet?.merchant;
+  const featureBulkPayments =
+    (liveMerchantData?.featureBulkPayments ?? currentMerchant?.featureBulkPayments) === true;
   const [walletBalance, setWalletBalance] = useState<number>(0);
   const [collectionBalance, setCollectionBalance] = useState<number | null>(null);
   const [disbursementBalance, setDisbursementBalance] = useState<number | null>(null);
@@ -53,7 +63,13 @@ export default function StatCards() {
     fetchWalletData();
   }, [merchantCode, isRefetching]);
 
-  const hasSplitBalances = collectionBalance !== null && disbursementBalance !== null;
+  // Only show separate collection/disbursement cards when:
+  // - bulk payments feature is enabled for this merchant (they have a disbursement wallet)
+  // - AND the backend returned both balances
+  const hasSplitBalances =
+    featureBulkPayments &&
+    collectionBalance !== null &&
+    disbursementBalance !== null;
 
   // Always show wallet stats (for both owners and team members with access)
   const stats = hasSplitBalances

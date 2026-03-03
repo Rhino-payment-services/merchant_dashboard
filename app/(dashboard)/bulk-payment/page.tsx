@@ -85,6 +85,10 @@ export default function BulkPaymentPage() {
   const featureLiquidation =
     (liveMerchantData?.featureLiquidation ?? (currentMerchant as any)?.featureLiquidation) === true;
   const canLiquidate = featureLiquidation || featureBulkPayments;
+  const disbursementBalance =
+    (profile as any)?.businessWallet?.disbursementBalance ??
+    (profile as any)?.businessWallet?.balance ??
+    0;
 
   // Redirect when unauthenticated (must run before early returns so it runs in all cases)
   useEffect(() => {
@@ -1060,20 +1064,32 @@ export default function BulkPaymentPage() {
             </div>
             
             <Card className="md:w-80 bg-gradient-to-br from-purple-600 to-purple-700 text-white border-0">
-            <CardContent className="pt-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-xs text-purple-100">Total Amount</p>
-                  <p className="text-2xl font-bold">{totalAmount.toLocaleString()} UGX</p>
+              <CardContent className="pt-6 space-y-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-xs text-purple-100">Disbursement balance</p>
+                    <p className="text-2xl font-bold">
+                      {disbursementBalance.toLocaleString()} UGX
+                    </p>
+                  </div>
+                  <Users className="w-8 h-8 text-purple-200" />
                 </div>
-                <Users className="w-8 h-8 text-purple-200" />
-              </div>
-              <div className="mt-4 pt-4 border-t border-purple-500/30 flex justify-between text-xs">
-                <span>{payments.length} payments</span>
-                <span>{pendingCount} pending</span>
-              </div>
-            </CardContent>
-          </Card>
+                <div className="pt-4 border-t border-purple-500/30 flex items-center justify-between text-xs">
+                  <div>
+                    <p className="text-[11px] text-purple-100 uppercase tracking-wide">
+                      Total queued amount
+                    </p>
+                    <p className="text-sm font-semibold">
+                      {totalAmount.toLocaleString()} UGX
+                    </p>
+                  </div>
+                  <div className="text-right">
+                    <p>{payments.length} payments</p>
+                    <p className="text-purple-100/90">{pendingCount} pending</p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
           </div>
         </div>
 
@@ -1790,7 +1806,7 @@ export default function BulkPaymentPage() {
                     placeholder="e.g., January 2025 salary (auto-generated if empty)"
                   />
                   <p className="text-xs text-gray-500 mt-1">
-                    💼 Payments will be deducted from your Business Wallet
+                    💼 Payments will be deducted from your <span className="font-semibold">Disbursement wallet</span>
                   </p>
                 </div>
 
