@@ -124,6 +124,9 @@ export default function TopUpPage() {
       };
       
       console.log("Transaction Data (rdbs_core):", transactionData);
+      // #region agent log
+      fetch('http://127.0.0.1:7763/ingest/97572992-60cb-4c5d-a66e-3cafc55b2310',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'de2be0'},body:JSON.stringify({sessionId:'de2be0',location:'top-up/page.tsx:handleSubmit',message:'frontend-payload',data:{merchantCode:transactionData.merchantCode,sessionMerchantCode:(session?.user as any)?.merchantCode,walletType:transactionData.walletType,amount:transactionData.amount},timestamp:Date.now(),hypothesisId:'A'})}).catch(()=>{});
+      // #endregion
       const result = await processTransaction.mutateAsync(transactionData);
       console.log("Transaction result========>", result);
       
