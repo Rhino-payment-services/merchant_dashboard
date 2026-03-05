@@ -33,7 +33,7 @@ import { checkMerchantIsSuperMerchant } from '@/lib/api/super-merchant.api';
 const navLinks = [
   { section: 'GENERAL', links: [
     { name: 'Dashboard', path: '/', icon: LayoutDashboard },
-    { name: 'Transaction', path: '/transactions', icon: CreditCard },
+    { name: 'Transactions', path: '/transactions', icon: CreditCard },
     // { name: 'Withdraw', path: '/transfer', icon: ArrowRightLeft },
     { name: 'Request Payment', path: '/top-up', icon: ArrowDown },
     { name: 'QR Code', path: '/qr-code', icon: QrCode },
