@@ -79,6 +79,11 @@ export function UserProfileProvider({
     isRefetching
   } = useQuery({
     queryKey: ['userProfile', userData?.id, sessionMerchantCode],
+    // Avoid aggressive background polling; only refetch when explicitly requested
+    staleTime: 60_000, // 60 seconds
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
+    retry: 2,
     queryFn: async () => {
       // Check if user is a team member by checking for wallet team membership
       const userType = (session?.user as any)?.userType || userData?.userType;

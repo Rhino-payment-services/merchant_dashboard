@@ -107,27 +107,31 @@ export default function Home() {
     }
   }, [currentMerchantIdForCheck, loading, sessionMerchantId, sessionMerchants]);
 
-  // Fetch recent transactions when merchantCode is available (avoids race after switching)
+  // Helper to (re)load recent transactions for the current merchant
+  const loadRecentTransactions = async () => {
+    if (!merchantCode) return;
+    try {
+      setTransactionsLoading(true);
+      const data = await getMyTransactions({ limit: 5 });
+      setRecentTransactions(data.transactions || []);
+    } catch (error) {
+      console.error('Error fetching recent transactions:', error);
+      setRecentTransactions([]);
+    } finally {
+      setTransactionsLoading(false);
+    }
+  };
+
+  // Initial / merchant-change load for recent transactions
   useEffect(() => {
     if (!merchantCode) return;
-    const fetchRecentTransactions = async () => {
-      try {
-        setTransactionsLoading(true);
-        const data = await getMyTransactions({ limit: 5 });
-        setRecentTransactions(data.transactions || []);
-      } catch (error) {
-        console.error('Error fetching recent transactions:', error);
-        setRecentTransactions([]);
-      } finally {
-        setTransactionsLoading(false);
-      }
-    };
-    fetchRecentTransactions();
-  }, [merchantCode, isRefetching]);
+    loadRecentTransactions();
+  }, [merchantCode]);
 
   const handleRefresh = async () => {
     try {
       await refetch();
+      await loadRecentTransactions();
       toast.success('Dashboard data refreshed successfully!');
     } catch (error) {
       toast.error('Failed to refresh dashboard data');
