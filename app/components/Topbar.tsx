@@ -21,7 +21,7 @@ import { useRouter } from "next/navigation";
 import { useMerchantAuth } from "@/lib/context/MerchantAuthContext";
 import { useUserProfile } from "../(dashboard)/UserProfileProvider";
 import { useSession } from "next-auth/react";
-import { Menu, X, Building2, ChevronDown } from "lucide-react";
+import { Menu, X, Building2, ChevronDown, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 
 const mockNotifications = [
@@ -59,23 +59,41 @@ export default function Topbar({ onMenuToggle, isMenuOpen }: TopbarProps) {
   const currentMerchantCode = (session?.user as any)?.merchantCode;
   const profileMerchantCode = profile?.merchant_code || profile?.merchantCode;
   const effectiveMerchantCode = currentMerchantCode || profileMerchantCode;
-  const currentMerchant = effectiveMerchantCode
-    ? merchants.find((m: any) => {
-        const mCode = String(m?.merchantCode || '').trim();
-        const eCode = String(effectiveMerchantCode || '').trim();
-        return mCode === eCode || mCode === eCode.padStart(4, '0') || eCode === mCode.padStart(4, '0');
-      })
-    : merchants[0];
-  const businessDisplayName = profile?.merchant_names || profile?.businessTradeName || currentMerchant?.businessTradeName || (effectiveMerchantCode ? `Business · ${effectiveMerchantCode}` : 'Select business');
+
+  // Optimistic state: set immediately on click so the UI doesn't snap back
+  const [pendingMerchantCode, setPendingMerchantCode] = useState<string | null>(null);
+  const [switching, setSwitching] = useState(false);
+
+  // Resolve displayed merchant using pending code first (optimistic), then session
+  const displayedMerchantCode = pendingMerchantCode || effectiveMerchantCode;
+  const findMerchant = (code: string | null) =>
+    code
+      ? merchants.find((m: any) => {
+          const mCode = String(m?.merchantCode || '').trim();
+          const eCode = String(code || '').trim();
+          return mCode === eCode || mCode === eCode.padStart(4, '0') || eCode === mCode.padStart(4, '0');
+        })
+      : merchants[0];
+  const displayedMerchant = findMerchant(displayedMerchantCode);
+
+  // While switching, use merchant array name (profile is still stale); otherwise prefer profile
+  const businessDisplayName = switching
+    ? (displayedMerchant?.businessTradeName || (displayedMerchantCode ? `Business · ${displayedMerchantCode}` : 'Select business'))
+    : (profile?.merchant_names || profile?.businessTradeName || displayedMerchant?.businessTradeName || (displayedMerchantCode ? `Business · ${displayedMerchantCode}` : 'Select business'));
 
   const handleSwitchMerchant = async (merchantCode: string) => {
     const code = String(merchantCode || '').trim();
-    if (!code || code === currentMerchantCode) return;
+    if (!code || code === effectiveMerchantCode || switching) return;
     try {
+      setSwitching(true);
+      setPendingMerchantCode(code); // optimistically show new name right away
       await updateSession({ merchantCode: code });
       toast.success("Company switched");
-      router.refresh();
+      // Hard navigate so the new session is guaranteed to be picked up everywhere
+      window.location.href = '/';
     } catch {
+      setPendingMerchantCode(null); // rollback on failure
+      setSwitching(false);
       toast.error("Failed to switch company");
     }
   };
@@ -128,30 +146,41 @@ export default function Topbar({ onMenuToggle, isMenuOpen }: TopbarProps) {
 
       {/* Business selector dropdown (matches staging) */}
       <DropdownMenu>
-        <DropdownMenuTrigger asChild>
+        <DropdownMenuTrigger asChild disabled={switching}>
           <button
             type="button"
-            className="flex items-center gap-2 min-w-0 max-w-[200px] sm:max-w-[260px] px-3 py-2 rounded-lg border border-gray-200 bg-white hover:bg-gray-50 text-left focus:outline-none focus:ring-2 focus:ring-main-200"
+            disabled={switching}
+            className="flex items-center gap-2 min-w-0 max-w-[200px] sm:max-w-[260px] px-3 py-2 rounded-lg border border-gray-200 bg-white hover:bg-gray-50 text-left focus:outline-none focus:ring-2 focus:ring-main-200 disabled:opacity-60 disabled:cursor-not-allowed"
           >
-            <Building2 className="w-4 h-4 text-main-600 flex-shrink-0" />
+            {switching ? (
+              <Loader2 className="w-4 h-4 text-main-600 flex-shrink-0 animate-spin" />
+            ) : (
+              <Building2 className="w-4 h-4 text-main-600 flex-shrink-0" />
+            )}
             <span className="truncate text-sm font-medium text-gray-900">
-              {loading ? '...' : businessDisplayName}
+              {loading && !switching ? '...' : businessDisplayName}
             </span>
-            <ChevronDown className="w-4 h-4 text-gray-500 flex-shrink-0 ml-auto" />
+            {!switching && <ChevronDown className="w-4 h-4 text-gray-500 flex-shrink-0 ml-auto" />}
           </button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="start" className="w-56 mt-2">
           {merchants.length > 0 ? (
-            merchants.map((m: any) => (
-              <DropdownMenuItem
-                key={m.merchantCode || m.id}
-                onClick={() => handleSwitchMerchant(m.merchantCode ?? m.id)}
-                className="cursor-pointer"
-              >
-                <Building2 className="w-4 h-4 mr-2 text-main-600" />
-                <span className="truncate">{m.businessTradeName || m.merchantCode || 'Merchant'}</span>
-              </DropdownMenuItem>
-            ))
+            merchants.map((m: any) => {
+              const mCode = String(m?.merchantCode || '').trim();
+              const isActive = mCode === String(displayedMerchantCode || '').trim() ||
+                mCode === String(displayedMerchantCode || '').trim().padStart(4, '0');
+              return (
+                <DropdownMenuItem
+                  key={m.merchantCode || m.id}
+                  onClick={() => handleSwitchMerchant(m.merchantCode ?? m.id)}
+                  className={`cursor-pointer ${isActive ? 'bg-main-50 font-semibold' : ''}`}
+                >
+                  <Building2 className={`w-4 h-4 mr-2 ${isActive ? 'text-main-600' : 'text-gray-400'}`} />
+                  <span className="truncate">{m.businessTradeName || m.merchantCode || 'Merchant'}</span>
+                  {isActive && <span className="ml-auto w-2 h-2 rounded-full bg-main-600 flex-shrink-0" />}
+                </DropdownMenuItem>
+              );
+            })
           ) : (
             <Link href="/auth/select-merchant">
               <DropdownMenuItem className="flex items-center gap-2 cursor-pointer">
