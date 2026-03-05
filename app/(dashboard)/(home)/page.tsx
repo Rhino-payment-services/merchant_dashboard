@@ -22,7 +22,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 export default function Home() {
   const router = useRouter();
   const { data: session } = useSession();
-  const { profile, loading, error, refetch, isRefetching } = useUserProfile();
+  const { profile, loading, error, refetch } = useUserProfile();
   const [recentTransactions, setRecentTransactions] = useState<Transaction[]>([]);
   const [transactionsLoading, setTransactionsLoading] = useState(true);
   const [isSuperMerchant, setIsSuperMerchant] = useState(false);

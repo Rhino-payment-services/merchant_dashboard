@@ -6,7 +6,7 @@ import { RefreshCw, Users, AlertCircle } from 'lucide-react';
 import { getWalletBalance, getMyTransactions } from '@/lib/api/wallet.api';
 
 export default function StatCards() {
-  const {profile, loading, isRefetching} = useUserProfile()
+  const {profile, loading} = useUserProfile()
   const { data: session } = useSession();
 
   // Determine whether this merchant has bulk payments (disbursement wallet) enabled
@@ -58,10 +58,12 @@ export default function StatCards() {
   const merchantCode = (session?.user as any)?.merchantCode;
 
   // Fetch when merchantCode is available (avoids race after switching companies)
+  // NOTE: Do NOT add isRefetching here — it would cause a fetch loop every time
+  // React Query toggles that flag during any background refetch.
   useEffect(() => {
     if (!merchantCode) return;
     fetchWalletData();
-  }, [merchantCode, isRefetching]);
+  }, [merchantCode]);
 
   // Only show separate collection/disbursement cards when:
   // - bulk payments feature is enabled for this merchant (they have a disbursement wallet)
@@ -152,7 +154,7 @@ export default function StatCards() {
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {stats.map((stat) => (
           <Card key={stat.label} className="flex flex-col gap-2 relative">
-            {(isRefetching || walletLoading) && (
+            {walletLoading && (
               <div className="absolute top-2 right-2">
                 <RefreshCw className="h-3 w-3 animate-spin text-blue-600" />
               </div>
