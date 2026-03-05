@@ -27,6 +27,41 @@ const statusColor: Record<StatusType, string> = {
   SUCCESS: 'text-green-600 bg-green-50',
 };
 
+// Helper to remove duplicate admin-funded deposit rows that share the same reference/amount/etc.
+// This prevents ADMIN_FUND credits from appearing twice in the UI when the ledger stores
+// multiple records for the same logical funding action.
+const dedupeAdminFundTransactions = (items: any[]) => {
+  const seen = new Set<string>();
+  const result: any[] = [];
+
+  for (const tx of items || []) {
+    const isAdminFund = tx?.type === 'DEPOSIT' && tx?.metadata?.fundedByAdmin;
+    if (!isAdminFund) {
+      result.push(tx);
+      continue;
+    }
+
+    const keyParts = [
+      tx.reference ?? '',
+      tx.amount ?? '',
+      tx.direction ?? '',
+      tx.status ?? '',
+      tx.metadata?.adminId ?? '',
+      tx.metadata?.adminEmail ?? '',
+      tx.createdAt ?? '',
+    ];
+    const key = keyParts.join('|');
+
+    if (seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    result.push(tx);
+  }
+
+  return result;
+};
+
 interface BulkTransaction {
   bulkTransactionId: string;
   status: 'PENDING' | 'PROCESSING' | 'COMPLETED' | 'FAILED' | 'PARTIAL_SUCCESS' | 'SUCCESS';
@@ -125,7 +160,11 @@ export default function TransactionsPage() {
   console.log('Transactions Page - Error:', error);
 
   // Extract data from API response
-  const transactions = transactionsData?.transactions || [];
+  const rawTransactions = transactionsData?.transactions || [];
+  const transactions = useMemo(
+    () => dedupeAdminFundTransactions(rawTransactions),
+    [rawTransactions],
+  );
   const paginationInfo = transactionsData?.pagination || {
     page: 1,
     limit: 10,

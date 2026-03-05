@@ -45,6 +45,40 @@ type Transaction = {
   status: string;
 };
 
+// Helper to remove duplicate admin-funded deposit rows that share the same reference/amount/etc.
+// This keeps ADMIN_FUND credits from appearing twice in the dashboard widget.
+const dedupeAdminFundTransactions = (items: any[]) => {
+  const seen = new Set<string>();
+  const result: any[] = [];
+
+  for (const tx of items || []) {
+    const isAdminFund = tx?.type === 'DEPOSIT' && tx?.metadata?.fundedByAdmin;
+    if (!isAdminFund) {
+      result.push(tx);
+      continue;
+    }
+
+    const keyParts = [
+      tx.reference ?? '',
+      tx.amount ?? '',
+      tx.direction ?? '',
+      tx.status ?? '',
+      tx.metadata?.adminId ?? '',
+      tx.metadata?.adminEmail ?? '',
+      tx.createdAt ?? '',
+    ];
+    const key = keyParts.join('|');
+
+    if (seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    result.push(tx);
+  }
+
+  return result;
+};
+
 interface transactionType {
   transactions?: any[];
   isNewFormat?: boolean;
@@ -54,10 +88,11 @@ export default function RecentTransactions({ transactions, isNewFormat = false, 
   const router = useRouter();
   const { isRefetching, profile } = useUserProfile();
 
-  // Sort transactions - handle both old and new formats
+  // Clean and sort transactions - handle both old and new formats
   const sortedTransactions = useMemo(() => {
     if (!transactions) return [];
-    return [...transactions].sort((a, b) => {
+    const cleaned = dedupeAdminFundTransactions(transactions);
+    return [...cleaned].sort((a, b) => {
       if (isNewFormat) {
         return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
       }
