@@ -280,10 +280,11 @@ export function UserProfileProvider({
       return profileData;
     },
     enabled: (isAuthenticated || !!session) && !!userData?.id,
-    // Avoid aggressive background refetches; refresh only when explicitly requested
-    staleTime: 60_000, // 60 seconds
+    // Completely opt out of background refetching – only manual refetch() should update this.
+    staleTime: Infinity,
     refetchOnWindowFocus: false,
     refetchOnReconnect: false,
+    refetchOnMount: false,
     retry: 2,
   });
 
