@@ -13,6 +13,7 @@ function SelectMerchantContent() {
   const router = useRouter()
   const { data: session, status, update } = useSession()
   const [isLoading, setIsLoading] = useState(false)
+  const [selectedMerchantCode, setSelectedMerchantCode] = useState<string | null>(null)
 
   useEffect(() => {
     document.title = 'Select Merchant - RukaPay'
@@ -23,6 +24,7 @@ function SelectMerchantContent() {
 
   const handleSelectMerchant = async (merchantCode: string) => {
     setIsLoading(true)
+    setSelectedMerchantCode(merchantCode)
     try {
       await update({ merchantCode })
       toast.success('Merchant selected')
@@ -108,6 +110,20 @@ function SelectMerchantContent() {
   }
 
   // Multiple merchants - show selection
+  if (isLoading && selectedMerchantCode) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-main-50 via-white to-main-50 flex items-center justify-center p-4">
+        <div className="text-center space-y-4">
+          <div className="w-10 h-10 border-2 border-main-600 border-t-transparent rounded-full animate-spin mx-auto" />
+          <div className="text-gray-700 font-medium text-lg">Switching merchant...</div>
+          <div className="text-sm text-gray-500">
+            Loading dashboard for code <span className="font-semibold">{selectedMerchantCode}</span>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-main-50 via-white to-main-50 flex items-center justify-center p-4">
       <div className="w-full max-w-md">
