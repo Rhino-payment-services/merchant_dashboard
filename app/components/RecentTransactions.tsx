@@ -58,6 +58,9 @@ const dedupeAdminFundTransactions = (items: any[]) => {
       continue;
     }
 
+    // Admin funding appears twice (Transaction + LedgerEntry) with same
+    // reference/amount/admin but different timestamps. Deduplicate on the
+    // business identity so the dashboard only shows one row per funding.
     const keyParts = [
       tx.reference ?? '',
       tx.amount ?? '',
@@ -65,7 +68,6 @@ const dedupeAdminFundTransactions = (items: any[]) => {
       tx.status ?? '',
       tx.metadata?.adminId ?? '',
       tx.metadata?.adminEmail ?? '',
-      tx.createdAt ?? '',
     ];
     const key = keyParts.join('|');
 

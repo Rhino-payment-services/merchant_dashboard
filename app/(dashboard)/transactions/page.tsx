@@ -41,6 +41,10 @@ const dedupeAdminFundTransactions = (items: any[]) => {
       continue;
     }
 
+    // Admin funding currently comes back both as a Transaction and a LedgerEntry
+    // with the same reference/amount/admin but slightly different timestamps.
+    // Deduplicate purely on business identity (reference + amount + admin),
+    // so we only show one logical "Admin fund" row per funding action.
     const keyParts = [
       tx.reference ?? '',
       tx.amount ?? '',
@@ -48,7 +52,6 @@ const dedupeAdminFundTransactions = (items: any[]) => {
       tx.status ?? '',
       tx.metadata?.adminId ?? '',
       tx.metadata?.adminEmail ?? '',
-      tx.createdAt ?? '',
     ];
     const key = keyParts.join('|');
 
@@ -94,6 +97,7 @@ export default function TransactionsPage() {
   const [status, setStatus] = useState<string>("");
   const [currentPage, setCurrentPage] = useState(1);
   const [currentLimit, setCurrentLimit] = useState(10);
+  const [walletView, setWalletView] = useState<'all' | 'collection' | 'disbursement'>('all');
   
   // Support for viewing child merchant transactions (for super merchants)
   const [childMerchantId, setChildMerchantId] = useState<string | null>(null);
@@ -176,35 +180,65 @@ export default function TransactionsPage() {
     walletType: 'PERSONAL'
   };
 
-  // Calculate summary statistics from transactions
+  // Helper to classify which business wallet flavour a transaction used
+  const classifyWalletView = (tx: any): 'collection' | 'disbursement' | 'unknown' => {
+    const t = (tx.businessWalletType ||
+      tx.metadata?.businessWalletType ||
+      tx.metadata?.walletType ||
+      ''
+    ).toString().toUpperCase();
+
+    if (t === 'BUSINESS_DISBURSEMENT' || t === 'BUSINESS_LIQUIDATION') {
+      return 'disbursement';
+    }
+    if (t === 'BUSINESS' || t === 'BUSINESS_COLLECTION') {
+      return 'collection';
+    }
+    return 'unknown';
+  };
+
+  // Slice unified list into per-wallet views (collection/disbursement)
+  const viewScopedTransactions = useMemo(() => {
+    if (walletView === 'all') return transactions;
+    return transactions.filter((tx: any) => {
+      const bucket = classifyWalletView(tx);
+      if (walletView === 'collection') return bucket === 'collection';
+      if (walletView === 'disbursement') return bucket === 'disbursement';
+      return true;
+    });
+  }, [transactions, walletView]);
+
+  // Calculate summary statistics from currently-scoped transactions
   const calculatedSummary = useMemo(() => {
-    const totalAmount = transactions.reduce((sum, tx) => sum + (tx.amount || 0), 0);
-    const totalFee = transactions.reduce((sum, tx) => sum + (tx.fee || 0), 0);
-    const successfulCount = transactions.filter(tx => tx.status === 'SUCCESS' || tx.status === 'COMPLETED').length;
-    const failedCount = transactions.filter(tx => tx.status === 'FAILED').length;
+    const base = viewScopedTransactions;
+    const totalAmount = base.reduce((sum, tx) => sum + (tx.amount || 0), 0);
+    const totalFee = base.reduce((sum, tx) => sum + (tx.fee || 0), 0);
+    const successfulCount = base.filter(tx => tx.status === 'SUCCESS' || tx.status === 'COMPLETED').length;
+    const failedCount = base.filter(tx => tx.status === 'FAILED').length;
     
     return {
       totalAmount,
       totalFee,
       successfulCount,
       failedCount,
-      totalTransactions: transactions.length,
+        totalTransactions: base.length,
       walletType: (summary as any).walletType || 'PERSONAL'
     };
-  }, [transactions, (summary as any).walletType]);
+  }, [viewScopedTransactions, (summary as any).walletType]);
 
-  // Filter transactions client-side for search only
+  // Filter transactions client-side by search within the current wallet view
   const filteredTransactions = useMemo(() => {
-    if (!search) return transactions;
+    const base = viewScopedTransactions;
+    if (!search) return base;
 
     const searchLower = search.toLowerCase();
-    return transactions.filter(tx => 
+    return base.filter(tx => 
       tx.transactionId?.toLowerCase().includes(searchLower) ||
       tx.id?.toLowerCase().includes(searchLower) ||
       tx.reference?.toLowerCase().includes(searchLower) ||
       tx.description?.toLowerCase().includes(searchLower)
     );
-  }, [transactions, search]);
+  }, [viewScopedTransactions, search]);
 
   // Calculate total pages based on API pagination (not filtered results)
   const totalPages = paginationInfo?.totalPages || 1;
@@ -572,6 +606,48 @@ export default function TransactionsPage() {
           </TabsList>
 
           <TabsContent value="transactions" className="space-y-6">
+            {/* Wallet view toggle: All / Collection / Disbursement */}
+            <Card className="p-3 mb-4">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-sm font-medium text-gray-700">Wallet view:</span>
+                <div className="inline-flex rounded-md border border-gray-200 bg-white p-0.5">
+                  <button
+                    type="button"
+                    onClick={() => setWalletView('all')}
+                    className={`px-3 py-1 text-xs font-medium rounded-md ${
+                      walletView === 'all'
+                        ? 'bg-blue-600 text-white shadow-sm'
+                        : 'text-gray-700 hover:bg-gray-100'
+                    }`}
+                  >
+                    All business wallets
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setWalletView('collection')}
+                    className={`px-3 py-1 text-xs font-medium rounded-md ${
+                      walletView === 'collection'
+                        ? 'bg-blue-600 text-white shadow-sm'
+                        : 'text-gray-700 hover:bg-gray-100'
+                    }`}
+                  >
+                    Collection only
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setWalletView('disbursement')}
+                    className={`px-3 py-1 text-xs font-medium rounded-md ${
+                      walletView === 'disbursement'
+                        ? 'bg-blue-600 text-white shadow-sm'
+                        : 'text-gray-700 hover:bg-gray-100'
+                    }`}
+                  >
+                    Disbursement only
+                  </button>
+                </div>
+              </div>
+            </Card>
+
             {/* Summary Cards */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
           <Card className="p-4">

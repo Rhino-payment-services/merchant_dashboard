@@ -30,6 +30,8 @@ export interface Transaction {
   type: string
   status: string
   direction: string
+  /** Actual business wallet flavour used for this transaction (BUSINESS_COLLECTION, BUSINESS_DISBURSEMENT, etc.) */
+  businessWalletType?: string
   description?: string
   reference?: string
   channel?: string

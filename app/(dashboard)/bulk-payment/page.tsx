@@ -1266,12 +1266,7 @@ export default function BulkPaymentPage() {
                         <option value="MTN">MTN</option>
                         <option value="Airtel">Airtel</option>
                       </select>
-                      {singlePayment.mnoProvider === 'MTN' && (
-                        <p className="text-xs text-amber-700 mt-1">Recipient is not an Airtel user.</p>
-                      )}
-                      {singlePayment.mnoProvider === 'Airtel' && (
-                        <p className="text-xs text-gray-600 mt-1">Airtel user.</p>
-                      )}
+                      {/* Helper text removed – network info is clear from the select */}
                     </div>
                   </div>
                 )}
@@ -1704,12 +1699,7 @@ export default function BulkPaymentPage() {
                         <option value="MTN">MTN</option>
                         <option value="Airtel">Airtel</option>
                       </select>
-                      {(formData.mnoProvider || 'MTN') === 'MTN' && (
-                        <p className="text-xs text-amber-700 mt-1">Recipient is not an Airtel user.</p>
-                      )}
-                      {formData.mnoProvider === 'Airtel' && (
-                        <p className="text-xs text-gray-600 mt-1">Airtel user.</p>
-                      )}
+                      {/* Helper text removed – network info is clear from the select */}
                     </div>
                     <div>
                       <label className="block text-sm font-semibold text-gray-700 mb-2">
