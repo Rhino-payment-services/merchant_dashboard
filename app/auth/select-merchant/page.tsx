@@ -44,8 +44,8 @@ function SelectMerchantContent() {
       }
     } catch (err) {
       toast.error('Failed to switch merchant')
-    } finally {
       setIsLoading(false)
+      setSelectedMerchantCode(null)
     }
   }
 
