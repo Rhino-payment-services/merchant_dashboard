@@ -79,11 +79,6 @@ export function UserProfileProvider({
     isRefetching
   } = useQuery({
     queryKey: ['userProfile', userData?.id, sessionMerchantCode],
-    // Avoid aggressive background polling; only refetch when explicitly requested
-    staleTime: 60_000, // 60 seconds
-    refetchOnWindowFocus: false,
-    refetchOnReconnect: false,
-    retry: 2,
     queryFn: async () => {
       // Check if user is a team member by checking for wallet team membership
       const userType = (session?.user as any)?.userType || userData?.userType;
@@ -285,12 +280,11 @@ export function UserProfileProvider({
       return profileData;
     },
     enabled: (isAuthenticated || !!session) && !!userData?.id,
-    refetchOnWindowFocus: false, // Only refetch when user explicitly refreshes
-    refetchOnMount: false, // Don't auto-refetch on component mount
-    staleTime: Infinity, // Data doesn't become stale automatically
-    gcTime: 5 * 60 * 1000, // Keep data in cache for 5 minutes
-    retry: 3,
-    retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 30000),
+    // Avoid aggressive background refetches; refresh only when explicitly requested
+    staleTime: 60_000, // 60 seconds
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
+    retry: 2,
   });
 
   return (
