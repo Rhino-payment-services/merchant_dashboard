@@ -27,6 +27,7 @@ export default function Home() {
   const [transactionsLoading, setTransactionsLoading] = useState(true);
   const [isSuperMerchant, setIsSuperMerchant] = useState(false);
   const [superMerchantLoading, setSuperMerchantLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
 
   const merchantCode = (session?.user as any)?.merchantCode;
   const userId = (session?.user as any)?.id;
@@ -130,11 +131,14 @@ export default function Home() {
 
   const handleRefresh = async () => {
     try {
+      setRefreshing(true);
       await refetch();
       await loadRecentTransactions();
       toast.success('Dashboard data refreshed successfully!');
     } catch (error) {
       toast.error('Failed to refresh dashboard data');
+    } finally {
+      setRefreshing(false);
     }
   };
 
@@ -165,7 +169,7 @@ export default function Home() {
     <>
       {/* Stat Cards */}
       <div className="relative">
-        {isRefetching && (
+        {refreshing && (
           <div className="absolute top-2 right-2 z-10">
             <div className="bg-blue-50 border border-blue-200 rounded-lg px-3 py-1 flex items-center gap-2">
               <RefreshCw className="h-3 w-3 animate-spin text-blue-600" />
@@ -225,7 +229,7 @@ export default function Home() {
                     <span className="text-gray-500 font-normal"> · {profile.owner_name}</span>
                   )}
                 </span>
-                {isRefetching && (
+                {refreshing && (
                   <span className="text-xs text-blue-600 bg-blue-50 px-2 py-1 rounded-full flex items-center gap-1">
                     <RefreshCw className="h-3 w-3 animate-spin" />
                     Updating...
@@ -238,11 +242,11 @@ export default function Home() {
                 variant="outline"
                 size="sm"
                 onClick={handleRefresh}
-                disabled={loading || isRefetching}
+                disabled={loading || refreshing}
                 className="flex items-center gap-2"
               >
-                <RefreshCw className={`h-4 w-4 ${isRefetching ? 'animate-spin' : ''}`} />
-                {loading ? 'Loading...' : isRefetching ? 'Refreshing...' : 'Refresh'}
+                <RefreshCw className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />
+                {loading ? 'Loading...' : refreshing ? 'Refreshing...' : 'Refresh'}
               </Button>
               {!loading && (profile?.merchant_names || profile?.merchantBusinessTradeName) && (
                 <QRCodeButton
