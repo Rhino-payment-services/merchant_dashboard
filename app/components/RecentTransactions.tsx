@@ -209,6 +209,35 @@ export default function RecentTransactions({ transactions, isNewFormat = false, 
     }
   };
 
+  // Prefer a human-friendly description and avoid repeating the reference ID
+  const getDescription = (txn: any) => {
+    if (!isNewFormat) {
+      return txn.rdbs_description || "-";
+    }
+
+    const ref = (txn.reference || "").toString().trim();
+    const primaryDesc = (txn.description || "").toString().trim();
+
+    // If description is missing or just duplicates the reference, try metadata fields
+    if (!primaryDesc || primaryDesc === ref) {
+      const metaDesc =
+        (txn.metadata?.description ||
+          txn.metadata?.narration ||
+          txn.metadata?.note ||
+          "") as string;
+
+      const cleanedMeta = metaDesc.toString().trim();
+      if (cleanedMeta && cleanedMeta !== ref) {
+        return cleanedMeta;
+      }
+
+      // No better option – show a clean dash instead of repeating the reference
+      return "-";
+    }
+
+    return primaryDesc;
+  };
+
   const handleViewAll = () => {
     router.push("/transactions");
   };
@@ -334,10 +363,7 @@ export default function RecentTransactions({ transactions, isNewFormat = false, 
                       </span>
                     </TableCell>
                     <TableCell className="max-w-xs truncate">
-                      {isNewFormat 
-                        ? (txn.description || txn.reference || '-')
-                        : (txn.rdbs_description || '-')
-                      }
+                      {getDescription(txn)}
                     </TableCell>
                     <TableCell className="text-sm">
                       {isNewFormat 
