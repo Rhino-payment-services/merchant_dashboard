@@ -1949,7 +1949,7 @@ export default function BulkPaymentPage() {
                             <p className="text-xs text-gray-600 mt-0.5">
                               {payment.mnoProvider === 'Airtel'
                                 ? 'Airtel user'
-                                : 'MTN user — Not an Airtel user'}
+                                : 'MTN user'}
                             </p>
                           )}
                         </div>
