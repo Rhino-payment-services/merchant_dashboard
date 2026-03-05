@@ -1203,7 +1203,13 @@ export default function TransactionsPage() {
                 </div>
                 <div>
                   <div className="text-sm text-gray-500">Total Amount</div>
-                  <div className="font-semibold">{selectedBulkTransaction.totalAmount} {selectedBulkTransaction.currency}</div>
+                  <div className="font-semibold">
+                    {(
+                      (selectedBulkTransaction.totalAmount || 0) +
+                      (selectedBulkTransaction.totalFees || 0)
+                    ).toLocaleString()}{' '}
+                    {selectedBulkTransaction.currency}
+                  </div>
                 </div>
                 <div>
                   <div className="text-sm text-gray-500">Created</div>

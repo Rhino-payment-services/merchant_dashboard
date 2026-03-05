@@ -616,7 +616,9 @@ export default function BulkPaymentPage() {
             description: p.description,
             reference: p.reference,
             walletType: 'BUSINESS' as 'BUSINESS', // ✅ Always use BUSINESS (backend routes to correct flavour)
-            // Ensure backend can route to the correct BUSINESS_DISBURSEMENT wallet
+            // Surface merchantCode both at top-level and inside metadata so backend
+            // bulk processors can consistently route to the correct disbursement wallet.
+            merchantCode: merchantCodeForRequest,
             metadata: {
               ...(p.metadata || {}),
               merchantCode: merchantCodeForRequest,

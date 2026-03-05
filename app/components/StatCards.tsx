@@ -5,6 +5,10 @@ import { useSession } from 'next-auth/react';
 import { RefreshCw, Users, AlertCircle } from 'lucide-react';
 import { getWalletBalance, getMyTransactions } from '@/lib/api/wallet.api';
 
+// Track which merchants have already triggered an automatic stats fetch
+// This avoids multiple auto-refreshes caused by React dev tooling or re-renders.
+const autoFetchedMerchantCodes = new Set<string>();
+
 export default function StatCards() {
   const {profile, loading} = useUserProfile()
   const { data: session } = useSession();
@@ -57,10 +61,15 @@ export default function StatCards() {
 
   const merchantCode = (session?.user as any)?.merchantCode;
 
-  // Fetch when merchantCode is available (avoids race after switching companies).
-  // IMPORTANT: Do NOT add isRefetching or other React Query flags here, as they cause loops.
+  // Auto-fetch ONCE per merchant per page-load.
+  // - When we land on the dashboard for a merchant, we fetch stats.
+  // - Subsequent re-renders or React dev re-mounts do NOT trigger extra auto-refreshes.
+  // - Users can still manually refresh via the "Refresh Balance" button.
   useEffect(() => {
     if (!merchantCode) return;
+    const normalized = String(merchantCode).trim();
+    if (autoFetchedMerchantCodes.has(normalized)) return;
+    autoFetchedMerchantCodes.add(normalized);
     fetchWalletData();
   }, [merchantCode]);
 
