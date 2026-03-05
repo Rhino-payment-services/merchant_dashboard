@@ -735,6 +735,7 @@ export default function TransactionsPage() {
                   <TableHead>Receiver</TableHead>
                   <TableHead>Amount</TableHead>
                   <TableHead>Charges</TableHead>
+                  <TableHead>Wallet</TableHead>
                   <TableHead>Type</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead>Description</TableHead>
@@ -745,7 +746,7 @@ export default function TransactionsPage() {
               <TableBody>
                 {isLoading ? (
                   <TableRow>
-                    <TableCell colSpan={9} className="text-center py-8">
+                    <TableCell colSpan={11} className="text-center py-8">
                       <div className="flex items-center justify-center">
                         <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
                         <span className="ml-2">Loading transactions...</span>
@@ -754,7 +755,7 @@ export default function TransactionsPage() {
                   </TableRow>
                 ) : filteredTransactions.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={9} className="text-center py-8">
+                    <TableCell colSpan={11} className="text-center py-8">
                       <div className="text-gray-500">No transactions found</div>
                     </TableCell>
                   </TableRow>
@@ -809,6 +810,27 @@ export default function TransactionsPage() {
                             </span>
                            {transaction.metadata?.revenue?.amount?.toLocaleString() ?? "N/A"}
                           </div>
+                        </TableCell>
+                        {/* Wallet source: show which business wallet handled this transaction */}
+                        <TableCell>
+                          {(() => {
+                            const bucket = classifyWalletView(transaction as any);
+                            if (bucket === 'disbursement') {
+                              return (
+                                <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-purple-100 text-purple-800">
+                                  Disbursement
+                                </span>
+                              );
+                            }
+                            if (bucket === 'collection') {
+                              return (
+                                <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                                  Collection
+                                </span>
+                              );
+                            }
+                            return <span className="text-xs text-gray-400">—</span>;
+                          })()}
                         </TableCell>
                         <TableCell>
                           <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${

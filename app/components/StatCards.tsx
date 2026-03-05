@@ -1,13 +1,9 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Card, CardContent, CardHeader } from '../../components/ui/card';
 import { useUserProfile } from '../(dashboard)/UserProfileProvider';
 import { useSession } from 'next-auth/react';
 import { RefreshCw, Users, AlertCircle } from 'lucide-react';
 import { getWalletBalance, getMyTransactions } from '@/lib/api/wallet.api';
-
-// Track which merchants have already triggered an automatic stats fetch
-// This avoids multiple auto-refreshes caused by React dev tooling or re-renders.
-const autoFetchedMerchantCodes = new Set<string>();
 
 export default function StatCards() {
   const {profile, loading} = useUserProfile()
@@ -60,16 +56,16 @@ export default function StatCards() {
   };
 
   const merchantCode = (session?.user as any)?.merchantCode;
+  const hasFetchedRef = useRef(false);
 
-  // Auto-fetch ONCE per merchant per page-load.
+  // Auto-fetch ONCE per component lifecycle for the current merchant.
   // - When we land on the dashboard for a merchant, we fetch stats.
-  // - Subsequent re-renders or React dev re-mounts do NOT trigger extra auto-refreshes.
-  // - Users can still manually refresh via the "Refresh Balance" button.
+  // - React dev double-mounts won't trigger extra fetches because of the ref guard.
+  // - When you navigate away and come back, a new component instance will fetch again once.
   useEffect(() => {
     if (!merchantCode) return;
-    const normalized = String(merchantCode).trim();
-    if (autoFetchedMerchantCodes.has(normalized)) return;
-    autoFetchedMerchantCodes.add(normalized);
+    if (hasFetchedRef.current) return;
+    hasFetchedRef.current = true;
     fetchWalletData();
   }, [merchantCode]);
 
