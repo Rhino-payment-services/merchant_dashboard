@@ -61,6 +61,10 @@ interface PaymentItem extends Partial<BulkTransactionItem> {
   status?: 'pending' | 'processing' | 'success' | 'failed';
   error?: string;
   validated?: boolean;
+  /** Estimated fee for this item (from fee preview), used to show queued total including charges */
+  estimatedFee?: number;
+  /** Estimated net amount the recipient will receive (from fee preview) */
+  estimatedNetAmount?: number;
 }
 
 export default function BulkPaymentPage() {
@@ -415,6 +419,66 @@ export default function BulkPaymentPage() {
       });
 
       setPayments(updatedPayments);
+
+      // After validation, estimate fees for all valid items so that
+      // the \"Total queued amount\" reflects amount + charges.
+      const feeResults = await Promise.allSettled(
+        updatedPayments
+          .filter(p => p.validated && p.status === 'pending' && p.amount && p.mode)
+          .map(async (p) => {
+            const single: SinglePaymentDto = {
+              mode: p.mode as SinglePaymentDto['mode'],
+              amount: p.amount as number,
+              currency: p.currency || 'UGX',
+              walletType: 'BUSINESS',
+              phoneNumber: p.phoneNumber,
+              mnoProvider: p.mnoProvider,
+              recipientName: p.recipientName,
+              accountNumber: p.accountNumber,
+              bankSortCode: p.bankSortCode,
+              bankName: p.bankName,
+              accountName: p.accountName,
+              recipientPhoneNumber: p.recipientPhoneNumber,
+              recipientUserId: p.recipientUserId,
+              utilityProvider: p.utilityProvider,
+              utilityAccountNumber: p.utilityAccountNumber,
+              customerRef: p.customerRef,
+              area: p.area,
+              metadata: p.metadata,
+            };
+
+            const validation = await validateTransaction(single);
+            return {
+              paymentId: p.id,
+              itemId: p.itemId,
+              feePreview: validation.feePreview,
+            };
+          })
+      );
+
+      const feesById = new Map<string, { fee?: number; netAmount?: number }>();
+      for (const r of feeResults) {
+        if (r.status === 'fulfilled' && r.value.feePreview) {
+          feesById.set(r.value.paymentId, {
+            fee: r.value.feePreview.totalFee,
+            netAmount: r.value.feePreview.netAmount,
+          });
+        }
+      }
+
+      if (feesById.size > 0) {
+        setPayments(prev =>
+          prev.map(p => {
+            const feeInfo = feesById.get(p.id);
+            if (!feeInfo) return p;
+            return {
+              ...p,
+              estimatedFee: feeInfo.fee,
+              estimatedNetAmount: feeInfo.netAmount,
+            };
+          }),
+        );
+      }
 
       // Show summary toast
       if (result.validItems === result.totalItems) {
@@ -1042,7 +1106,12 @@ export default function BulkPaymentPage() {
     }
   };
 
-  const totalAmount = payments.reduce((sum, p) => sum + (p.amount || 0), 0);
+  // Total queued debit from disbursement wallet (amount + estimated fees per item)
+  const totalAmount = payments.reduce((sum, p) => {
+    const base = p.amount || 0;
+    const fee = p.estimatedFee || 0;
+    return sum + base + fee;
+  }, 0);
   const successCount = payments.filter(p => p.status === 'success').length;
   const failedCount = payments.filter(p => p.status === 'failed').length;
   const pendingCount = payments.filter(p => p.status === 'pending').length;
