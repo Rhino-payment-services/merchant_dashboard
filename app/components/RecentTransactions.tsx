@@ -88,7 +88,7 @@ interface transactionType {
 
 export default function RecentTransactions({ transactions, isNewFormat = false, merchantName }: transactionType & { merchantName?: string }) {
   const router = useRouter();
-  const { isRefetching, profile } = useUserProfile();
+  const { profile } = useUserProfile();
 
   // Clean and sort transactions - handle both old and new formats
   const sortedTransactions = useMemo(() => {
@@ -287,14 +287,6 @@ export default function RecentTransactions({ transactions, isNewFormat = false, 
 
   return (
     <div className="relative">
-      {isRefetching && (
-        <div className="absolute top-2 right-2 z-10">
-          <div className="bg-blue-50 border border-blue-200 rounded-lg px-2 py-1 flex items-center gap-2">
-            <RefreshCw className="h-3 w-3 animate-spin text-blue-600" />
-            <span className="text-xs text-blue-600 font-medium">Updating...</span>
-          </div>
-        </div>
-      )}
       <div className="flex items-center justify-between mb-4">
         <div className="font-semibold text-lg">Recent Transactions</div>
         <div className="flex gap-2">

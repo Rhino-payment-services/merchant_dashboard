@@ -57,13 +57,12 @@ export default function StatCards() {
 
   const merchantCode = (session?.user as any)?.merchantCode;
 
-  // Run once on mount for the current merchant.
-  // Merchant switching does a full-page reload, so we don't need merchantCode in deps,
-  // and we avoid any chance of accidental auto-refresh loops.
+  // Fetch when merchantCode is available (avoids race after switching companies).
+  // IMPORTANT: Do NOT add isRefetching or other React Query flags here, as they cause loops.
   useEffect(() => {
     if (!merchantCode) return;
     fetchWalletData();
-  }, []);
+  }, [merchantCode]);
 
   // Only show separate collection/disbursement cards when:
   // - bulk payments feature is enabled for this merchant (they have a disbursement wallet)

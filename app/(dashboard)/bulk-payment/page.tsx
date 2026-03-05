@@ -90,6 +90,11 @@ export default function BulkPaymentPage() {
     (profile as any)?.businessWallet?.balance ??
     0;
 
+  // Normalized merchant code for API calls (used for wallet routing on the backend)
+  const merchantCodeForRequest = currentMerchantCode
+    ? String(currentMerchantCode).trim()
+    : undefined;
+
   // Redirect when unauthenticated (must run before early returns so it runs in all cases)
   useEffect(() => {
     if (sessionStatus === 'unauthenticated' || session === null) {
@@ -610,7 +615,12 @@ export default function BulkPaymentPage() {
             currency: p.currency!,
             description: p.description,
             reference: p.reference,
-            walletType: 'BUSINESS' as 'BUSINESS', // ✅ Hardcoded to BUSINESS wallet for merchant dashboard
+            walletType: 'BUSINESS' as 'BUSINESS', // ✅ Always use BUSINESS (backend routes to correct flavour)
+            // Ensure backend can route to the correct BUSINESS_DISBURSEMENT wallet
+            metadata: {
+              ...(p.metadata || {}),
+              merchantCode: merchantCodeForRequest,
+            },
           };
 
           // Add fields based on mode
