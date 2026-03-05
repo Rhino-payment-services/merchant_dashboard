@@ -197,20 +197,29 @@ export default function RecentTransactions({ transactions, isNewFormat = false, 
       };
     } else {
       // DEBIT direction - merchant is sending to someone
-      // Extract receiver info based on transaction type (matching transactions page logic)
-      if (txn.type === 'WALLET_TO_WALLET' || txn.counterpartyId || txn.counterpartyUser) {
-        // P2P - Wallet to Wallet - receiver is another RukaPay user
+      // Check MNO/phone first: metadata.merchantName is the SENDER's business name,
+      // not the receiver. Without this order MNO disbursements show the merchant as receiver.
+      if (txn.type === 'WALLET_TO_MNO' || (txn.metadata?.mnoProvider && txn.metadata?.phoneNumber)) {
+        return {
+          name: txn.metadata?.recipientName || `${txn.metadata?.mnoProvider || 'Mobile'} Money`,
+          contact: txn.metadata?.phoneNumber || ''
+        };
+      } else if (txn.type === 'WALLET_TO_WALLET' || txn.counterpartyId || txn.counterpartyUser) {
         const receiverName = txn.counterpartyUser?.profile?.firstName && txn.counterpartyUser?.profile?.lastName
           ? `${txn.counterpartyUser.profile.firstName} ${txn.counterpartyUser.profile.lastName}`
-          : txn.metadata?.counterpartyInfo?.name || txn.metadata?.userName || 'RukaPay User';
+          : txn.metadata?.counterpartyInfo?.name || txn.metadata?.recipientName || 'RukaPay User';
         return {
           name: receiverName,
           contact: txn.counterpartyUser?.phone || txn.counterpartyId || ''
         };
-      } else if (txn.type === 'WALLET_TO_MERCHANT' || txn.type === 'WALLET_TO_INTERNAL_MERCHANT' || txn.type?.includes('MERCHANT') || txn.metadata?.merchantName) {
-        // Wallet to Merchant - receiver is merchant
+      } else if (txn.metadata?.phoneNumber) {
         return {
-          name: txn.metadata?.merchantName || txn.metadata?.counterpartyInfo?.name || txn.metadata?.userName || 'Merchant',
+          name: txn.metadata?.recipientName || 'Mobile Money User',
+          contact: txn.metadata?.phoneNumber || ''
+        };
+      } else if (txn.type === 'WALLET_TO_MERCHANT' || txn.type === 'WALLET_TO_INTERNAL_MERCHANT' || txn.type?.includes('MERCHANT')) {
+        return {
+          name: txn.metadata?.merchantName || txn.metadata?.counterpartyInfo?.name || 'Merchant',
           contact: txn.metadata?.merchantCode || txn.metadata?.accountNumber || ''
         };
       } else if (txn.metadata?.counterpartyInfo) {
@@ -218,28 +227,14 @@ export default function RecentTransactions({ transactions, isNewFormat = false, 
           name: txn.metadata.counterpartyInfo.name,
           contact: txn.metadata.counterpartyInfo.phone || (txn.metadata.counterpartyInfo as any)?.accountNumber || ''
         };
-      } else if (txn.metadata?.mnoProvider) {
-        // External Mobile Money - show recipient name if available
-        return {
-          name: txn.metadata?.userName || txn.metadata?.recipientName || `${txn.metadata.mnoProvider} Mobile Money`,
-          contact: txn.metadata?.phoneNumber || ''
-        };
-      } else if (txn.metadata?.phoneNumber) {
-        // External Mobile Money (no provider specified)
-        return {
-          name: txn.metadata?.userName || txn.metadata?.recipientName || 'Mobile Money User',
-          contact: txn.metadata?.phoneNumber || ''
-        };
       } else if (txn.metadata?.accountNumber) {
-        // Bank/Utility/Other External Account
         return {
-          name: txn.metadata?.userName || txn.metadata?.recipientName || 'External Account',
+          name: txn.metadata?.recipientName || txn.metadata?.accountName || 'External Account',
           contact: txn.metadata?.accountNumber || ''
         };
       } else {
-        // Fallback
         return {
-          name: txn.metadata?.recipientName || txn.metadata?.userName || 'Recipient',
+          name: txn.metadata?.recipientName || 'Recipient',
           contact: txn.metadata?.phoneNumber || txn.metadata?.accountNumber || ''
         };
       }
