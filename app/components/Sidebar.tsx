@@ -145,14 +145,14 @@ export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
     }
   }, [session, currentMerchant, merchants, profile?.merchantId]);
   
-  // Filter navLinks based on both feature flags and super merchant status
+  // Filter navLinks based on feature flags
   const filteredNavLinks = navLinks.map(section => ({
     ...section,
     links: section.links.filter(link => {
-      // Only show Payment/Payroll-related links when merchant is allowed and is a super merchant
-      if (link.path === '/bulk-payment') return isSuperMerchant && canLiquidate;
-      if (link.path === '/payroll') return isSuperMerchant && featurePayroll && canLiquidate;
-      if (link.path === '/payroll/approvals') return isSuperMerchant && featurePayrollApprovals && canLiquidate;
+      // Only show Payment/Payroll-related links when merchant is allowed via feature flags
+      if (link.path === '/bulk-payment') return canLiquidate;
+      if (link.path === '/payroll') return featurePayroll && canLiquidate;
+      if (link.path === '/payroll/approvals') return featurePayrollApprovals && canLiquidate;
       return true;
     })
   })).filter(section => section.links.length > 0); // Remove empty sections
