@@ -82,6 +82,64 @@ interface BulkTransaction {
   transactionResults?: any[];
 }
 
+function computeNetAmountAndTotalFee(tx: any) {
+  const amount = Number(tx?.amount) || 0;
+  const direction = String(tx?.direction || '').toUpperCase();
+  const feeBreakdown = tx?.metadata?.feeBreakdown || {};
+
+  const rukapayFeeFromBreakdown = feeBreakdown.rukapayFee || 0;
+  const rukapayFee =
+    rukapayFeeFromBreakdown > 0 ? rukapayFeeFromBreakdown : Number(tx?.rukapayFee) || 0;
+
+  const partnerFeeFromBreakdown = feeBreakdown.partnerFee || feeBreakdown.thirdPartyFee || 0;
+  const partnerFee =
+    partnerFeeFromBreakdown > 0 ? partnerFeeFromBreakdown : Number(tx?.thirdPartyFee) || 0;
+
+  const govTaxFromBreakdown = feeBreakdown.governmentTax || feeBreakdown.govTax || 0;
+  const governmentTax =
+    govTaxFromBreakdown > 0 ? govTaxFromBreakdown : Number(tx?.governmentTax) || 0;
+
+  const processingFee = feeBreakdown.processingFee || Number(tx?.processingFee) || 0;
+  const networkFee = feeBreakdown.networkFee || Number(tx?.networkFee) || 0;
+  const complianceFee = feeBreakdown.complianceFee || Number(tx?.complianceFee) || 0;
+  const telecomBankCharge = feeBreakdown.telecomBankCharge || 0;
+
+  let calculatedTotalFees =
+    rukapayFee +
+    partnerFee +
+    governmentTax +
+    processingFee +
+    networkFee +
+    complianceFee +
+    telecomBankCharge;
+
+  if (feeBreakdown.totalFee !== undefined && feeBreakdown.totalFee !== null) {
+    calculatedTotalFees = Number(feeBreakdown.totalFee);
+  }
+
+  let totalFee = calculatedTotalFees;
+
+  if (totalFee === 0) {
+    const feeField = Number(tx?.fee) || 0;
+    if (feeField > 0) {
+      totalFee = feeField;
+    } else {
+      const netAmountField = Number(tx?.netAmount) || 0;
+      if (netAmountField > 0 && amount !== netAmountField) {
+        totalFee = Math.abs(amount - netAmountField);
+      }
+    }
+  }
+
+  const netAmountForDisplay =
+    direction === 'DEBIT' ? amount + totalFee : Number(tx?.netAmount) || amount;
+
+  return {
+    totalFee,
+    netAmountForDisplay,
+  };
+}
+
 export default function TransactionsPage() {
   const { data: session } = useSession();
   const { profile } = useUserProfile();
@@ -1312,6 +1370,7 @@ export default function TransactionsPage() {
             const txn = selectedTransactionForDetails;
             const senderInfo = getSenderInfo(txn);
             const receiverInfo = getReceiverInfo(txn);
+            const { totalFee, netAmountForDisplay } = computeNetAmountAndTotalFee(txn);
             const formatAmount = (amount: number) => {
               return new Intl.NumberFormat('en-UG', {
                 style: 'currency',
@@ -1446,20 +1505,22 @@ export default function TransactionsPage() {
                     <div className="space-y-2 text-sm">
                       <div className="flex justify-between">
                         <span className="text-gray-600">Transaction Amount:</span>
-                        <span className="font-bold text-gray-900">{formatAmount(Number(txn.amount || 0))}</span>
+                        <span className="font-bold text-gray-900">
+                          {formatAmount(Number(txn.amount || 0))}
+                        </span>
                       </div>
-                      {txn.fee !== undefined && txn.fee > 0 && (
+                      {totalFee > 0 && (
                         <div className="flex justify-between border-t pt-2">
                           <span className="text-blue-600">Transaction Fee:</span>
                           <span className="font-medium text-blue-600">
-                            {formatAmount(Number(txn.fee || 0))}
+                            {formatAmount(totalFee)}
                           </span>
                         </div>
                       )}
                       <div className="flex justify-between border-t-2 pt-2 mt-2">
                         <span className="text-green-600 font-bold">Net Amount:</span>
                         <span className="font-bold text-green-600 text-lg">
-                          {formatAmount(Number(txn.netAmount || txn.amount || 0))}
+                          {formatAmount(netAmountForDisplay)}
                         </span>
                       </div>
                     </div>
