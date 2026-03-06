@@ -1459,7 +1459,16 @@ export default function TransactionsPage() {
                       <div className="flex justify-between border-t-2 pt-2 mt-2">
                         <span className="text-green-600 font-bold">Net Amount:</span>
                         <span className="font-bold text-green-600 text-lg">
-                          {formatAmount(Number(txn.netAmount || txn.amount || 0))}
+                          {(() => {
+                            const amount = Number(txn.amount || 0);
+                            const fee = Number(txn.fee || 0);
+                            // For outgoing (DEBIT) transactions, show total debited (amount + fees)
+                            // For incoming (CREDIT) transactions, show amount received (netAmount or amount)
+                            if (txn.direction === 'DEBIT') {
+                              return formatAmount(amount + fee);
+                            }
+                            return formatAmount(Number(txn.netAmount || amount));
+                          })()}
                         </span>
                       </div>
                     </div>
