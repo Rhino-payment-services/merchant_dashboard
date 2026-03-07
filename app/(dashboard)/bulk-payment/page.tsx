@@ -8,7 +8,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { 
   Upload, Download, Plus, Trash2, Users, CheckCircle2, 
   XCircle, Clock, Send, AlertCircle, Info, Loader2,
-  Wallet, Phone, Building2, Zap, Edit, RefreshCw, AlertTriangle, ShieldX,
+  Wallet, Phone, Building2, Zap, Edit, RefreshCw, AlertTriangle,
 } from "lucide-react";
 import { useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
@@ -99,9 +99,6 @@ export default function BulkPaymentPage() {
     ? String(currentMerchantCode).trim()
     : undefined;
 
-  // Check if user is a super merchant (based on current merchant)
-  const isSuperMerchant = currentMerchant?.isSuperMerchant || false;
-
   // Redirect when unauthenticated (must run before early returns so it runs in all cases)
   useEffect(() => {
     if (sessionStatus === 'unauthenticated' || session === null) {
@@ -109,14 +106,6 @@ export default function BulkPaymentPage() {
     }
   }, [sessionStatus, session, router]);
 
-  // Redirect non-super merchants
-  useEffect(() => {
-    if (session && !isSuperMerchant) {
-      toast.error('Access denied. This feature is only available for super merchants.');
-      router.push('/');
-    }
-  }, [session, isSuperMerchant, router]);
-  
   // Single Payment State (must be before any early return to satisfy Rules of Hooks)
   const [singlePayment, setSinglePayment] = useState<SinglePaymentDto>({
     mode: 'WALLET_TO_MNO',
@@ -1127,31 +1116,7 @@ export default function BulkPaymentPage() {
   const failedCount = payments.filter(p => p.status === 'failed').length;
   const pendingCount = payments.filter(p => p.status === 'pending').length;
 
-  // Super-merchant gating: this feature is only available for super merchants
-  if (session && currentMerchant && !isSuperMerchant) {
-    return (
-      <div className="flex items-center justify-center min-h-[60vh] px-4">
-        <Card className="max-w-md w-full">
-          <CardHeader>
-            <div className="flex items-center gap-3 mb-2">
-              <ShieldX className="h-8 w-8 text-red-500" />
-              <CardTitle>Access Denied</CardTitle>
-            </div>
-            <CardDescription>
-              This feature is only available for super merchants.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <Button onClick={() => router.push('/')} className="w-full">
-              Return to Dashboard
-            </Button>
-          </CardContent>
-        </Card>
-      </div>
-    );
-  }
-
-  // Feature-flag gating: merchant must have bulk payments / liquidation enabled
+  // Feature-flag gating: merchant must have bulk payments or disbursement enabled (via admin Dashboard Features)
   if (session && currentMerchant && !canLiquidate) {
     return (
       <div className="flex items-center justify-center min-h-[60vh] px-4">
