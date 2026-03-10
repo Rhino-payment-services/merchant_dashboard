@@ -52,6 +52,27 @@ export const getWalletBalance = async (): Promise<WalletBalance> => {
   }
 }
 
+export interface SweepResult {
+  collectionWalletId: string
+  disbursementWalletId: string
+  amount: number
+  reference: string
+}
+
+/**
+ * Sweep gross amount from collection wallet to disbursement wallet.
+ * Backend deducts a 2.5% RukaPay fee; disbursement receives net.
+ */
+export const sweepToDisbursement = async (amount: number, merchantCode?: string): Promise<SweepResult> => {
+  try {
+    const response = await apiClient.post('/wallet/me/sweep-to-disbursement', { amount, merchantCode })
+    return response.data
+  } catch (error: any) {
+    const message = error?.response?.data?.message || 'Failed to sweep to disbursement'
+    throw new Error(message)
+  }
+}
+
 /**
  * Get merchant transactions
  * Uses /wallet/me/business/transactions to explicitly get BUSINESS wallet transactions ONLY
