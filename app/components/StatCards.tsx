@@ -1,9 +1,11 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Card, CardContent, CardHeader } from '../../components/ui/card';
+import { Button } from '../../components/ui/button';
 import { useUserProfile } from '../(dashboard)/UserProfileProvider';
 import { useSession } from 'next-auth/react';
-import { RefreshCw, Users, AlertCircle } from 'lucide-react';
+import { RefreshCw, ArrowRightLeft } from 'lucide-react';
 import { getWalletBalance, getMyTransactions } from '@/lib/api/wallet.api';
+import SweepToDisbursementModal from './SweepToDisbursementModal';
 
 export default function StatCards() {
   const {profile, loading} = useUserProfile()
@@ -25,6 +27,7 @@ export default function StatCards() {
   const [totalTransactions, setTotalTransactions] = useState<number>(0);
   const [totalCredit, setTotalCredit] = useState<number>(0);
   const [totalDebit, setTotalDebit] = useState<number>(0);
+  const [sweepModalOpen, setSweepModalOpen] = useState(false);
 
   // Fetch wallet balance and transactions
   const fetchWalletData = async () => {
@@ -142,12 +145,23 @@ export default function StatCards() {
 
   return (
     <div className="space-y-4">
-      {/* Refresh Button */}
-      <div className="flex justify-end">
+      {/* Toolbar */}
+      <div className="flex items-center justify-between gap-2">
+        {hasSplitBalances && (
+          <Button
+            size="sm"
+            onClick={() => setSweepModalOpen(true)}
+            disabled={walletLoading || (collectionBalance ?? 0) <= 0}
+            className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white"
+          >
+            <ArrowRightLeft className="h-4 w-4" />
+            Transfer to Disbursement
+          </Button>
+        )}
         <button
           onClick={fetchWalletData}
           disabled={walletLoading}
-          className="flex items-center gap-2 px-3 py-1 text-sm bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200 transition-colors disabled:opacity-50"
+          className="ml-auto flex items-center gap-2 px-3 py-1 text-sm bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200 transition-colors disabled:opacity-50"
         >
           <RefreshCw className={`h-4 w-4 ${walletLoading ? 'animate-spin' : ''}`} />
           {walletLoading ? 'Refreshing...' : 'Refresh Balance'}
@@ -178,6 +192,18 @@ export default function StatCards() {
           </Card>
         ))}
       </div>
+
+      {/* Sweep modal — only mounted for merchants with split wallets */}
+      {hasSplitBalances && (
+        <SweepToDisbursementModal
+          open={sweepModalOpen}
+          onOpenChange={setSweepModalOpen}
+          collectionBalance={collectionBalance ?? 0}
+          disbursementBalance={disbursementBalance ?? 0}
+          currency="UGX"
+          onSuccess={fetchWalletData}
+        />
+      )}
     </div>
   );
 } 
