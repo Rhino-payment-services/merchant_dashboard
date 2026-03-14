@@ -23,7 +23,8 @@ import {
   CheckCircle,
   FileCheck,
   ShieldCheck,
-  Building2
+  Building2,
+  Droplets
 } from 'lucide-react';
 import Image from 'next/image';
 import { useSession } from 'next-auth/react';
@@ -34,13 +35,10 @@ const navLinks = [
   { section: 'GENERAL', links: [
     { name: 'Dashboard', path: '/', icon: LayoutDashboard },
     { name: 'Transactions', path: '/transactions', icon: CreditCard },
-    // { name: 'Withdraw', path: '/transfer', icon: ArrowRightLeft },
     { name: 'Request Payment', path: '/top-up', icon: ArrowDown },
     { name: 'QR Code', path: '/qr-code', icon: QrCode },
-    // { name: 'Save', path: '/save', icon: BarChart3 },
-    // { name: 'Employees', path: '/employees', icon: Package },
-    // { name: 'Payroll', path: '/payroll', icon: FileText },
     { name: 'Payment', path: '/bulk-payment', icon: ArrowRightLeft },
+    { name: 'Liquidate', path: '/liquidate', icon: Droplets },
   ]},
   { section: 'TOOLS', links: [
     { name: 'Report', path: '/reports', icon: FileBarChart },
@@ -149,8 +147,9 @@ export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
   const filteredNavLinks = navLinks.map(section => ({
     ...section,
     links: section.links.filter(link => {
-      // Only show Payment/Payroll-related links when merchant is allowed via feature flags
+      // Only show Payment/Payroll/Liquidate when merchant has liquidation or bulk payments
       if (link.path === '/bulk-payment') return canLiquidate;
+      if (link.path === '/liquidate') return canLiquidate;
       if (link.path === '/payroll') return featurePayroll && canLiquidate;
       if (link.path === '/payroll/approvals') return featurePayrollApprovals && canLiquidate;
       return true;

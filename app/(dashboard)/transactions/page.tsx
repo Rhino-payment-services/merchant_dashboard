@@ -17,6 +17,28 @@ import TransactionReceipt from '@/components/TransactionReceipt';
 import { useUserProfile } from '../UserProfileProvider';
 
 type StatusType = 'COMPLETED' | 'PENDING' | 'PROCESSING' | 'FAILED' | 'CANCELLED' | 'REFUNDED' | "SUCCESS";
+
+function getTransactionTypeDisplay(txn: any): string {
+  const meta = txn?.metadata || {};
+  const ref = txn?.reference || '';
+  if (
+    txn?.type === 'WALLET_TO_WALLET' &&
+    (meta.sweepToDisbursement || meta.sweepFromCollection || (ref && String(ref).startsWith('SWEEP_')))
+  ) {
+    return 'Liquidate';
+  }
+  const typeMap: Record<string, string> = {
+    WALLET_TO_WALLET: 'P2P Transfer',
+    MNO_TO_WALLET: 'Receive from Mobile Money',
+    WALLET_TO_MNO: 'Send to Mobile Money',
+    MERCHANT_TO_WALLET: 'Receive from Merchant',
+    WALLET_TO_MERCHANT: 'Pay Merchant',
+    DEPOSIT: 'Deposit',
+    WITHDRAWAL: 'Withdrawal',
+  };
+  return typeMap[txn?.type] || txn?.type || 'N/A';
+}
+
 const statusColor: Record<StatusType, string> = {
   COMPLETED: 'text-green-600 bg-green-50',
   PENDING: 'text-yellow-700 bg-yellow-50',
@@ -1482,7 +1504,7 @@ export default function TransactionsPage() {
                       </div>
                       <div className="flex justify-between">
                         <span className="text-gray-600">Type:</span>
-                        <span className="font-medium text-gray-900">{txn.type || 'N/A'}</span>
+                        <span className="font-medium text-gray-900">{getTransactionTypeDisplay(txn)}</span>
                       </div>
                       <div className="flex justify-between">
                         <span className="text-gray-600">Date & Time:</span>
@@ -1549,6 +1571,11 @@ export default function TransactionsPage() {
                           👨‍💼 Admin Funding
                         </div>
                       )}
+                      {(txn.metadata?.sweepToDisbursement || txn.metadata?.sweepFromCollection) && (
+                        <div className="text-xs text-amber-700 font-medium mt-1">
+                          Debited: {txn.metadata?.debitWalletType || 'Collection'} wallet
+                        </div>
+                      )}
                     </div>
                   </div>
 
@@ -1570,6 +1597,11 @@ export default function TransactionsPage() {
                       {txn.type === 'DEPOSIT' && txn.metadata?.fundedByAdmin && (
                         <div className="text-xs text-green-600 font-medium mt-1">
                           💰 Wallet Credit
+                        </div>
+                      )}
+                      {(txn.metadata?.sweepToDisbursement || txn.metadata?.sweepFromCollection) && (
+                        <div className="text-xs text-green-700 font-medium mt-1">
+                          Credited: {txn.metadata?.creditWalletType || 'Disbursement'} wallet
                         </div>
                       )}
                     </div>
