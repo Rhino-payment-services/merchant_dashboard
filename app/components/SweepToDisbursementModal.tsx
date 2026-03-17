@@ -56,9 +56,15 @@ export default function SweepToDisbursementModal({
     if (!isValid) return
     setLoading(true)
     try {
-      await sweepToDisbursement(gross, merchantCode)
+      const result = await sweepToDisbursement(gross, merchantCode)
+      const effectiveFee = result?.sweepFeeAmount ?? fee
+      const effectiveNet = result?.netToDisbursement ?? net
+      const effectivePercent = result?.sweepFeePercent ?? SWEEP_FEE_PERCENT
+
       toast.success(
-        `Transferred ${fmt(gross, currency)} gross → ${fmt(net, currency)} credited to disbursement`,
+        effectiveFee > 0
+          ? `Transferred ${fmt(gross, currency)} gross → ${fmt(effectiveNet, currency)} credited to disbursement (RukaPay fee ${effectivePercent}%)`
+          : `Transferred ${fmt(gross, currency)} to disbursement (no additional RukaPay sweep fee)`,
       )
       setRawAmount("")
       onOpenChange(false)
