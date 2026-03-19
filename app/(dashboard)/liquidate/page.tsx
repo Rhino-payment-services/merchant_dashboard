@@ -65,10 +65,21 @@ export default function LiquidatePage() {
     if (!canSweep) return;
     setSweepLoading(true);
     try {
-      await sweepToDisbursement(gross, merchantCode);
-      toast.success(
-        `Liquidated ${fmt(gross)} gross → ${fmt(net)} credited to disbursement`
-      );
+      const result = await sweepToDisbursement(gross, merchantCode);
+      const effectiveFee = result?.sweepFeeAmount ?? fee;
+      const effectiveNet = result?.netToDisbursement ?? net;
+      const effectivePercent = result?.sweepFeePercent ?? SWEEP_FEE_PERCENT;
+
+      if (effectiveFee > 0) {
+        toast.success(
+          `Liquidated ${fmt(gross)} gross → ${fmt(effectiveNet)} credited to disbursement (RukaPay fee ${effectivePercent}%)`
+        );
+      } else {
+        toast.success(
+          `Liquidated ${fmt(gross)} → ${fmt(effectiveNet)} credited to disbursement (no additional RukaPay sweep fee)`
+        );
+      }
+
       setSweepAmount("");
       await fetchBalances();
     } catch (err: any) {

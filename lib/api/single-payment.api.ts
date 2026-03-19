@@ -187,9 +187,11 @@ export const validateTransaction = async (paymentData: SinglePaymentDto): Promis
     // Transform SinglePaymentDto to ValidateTransactionRequestDto
     // For MERCHANT_TO_WALLET, use transactionModeCode to ensure correct routing
     const validationData: ValidateTransactionRequestDto = {
-      ...(paymentData.mode === 'MERCHANT_TO_WALLET' 
+      ...(paymentData.mode === 'MERCHANT_TO_WALLET'
         ? { transactionModeCode: paymentData.mode } // Use mode code for MERCHANT_TO_WALLET
-        : { transactionType: paymentData.mode as any } // Map mode to transactionType for others
+        : paymentData.mode === 'UTILITIES'
+          ? { transactionType: 'BILL_PAYMENT' } // Send BILL_PAYMENT for bill transactions
+          : { transactionType: paymentData.mode as any } // Map mode to transactionType for others
       ),
       amount: paymentData.amount,
       currency: paymentData.currency || 'UGX',

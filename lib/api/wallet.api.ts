@@ -57,6 +57,9 @@ export interface SweepResult {
   disbursementWalletId: string
   amount: number
   reference: string
+  sweepFeePercent: number
+  sweepFeeAmount: number
+  netToDisbursement: number
 }
 
 /**

@@ -23,6 +23,8 @@ const TRANSACTION_TYPES = [
   { value: 'WALLET_TO_MNO', label: 'Mobile Money', icon: Phone, color: 'text-blue-600', bg: 'bg-blue-50' },
   { value: 'WALLET_TO_BANK', label: 'Bank Transfer', icon: Building2, color: 'text-purple-600', bg: 'bg-purple-50' },
   { value: 'MERCHANT_TO_WALLET', label: 'Merchant to Wallet', icon: Wallet, color: 'text-green-600', bg: 'bg-green-50' },
+  // Bill payment (single + bulk)
+  { value: 'UTILITIES', label: 'Bill Payment', icon: Zap, color: 'text-orange-600', bg: 'bg-orange-50' },
 ];
 
 const UGANDAN_BANKS = [
@@ -297,21 +299,26 @@ export default function BulkPaymentPage() {
       return;
     }
 
-    // Validate based on mode
-    if (formData.mode === 'WALLET_TO_MNO' && !formData.phoneNumber) {
-      toast.error('Phone number is required for mobile money');
-      return;
-    }
+  // Validate based on mode
+  if (formData.mode === 'WALLET_TO_MNO' && !formData.phoneNumber) {
+    toast.error('Phone number is required for mobile money');
+    return;
+  }
 
-    if (formData.mode === 'WALLET_TO_BANK' && (!formData.accountNumber || !formData.bankSortCode || !formData.accountName)) {
-      toast.error('Account number, bank, and account name are required for bank transfer');
-      return;
-    }
+  if (formData.mode === 'WALLET_TO_BANK' && (!formData.accountNumber || !formData.bankSortCode || !formData.accountName)) {
+    toast.error('Account number, bank, and account name are required for bank transfer');
+    return;
+  }
 
-    if (formData.mode === 'MERCHANT_TO_WALLET' && !formData.recipientPhoneNumber) {
-      toast.error('Recipient phone number is required for merchant to wallet transfer');
-      return;
-    }
+  if (formData.mode === 'MERCHANT_TO_WALLET' && !formData.recipientPhoneNumber) {
+    toast.error('Recipient phone number is required for merchant to wallet transfer');
+    return;
+  }
+
+  if (formData.mode === 'UTILITIES' && (!formData.utilityProvider || !formData.customerRef)) {
+    toast.error('Bill provider and customer reference are required for bill payments');
+    return;
+  }
 
     if (editingId) {
       // Update existing payment (always use BUSINESS wallet)
@@ -374,23 +381,39 @@ export default function BulkPaymentPage() {
     try {
       // Don't send walletType to validation endpoint - it's only needed for processing
       const items: BulkTransactionItem[] = payments.map(p => {
-        const base = {
+        const base: BulkTransactionItem = {
           itemId: p.itemId!,
           mode: p.mode!,
           amount: p.amount!,
           currency: p.currency!,
           description: p.description,
-          phoneNumber: p.mode === 'WALLET_TO_MNO' && p.phoneNumber ? normalizePhoneToUganda(p.phoneNumber) : p.phoneNumber,
+          phoneNumber:
+            p.mode === 'WALLET_TO_MNO' && p.phoneNumber
+              ? normalizePhoneToUganda(p.phoneNumber)
+              : p.phoneNumber,
           mnoProvider: p.mnoProvider || 'MTN',
           recipientName: p.recipientName,
           accountNumber: p.accountNumber,
           bankSortCode: p.bankSortCode,
           accountName: p.accountName,
           bankName: p.bankName,
-          recipientPhone: p.recipientPhone ? normalizePhoneToUganda(p.recipientPhone) : p.recipientPhone,
-          recipientPhoneNumber: p.recipientPhoneNumber ? normalizePhoneToUganda(p.recipientPhoneNumber) : p.recipientPhoneNumber,
+          recipientPhone: p.recipientPhone
+            ? normalizePhoneToUganda(p.recipientPhone)
+            : p.recipientPhone,
+          recipientPhoneNumber: p.recipientPhoneNumber
+            ? normalizePhoneToUganda(p.recipientPhoneNumber)
+            : p.recipientPhoneNumber,
         };
-        return base as BulkTransactionItem;
+
+        // Include bill payment fields so backend can validate as BILL_PAYMENT
+        if (p.mode === 'UTILITIES') {
+          base.utilityProvider = p.utilityProvider;
+          base.customerRef = p.customerRef || p.utilityAccountNumber;
+          base.utilityAccountNumber = p.utilityAccountNumber || p.customerRef;
+          base.area = p.area;
+        }
+
+        return base;
       });
 
       console.log('🔍 Validating recipients:', items);
@@ -705,6 +728,15 @@ export default function BulkPaymentPage() {
             const rawPhone = p.recipientPhoneNumber || p.recipientPhone;
             transaction.recipientPhoneNumber = normalizePhoneToUganda(rawPhone || '');
             transaction.recipientUserId = p.recipientUserId;
+          } else if (p.mode === 'UTILITIES') {
+            // Bulk bill payment fields
+            transaction.utilityProvider = p.utilityProvider;
+            // Use either explicit utilityAccountNumber or customerRef
+            transaction.customerRef = p.customerRef || p.utilityAccountNumber;
+            transaction.area = p.area;
+            transaction.phoneNumber = p.phoneNumber
+              ? normalizePhoneToUganda(p.phoneNumber)
+              : p.phoneNumber;
           } else {
             // Other modes
             transaction.phoneNumber = p.phoneNumber ? normalizePhoneToUganda(p.phoneNumber) : p.phoneNumber;
@@ -1420,6 +1452,67 @@ export default function BulkPaymentPage() {
                   </div>
                 )}
 
+                {/* Single Bill Payment Fields */}
+                {singlePayment.mode === 'UTILITIES' && (
+                  <div className="space-y-4">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-sm font-semibold text-gray-700 mb-2">
+                          Biller / Provider
+                        </label>
+                        <select
+                          value={singlePayment.utilityProvider || ''}
+                          onChange={(e) => handleSinglePaymentChange('utilityProvider', e.target.value)}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                        >
+                          <option value="">Select biller</option>
+                          <option value="NWSC">NWSC (Water)</option>
+                          <option value="UMEME">UMEME (Electricity)</option>
+                          <option value="DSTV">DStv</option>
+                          <option value="GOTV">GOtv</option>
+                          <option value="YAKALAST">Yaka Last</option>
+                          <option value="SCHOOL-FEES">School Fees</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-sm font-semibold text-gray-700 mb-2">
+                          Customer / Account Reference
+                        </label>
+                        <Input
+                          value={singlePayment.customerRef || ''}
+                          onChange={(e) => handleSinglePaymentChange('customerRef', e.target.value)}
+                          placeholder="Meter / account / student number"
+                          className="w-full"
+                        />
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-sm font-semibold text-gray-700 mb-2">
+                          Area / Region (Optional)
+                        </label>
+                        <Input
+                          value={singlePayment.area || ''}
+                          onChange={(e) => handleSinglePaymentChange('area', e.target.value)}
+                          placeholder="e.g., Kampala"
+                          className="w-full"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-semibold text-gray-700 mb-2">
+                          Customer Phone Number
+                        </label>
+                        <Input
+                          value={singlePayment.phoneNumber || ''}
+                          onChange={(e) => handleSinglePaymentChange('phoneNumber', e.target.value)}
+                          placeholder="e.g., 0700123456"
+                          className="w-full"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                )}
+
                 {/* Description */}
                 <div>
                   <label className="block text-sm font-semibold text-gray-700 mb-2">
@@ -1859,6 +1952,66 @@ export default function BulkPaymentPage() {
                   </>
                 )}
 
+                {/* Bill Payment Fields */}
+                {formData.mode === 'UTILITIES' && (
+                  <>
+                    <div>
+                      <label className="block text-sm font-semibold text-gray-700 mb-2">
+                        Biller / Provider <span className="text-red-500">*</span>
+                      </label>
+                      <select
+                        value={formData.utilityProvider || ''}
+                        onChange={(e) => setFormData(prev => ({ ...prev, utilityProvider: e.target.value }))}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                      >
+                        <option value="">Select biller</option>
+                        <option value="NWSC">NWSC (Water)</option>
+                        <option value="UMEME">UMEME (Electricity)</option>
+                        <option value="DSTV">DStv</option>
+                        <option value="GOTV">GOtv</option>
+                        <option value="YAKALAST">Yaka Last</option>
+                        <option value="SCHOOL-FEES">School Fees</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-semibold text-gray-700 mb-2">
+                        Customer / Account Reference <span className="text-red-500">*</span>
+                      </label>
+                      <Input
+                        value={formData.customerRef || formData.utilityAccountNumber || ''}
+                        onChange={(e) =>
+                          setFormData(prev => ({
+                            ...prev,
+                            customerRef: e.target.value,
+                            utilityAccountNumber: e.target.value,
+                          }))
+                        }
+                        placeholder="Meter / account / student number"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-semibold text-gray-700 mb-2">
+                        Area / Region (Optional)
+                      </label>
+                      <Input
+                        value={formData.area || ''}
+                        onChange={(e) => setFormData(prev => ({ ...prev, area: e.target.value }))}
+                        placeholder="e.g., Kampala"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-semibold text-gray-700 mb-2">
+                        Customer Phone Number
+                      </label>
+                      <Input
+                        value={formData.phoneNumber || ''}
+                        onChange={(e) => setFormData(prev => ({ ...prev, phoneNumber: e.target.value }))}
+                        placeholder="e.g., 0700123456"
+                      />
+                    </div>
+                  </>
+                )}
+
 
                 {/* Common Fields */}
                 <div>
@@ -2008,9 +2161,14 @@ export default function BulkPaymentPage() {
                             {payment.mode === 'WALLET_TO_MNO' && payment.phoneNumber}
                             {payment.mode === 'WALLET_TO_BANK' && payment.accountNumber}
                             {payment.mode === 'MERCHANT_TO_WALLET' && (payment.recipientPhoneNumber || payment.recipientPhone)}
+                            {payment.mode === 'UTILITIES' && payment.customerRef}
                           </p>
                           <div className="flex items-center gap-2">
-                            <p className="text-xs text-gray-500">{payment.recipientName || payment.accountName}</p>
+                            <p className="text-xs text-gray-500">
+                              {payment.mode === 'UTILITIES'
+                                ? `${payment.utilityProvider || ''}${payment.recipientName || payment.accountName ? ' • ' : ''}${payment.recipientName || payment.accountName || ''}`
+                                : (payment.recipientName || payment.accountName)}
+                            </p>
                             {payment.validated && payment.status === 'pending' && (
                               <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-medium">
                                 ✓ Validated
