@@ -401,6 +401,28 @@ export default function TransactionsPage() {
   };
 
   // Helper function to format receiver info with details
+  const getPreferredRecipientName = (txn: any): string | null => {
+    const meta = txn?.metadata || {};
+    const fromMetadata = [
+      meta.recipientName,
+      meta.receiverName,
+      meta.counterpartyInfo?.name,
+      meta.userName,
+      meta.accountName,
+      meta.customerName,
+    ]
+      .map((v: any) => String(v || '').trim())
+      .find((v: string) => v.length > 0);
+
+    if (fromMetadata) return fromMetadata;
+
+    if (txn?.counterpartyUser?.profile?.firstName && txn?.counterpartyUser?.profile?.lastName) {
+      return `${txn.counterpartyUser.profile.firstName} ${txn.counterpartyUser.profile.lastName}`.trim();
+    }
+
+    return null;
+  };
+
   const getReceiverInfo = (txn: any) => {
     // Check for admin-funded deposits first
     if (txn.type === 'DEPOSIT' && txn.metadata?.fundedByAdmin) {
@@ -421,45 +443,44 @@ export default function TransactionsPage() {
       };
     } else {
       // DEBIT direction - merchant is sending to someone
+      const preferredRecipientName = getPreferredRecipientName(txn);
       // Check MNO/phone/bank first because metadata.merchantName is the SENDER's business
       // name, not the receiver. Without this order, MNO disbursements would incorrectly
       // show the sending merchant as the receiver.
       if (txn.type === 'WALLET_TO_MNO' || (txn.metadata?.mnoProvider && txn.metadata?.phoneNumber)) {
         return {
-          name: txn.metadata?.recipientName || `${txn.metadata?.mnoProvider || 'Mobile'} Money`,
+          name: preferredRecipientName || `${txn.metadata?.mnoProvider || 'Mobile'} Money`,
           contact: txn.metadata?.phoneNumber || ''
         };
       } else if (txn.type === 'WALLET_TO_WALLET' || txn.counterpartyId || txn.counterpartyUser) {
-        const receiverName = txn.counterpartyUser?.profile?.firstName && txn.counterpartyUser?.profile?.lastName
-          ? `${txn.counterpartyUser.profile.firstName} ${txn.counterpartyUser.profile.lastName}`
-          : txn.metadata?.counterpartyInfo?.name || txn.metadata?.recipientName || 'RukaPay User';
+        const receiverName = preferredRecipientName || 'RukaPay User';
         return {
           name: receiverName,
           contact: txn.counterpartyUser?.phone || txn.counterpartyId || ''
         };
       } else if (txn.metadata?.phoneNumber) {
         return {
-          name: txn.metadata?.recipientName || 'Mobile Money User',
+          name: preferredRecipientName || 'Mobile Money User',
           contact: txn.metadata?.phoneNumber || ''
         };
       } else if (txn.type === 'WALLET_TO_MERCHANT' || txn.type === 'WALLET_TO_INTERNAL_MERCHANT' || txn.type?.includes('MERCHANT')) {
         return {
-          name: txn.metadata?.merchantName || txn.metadata?.counterpartyInfo?.name || 'Merchant',
+          name: preferredRecipientName || txn.metadata?.merchantName || 'Merchant',
           contact: txn.metadata?.merchantCode || txn.metadata?.accountNumber || ''
         };
       } else if (txn.metadata?.counterpartyInfo) {
         return {
-          name: txn.metadata.counterpartyInfo.name,
+          name: preferredRecipientName || txn.metadata.counterpartyInfo.name,
           contact: txn.metadata.counterpartyInfo.phone || txn.metadata.counterpartyInfo.accountNumber || ''
         };
       } else if (txn.metadata?.accountNumber) {
         return {
-          name: txn.metadata?.recipientName || txn.metadata?.accountName || 'External Account',
+          name: preferredRecipientName || 'External Account',
           contact: txn.metadata?.accountNumber || ''
         };
       } else {
         return {
-          name: txn.metadata?.recipientName || 'Recipient',
+          name: preferredRecipientName || 'Recipient',
           contact: txn.metadata?.phoneNumber || txn.metadata?.accountNumber || ''
         };
       }
