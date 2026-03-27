@@ -636,7 +636,7 @@ export default function BulkPaymentPage() {
 
   // Backend-accepted transaction modes (must match exactly, no spaces)
   const VALID_MODES = [
-    'WALLET_TO_WALLET', 'WALLET_TO_MNO', 'WALLET_TOPUP_PULL', 'MNO_TO_WALLET',
+    'WALLET_TO_MNO', 'WALLET_TOPUP_PULL', 'MNO_TO_WALLET',
     'WALLET_TO_BANK', 'WALLET_TO_INTERNATIONAL_BANK', 'UTILITIES',
     'WALLET_TO_MERCHANT', 'WALLET_TO_INTERNAL_MERCHANT', 'WALLET_TO_EXTERNAL_MERCHANT',
     'MERCHANT_WITHDRAWAL', 'MERCHANT_TO_WALLET',
@@ -939,7 +939,7 @@ export default function BulkPaymentPage() {
 
           if (newPayments.length === 0) {
             toast.error(
-              'No valid payment rows found in CSV. Use exact Transaction Mode values (e.g. WALLET_TO_MNO, WALLET_TO_BANK, WALLET_TO_WALLET) and ensure Amount is present.'
+              'No valid payment rows found in CSV. Use exact Transaction Mode values (e.g. WALLET_TO_MNO, WALLET_TO_BANK) and ensure Amount is present.'
             );
             return;
           }
@@ -1035,7 +1035,7 @@ export default function BulkPaymentPage() {
 
           if (newPayments.length === 0) {
             toast.error(
-              'No valid payment rows found in Excel. Use exact Transaction Mode values (e.g. WALLET_TO_MNO, WALLET_TO_BANK, WALLET_TO_WALLET) and ensure Amount is present.'
+              'No valid payment rows found in Excel. Use exact Transaction Mode values (e.g. WALLET_TO_MNO, WALLET_TO_BANK) and ensure Amount is present.'
             );
             return;
           }
@@ -1081,17 +1081,6 @@ export default function BulkPaymentPage() {
         'Bank Name': 'Stanbic Bank',
         'Bank Sort Code': '040102',
         'Description': 'Bank transfer payment',
-        'Currency': 'UGX',
-      },
-      {
-        'Transaction Mode': 'WALLET_TO_WALLET',
-        'Phone Number / Account Number': '256700333333',
-        'Name': 'Alice Johnson',
-        'Amount': 75000,
-        'Network': '',
-        'Bank Name': '',
-        'Bank Sort Code': '',
-        'Description': 'Wallet to wallet transfer',
         'Currency': 'UGX',
       },
       {

@@ -100,8 +100,7 @@ export default function SuperMerchantDashboard({ merchantId, merchantName }: Sup
     isOwnAccount: true,
   }));
   // Get current selected merchant
-  const currentMerchant =
-    allMerchants.find((m: MerchantItem) => m.merchantCode === currentMerchantCode) || allMerchants[0];
+  const currentMerchant = allMerchants.find((m: MerchantItem) => m.merchantCode === currentMerchantCode) || allMerchants[0];
   const currentContextId = currentMerchant?.id || selectedMerchantContext;
 
   const fetchDashboardData = async () => {

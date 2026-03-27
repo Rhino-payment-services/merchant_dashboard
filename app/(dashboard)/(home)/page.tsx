@@ -22,7 +22,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 export default function Home() {
   const router = useRouter();
   const { data: session } = useSession();
-  const { profile, loading, error, refetch } = useUserProfile();
+  const { profile, loading, error, refetch, isRefetching } = useUserProfile();
   const [recentTransactions, setRecentTransactions] = useState<Transaction[]>([]);
   const [transactionsLoading, setTransactionsLoading] = useState(true);
   const [isSuperMerchant, setIsSuperMerchant] = useState(false);
@@ -237,7 +237,7 @@ export default function Home() {
                     <span className="text-gray-500 font-normal"> · {profile.owner_name}</span>
                   )}
                 </span>
-                {refreshing && (
+                {(refreshing || isRefetching) && (
                   <span className="text-xs text-blue-600 bg-blue-50 px-2 py-1 rounded-full flex items-center gap-1">
                     <RefreshCw className="h-3 w-3 animate-spin" />
                     Updating...
@@ -250,11 +250,11 @@ export default function Home() {
                 variant="outline"
                 size="sm"
                 onClick={handleRefresh}
-                disabled={loading || refreshing}
+                disabled={loading || refreshing || isRefetching}
                 className="flex items-center gap-2"
               >
-                <RefreshCw className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />
-                {loading ? 'Loading...' : refreshing ? 'Refreshing...' : 'Refresh'}
+                <RefreshCw className={`h-4 w-4 ${refreshing || isRefetching ? 'animate-spin' : ''}`} />
+                {loading ? 'Loading...' : refreshing || isRefetching ? 'Refreshing...' : 'Refresh'}
               </Button>
               {!loading && (profile?.merchant_names || profile?.merchantBusinessTradeName) && (
                 <QRCodeButton
@@ -281,7 +281,6 @@ export default function Home() {
             </ul>
           </div>
         )}
-
         {/* Super Merchant gets tabs, regular merchants get standard dashboard */}
         {!superMerchantLoading && isSuperMerchant && currentMerchantId ? (
           <Tabs defaultValue="aggregate" className="w-full">

@@ -19,7 +19,7 @@ const getValidMnoProvider = (provider: string | undefined): string => {
 
 // Single Payment DTO
 export interface SinglePaymentDto {
-  mode: 'WALLET_TO_MNO' | 'WALLET_TO_BANK' | 'WALLET_TO_WALLET' | 'UTILITIES' | 'WALLET_TO_MERCHANT' | 'WALLET_TO_INTERNAL_MERCHANT' | 'WALLET_TO_EXTERNAL_MERCHANT' | 'MERCHANT_TO_WALLET'
+  mode: 'WALLET_TO_MNO' | 'WALLET_TO_BANK' | 'UTILITIES' | 'WALLET_TO_MERCHANT' | 'WALLET_TO_INTERNAL_MERCHANT' | 'WALLET_TO_EXTERNAL_MERCHANT' | 'MERCHANT_TO_WALLET'
   amount: number
   currency: string
   description?: string
@@ -59,7 +59,7 @@ export interface SinglePaymentDto {
 
 // Validation DTO that matches the backend ValidateTransactionDto
 export interface ValidateTransactionRequestDto {
-  transactionType?: 'WALLET_TO_MNO' | 'WALLET_TO_BANK' | 'BILL_PAYMENT' | 'MNO_TO_WALLET' | 'WALLET_TO_WALLET' | 'WALLET_TO_MERCHANT' | 'MERCHANT_TO_WALLET'
+  transactionType?: 'WALLET_TO_MNO' | 'WALLET_TO_BANK' | 'BILL_PAYMENT' | 'MNO_TO_WALLET' | 'WALLET_TO_MERCHANT' | 'MERCHANT_TO_WALLET'
   transactionModeCode?: string // Use mode code for custom modes like MERCHANT_TO_WALLET
   phoneNumber?: string
   network?: string // MNO provider
