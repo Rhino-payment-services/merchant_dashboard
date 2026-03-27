@@ -81,6 +81,18 @@ const dedupeAdminFundTransactions = (items: any[]) => {
   return result;
 };
 
+const formatReferenceForDisplay = (txn: any): string => {
+  const reference = String(txn?.reference || '').trim();
+  if (!reference) return 'N/A';
+
+  const isAdminFund = txn?.type === 'DEPOSIT' && txn?.metadata?.fundedByAdmin;
+  if (!isAdminFund || reference.length <= 24) {
+    return reference;
+  }
+
+  return `${reference.slice(0, 14)}...${reference.slice(-8)}`;
+};
+
 interface transactionType {
   transactions?: any[];
   isNewFormat?: boolean;
@@ -347,8 +359,8 @@ export default function RecentTransactions({ transactions, isNewFormat = false, 
 
                 return (
                   <TableRow key={isNewFormat ? txn.id : txn.rdbs_transaction_id || idx} className="hover:bg-gray-50 transition">
-                    <TableCell className="font-mono text-sm">
-                      {isNewFormat ? txn.reference : txn.rdbs_transaction_id}
+                    <TableCell className="font-mono text-sm" title={isNewFormat ? (txn.reference || 'N/A') : txn.rdbs_transaction_id}>
+                      {isNewFormat ? formatReferenceForDisplay(txn) : txn.rdbs_transaction_id}
                     </TableCell>
                     <TableCell className="text-sm">
                       <div className="flex flex-col">

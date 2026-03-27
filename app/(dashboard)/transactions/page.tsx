@@ -87,6 +87,18 @@ const dedupeAdminFundTransactions = (items: any[]) => {
   return result;
 };
 
+const formatReferenceForDisplay = (txn: any): string => {
+  const reference = String(txn?.reference || '').trim();
+  if (!reference) return 'N/A';
+
+  const isAdminFund = txn?.type === 'DEPOSIT' && txn?.metadata?.fundedByAdmin;
+  if (!isAdminFund || reference.length <= 24) {
+    return reference;
+  }
+
+  return `${reference.slice(0, 14)}...${reference.slice(-8)}`;
+};
+
 interface BulkTransaction {
   bulkTransactionId: string;
   status: 'PENDING' | 'PROCESSING' | 'COMPLETED' | 'FAILED' | 'PARTIAL_SUCCESS' | 'SUCCESS';
@@ -864,8 +876,8 @@ export default function TransactionsPage() {
 
                     return (
                       <TableRow key={transaction.id}>
-                        <TableCell className="font-mono text-sm">
-                          {transaction.reference || 'N/A'}
+                        <TableCell className="font-mono text-sm" title={transaction.reference || 'N/A'}>
+                          {formatReferenceForDisplay(transaction)}
                         </TableCell>
                         <TableCell className="text-sm">
                           <div className="flex flex-col">
