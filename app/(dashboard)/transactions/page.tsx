@@ -389,13 +389,24 @@ export default function TransactionsPage() {
           };
         }
       } else if (txn.type === 'WALLET_TO_WALLET' || txn.counterpartyId || txn.counterpartyUser) {
-        // P2P - Wallet to Wallet - sender is another RukaPay user
-        const senderName = txn.counterpartyUser?.profile?.firstName && txn.counterpartyUser?.profile?.lastName
-          ? `${txn.counterpartyUser.profile.firstName} ${txn.counterpartyUser.profile.lastName}`
-          : txn.metadata?.counterpartyInfo?.name || txn.metadata?.userName || 'RukaPay User';
+        // P2P / personal-wallet-to-merchant: sender is the counterpartyUser.
+        // When counterpartyUser.profile.firstName is missing, prefer counterpartyUser.phone
+        // over metadata.counterpartyInfo.name — the latter may be set to the sender's
+        // business name when they also own a merchant account.
+        const cp = txn.counterpartyUser
+        const senderName =
+          (cp?.profile?.firstName && cp?.profile?.lastName
+            ? `${cp.profile.firstName} ${cp.profile.lastName}`
+            : null)
+          || txn.metadata?.senderName
+          || txn.metadata?.userName
+          || (cp ? null : txn.metadata?.counterpartyInfo?.name)  // only use counterpartyInfo if no counterpartyUser
+          || cp?.phone
+          || txn.counterpartyId
+          || 'RukaPay User';
         return {
           name: senderName,
-          contact: txn.counterpartyUser?.phone || txn.counterpartyId || ''
+          contact: cp?.phone || txn.counterpartyId || ''
         };
       } else if (txn.metadata?.counterpartyInfo) {
         return {
