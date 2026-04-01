@@ -56,6 +56,7 @@ interface ReportSummary {
 export default function ReportsPage() {
   const { profile, loading: profileLoading } = useUserProfile();
   const [dateRange, setDateRange] = useState({ from: '', to: '' });
+  const [exportDateRange, setExportDateRange] = useState({ from: '', to: '' });
   const [transactionType, setTransactionType] = useState<'all' | 'credit' | 'debit'>('all');
   const [status, setStatus] = useState<'all' | 'success' | 'pending' | 'failed'>('all');
   const [searchTerm, setSearchTerm] = useState('');
@@ -279,18 +280,45 @@ export default function ReportsPage() {
     }).format(amount);
   };
 
+  const getExportTransactions = (): Transaction[] | null => {
+    if (!exportDateRange.from || !exportDateRange.to) {
+      toast.error('Please select export from/to dates');
+      return null;
+    }
+
+    const fromDate = new Date(exportDateRange.from);
+    const toDate = new Date(exportDateRange.to);
+    toDate.setHours(23, 59, 59, 999);
+
+    if (fromDate > toDate) {
+      toast.error('Export from date cannot be after export to date');
+      return null;
+    }
+
+    const exportTxns = filteredTransactions.filter((txn) => {
+      const txnDate = new Date(txn.rdbs_approval_date);
+      return txnDate >= fromDate && txnDate <= toDate;
+    });
+
+    if (exportTxns.length === 0) {
+      toast.error('No transactions found in selected export date range');
+      return null;
+    }
+
+    return exportTxns;
+  };
+
   // Export to Excel
   const exportToExcel = async () => {
     setIsExporting(true);
     try {
-      if (filteredTransactions.length === 0) {
-        toast.error('No transactions to export');
-        setIsExporting(false);
+      const exportTransactions = getExportTransactions();
+      if (!exportTransactions) {
         return;
       }
 
       // Prepare transaction data with all relevant fields
-      const exportData = filteredTransactions.map(txn => {
+      const exportData = exportTransactions.map(txn => {
         const transactionDate = new Date(txn.rdbs_approval_date);
         return {
           'Transaction ID': txn.rdbs_transaction_id || 'N/A',
@@ -322,7 +350,7 @@ export default function ReportsPage() {
       const merchantName = profile?.merchant_names || profile?.merchantBusinessTradeName || profile?.businessTradeName || 'Merchant';
       const sanitizedMerchantName = merchantName.replace(/[^a-zA-Z0-9]/g, '_');
       const dateStr = new Date().toISOString().split('T')[0];
-      const filename = `${sanitizedMerchantName}-transactions-${dateStr}.xlsx`;
+      const filename = `${sanitizedMerchantName}-transactions-${exportDateRange.from}-to-${exportDateRange.to}-${dateStr}.xlsx`;
 
       await writeWorkbookWithSheetsToFile(
         [
@@ -344,9 +372,8 @@ export default function ReportsPage() {
   const exportToPDF = async () => {
     setIsExporting(true);
     try {
-      if (filteredTransactions.length === 0) {
-        toast.error('No transactions to export');
-        setIsExporting(false);
+      const exportTransactions = getExportTransactions();
+      if (!exportTransactions) {
         return;
       }
 
@@ -369,9 +396,9 @@ export default function ReportsPage() {
       pdf.setFontSize(10);
       pdf.setFont('helvetica', 'normal');
       let dateRangeText = `Generated on: ${new Date().toLocaleDateString('en-UG')}`;
-      if (dateRange.from || dateRange.to) {
-        const fromDate = dateRange.from ? new Date(dateRange.from).toLocaleDateString('en-UG') : 'All time';
-        const toDate = dateRange.to ? new Date(dateRange.to).toLocaleDateString('en-UG') : 'Today';
+      if (exportDateRange.from || exportDateRange.to) {
+        const fromDate = exportDateRange.from ? new Date(exportDateRange.from).toLocaleDateString('en-UG') : 'All time';
+        const toDate = exportDateRange.to ? new Date(exportDateRange.to).toLocaleDateString('en-UG') : 'Today';
         dateRangeText += ` | Period: ${fromDate} to ${toDate}`;
       }
       pdf.text(dateRangeText, pageWidth / 2, margin + 20, { align: 'center' });
@@ -403,7 +430,7 @@ export default function ReportsPage() {
       yPosition += 20;
       pdf.setFontSize(16);
       pdf.setFont('helvetica', 'bold');
-      pdf.text(`Transaction Details (${filteredTransactions.length} transactions)`, margin, yPosition);
+      pdf.text(`Transaction Details (${exportTransactions.length} transactions)`, margin, yPosition);
       
       yPosition += 10;
       pdf.setFontSize(9);
@@ -433,7 +460,7 @@ export default function ReportsPage() {
       const transactionsPerPage = 18;
       let transactionCount = 0;
       
-      filteredTransactions.forEach((txn, index) => {
+      exportTransactions.forEach((txn, index) => {
         // Check if we need a new page
         if (yPosition > pageHeight - margin - 10) {
           pdf.addPage();
@@ -504,7 +531,7 @@ export default function ReportsPage() {
       // Generate filename
       const sanitizedMerchantName = merchantName.replace(/[^a-zA-Z0-9]/g, '_');
       const dateStr = new Date().toISOString().split('T')[0];
-      const filename = `${sanitizedMerchantName}-transaction-report-${dateStr}.pdf`;
+      const filename = `${sanitizedMerchantName}-transaction-report-${exportDateRange.from}-to-${exportDateRange.to}-${dateStr}.pdf`;
       
       pdf.save(filename);
       toast.success('PDF exported successfully');
@@ -583,6 +610,20 @@ export default function ReportsPage() {
               <p className="text-gray-600">Comprehensive transaction analysis and insights</p>
             </div>
             <div className="flex gap-2">
+              <Input
+                type="date"
+                value={exportDateRange.from}
+                onChange={(e) => setExportDateRange((prev) => ({ ...prev, from: e.target.value }))}
+                className="w-[160px]"
+                title="Export from date"
+              />
+              <Input
+                type="date"
+                value={exportDateRange.to}
+                onChange={(e) => setExportDateRange((prev) => ({ ...prev, to: e.target.value }))}
+                className="w-[160px]"
+                title="Export to date"
+              />
               <Button 
                 onClick={handleRefresh}
                 variant="outline"
