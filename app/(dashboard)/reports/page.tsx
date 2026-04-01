@@ -34,6 +34,7 @@ interface Transaction {
   rdbs_transaction_id: string;
   rdbs_approval_date: string;
   rdbs_sender_name: string;
+  rdbs_receiver_name: string;
   rdbs_amount: number;
   rdbs_type: 'credit' | 'debit';
   rdbs_approval_status: 'approved' | 'pending' | 'failed';
@@ -141,6 +142,35 @@ export default function ReportsPage() {
       }
     };
 
+    // Get receiver name from transaction metadata
+    const getReceiverName = (txn: any): string => {
+      const merchantName =
+        profile?.merchant_names ||
+        profile?.merchantBusinessTradeName ||
+        profile?.businessTradeName ||
+        'Merchant';
+
+      if (txn.direction === 'CREDIT') {
+        return merchantName;
+      }
+
+      const meta = txn.metadata || {};
+      return (
+        meta.recipientName ||
+        meta.receiverName ||
+        meta.counterpartyInfo?.name ||
+        meta.userName ||
+        meta.accountName ||
+        (txn.counterpartyUser?.profile?.firstName && txn.counterpartyUser?.profile?.lastName
+          ? `${txn.counterpartyUser.profile.firstName} ${txn.counterpartyUser.profile.lastName}`
+          : null) ||
+        txn.counterpartyUser?.phone ||
+        txn.counterpartyId ||
+        (txn.type === 'WALLET_TO_MNO' && meta.mnoProvider ? `${meta.mnoProvider} Mobile Money` : null) ||
+        'Recipient'
+      );
+    };
+
     // Determine transaction type - Wallet Funding should always be credit
     const isWalletFunding = apiTxn.type === 'DEPOSIT' || 
                            apiTxn.type === 'WALLET_FUNDING' || 
@@ -150,6 +180,7 @@ export default function ReportsPage() {
       rdbs_transaction_id: apiTxn.reference || apiTxn.transactionId || apiTxn.id || '',
       rdbs_approval_date: apiTxn.createdAt || apiTxn.updatedAt || new Date().toISOString(),
       rdbs_sender_name: getSenderName(apiTxn),
+      rdbs_receiver_name: getReceiverName(apiTxn),
       rdbs_amount: Number(apiTxn.amount || 0),
       // Wallet Funding should always be credit to merchant wallet
       rdbs_type: isWalletFunding ? 'credit' : (apiTxn.direction === 'CREDIT' ? 'credit' : 'debit'),
@@ -249,6 +280,7 @@ export default function ReportsPage() {
           'Date': transactionDate.toLocaleDateString('en-UG'),
           'Time': transactionDate.toLocaleTimeString('en-UG'),
           'Sender Name': txn.rdbs_sender_name || 'N/A',
+          'Receiver Name': txn.rdbs_receiver_name || 'N/A',
           'Transaction Type': txn.rdbs_type?.toUpperCase() || 'N/A',
           'Amount (UGX)': Number(txn.rdbs_amount || 0),
           'Status': txn.rdbs_approval_status?.toUpperCase() || 'N/A',
@@ -360,8 +392,8 @@ export default function ReportsPage() {
       pdf.setFont('helvetica', 'normal');
       
       // Table headers
-      const headers = ['Transaction ID', 'Date', 'Sender', 'Type', 'Amount (UGX)', 'Status'];
-      const columnWidths = [35, 25, 45, 20, 35, 20];
+      const headers = ['Transaction ID', 'Date', 'Sender', 'Receiver', 'Type', 'Amount (UGX)', 'Status'];
+      const columnWidths = [30, 22, 38, 38, 18, 30, 20];
       let xPosition = margin;
       
       // Draw header background
@@ -420,17 +452,23 @@ export default function ReportsPage() {
         
         // Sender name (truncate if too long, handle empty strings)
         const senderName = (txn.rdbs_sender_name || 'N/A').toString();
-        const displayName = senderName.length > 22 ? senderName.substring(0, 22) + '...' : senderName;
+        const displayName = senderName.length > 18 ? senderName.substring(0, 18) + '...' : senderName;
         pdf.text(displayName, xPosition, yPosition);
         xPosition += columnWidths[2];
+
+        // Receiver name
+        const receiverName = (txn.rdbs_receiver_name || 'N/A').toString();
+        const displayReceiver = receiverName.length > 18 ? receiverName.substring(0, 18) + '...' : receiverName;
+        pdf.text(displayReceiver, xPosition, yPosition);
+        xPosition += columnWidths[3];
         
         // Type
         pdf.text(txn.rdbs_type?.toUpperCase() || 'N/A', xPosition, yPosition);
-        xPosition += columnWidths[3];
+        xPosition += columnWidths[4];
         
         // Amount
         pdf.text(`UGX ${Number(txn.rdbs_amount || 0).toLocaleString()}`, xPosition, yPosition);
-        xPosition += columnWidths[4];
+        xPosition += columnWidths[5];
         
         // Status
         pdf.text(txn.rdbs_approval_status?.toUpperCase() || 'N/A', xPosition, yPosition);
@@ -752,6 +790,7 @@ export default function ReportsPage() {
                     <TableHead>Reference ID</TableHead>
                     <TableHead>Date & Time</TableHead>
                     <TableHead>Sender</TableHead>
+                    <TableHead>Receiver</TableHead>
                     <TableHead>Type</TableHead>
                     <TableHead>Amount</TableHead>
                     <TableHead>Status</TableHead>
@@ -760,7 +799,7 @@ export default function ReportsPage() {
                 <TableBody>
                   {filteredTransactions.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={6} className="text-center py-8 text-gray-500">
+                      <TableCell colSpan={7} className="text-center py-8 text-gray-500">
                         No transactions found matching your criteria.
                       </TableCell>
                     </TableRow>
@@ -780,6 +819,9 @@ export default function ReportsPage() {
                         </TableCell>
                         <TableCell className="font-medium">
                           {txn.rdbs_sender_name}
+                        </TableCell>
+                        <TableCell className="font-medium">
+                          {txn.rdbs_receiver_name}
                         </TableCell>
                         <TableCell>
                           <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
