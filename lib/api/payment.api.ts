@@ -42,7 +42,8 @@ const validateBankAccount = async(data: any)=>{
         const validationData = {
             transactionType: 'WALLET_TO_BANK', // Specify this is for bank transfer
             accountNumber: data.accountNumber,
-            bankSortCode: data.bankSortCode,
+            // Backend validate DTO expects bankCode (not bankSortCode)
+            bankCode: data.bankSortCode,
             amount: data.amount
         };
         
