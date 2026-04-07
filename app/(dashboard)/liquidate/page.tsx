@@ -14,6 +14,7 @@ import { useSession } from "next-auth/react";
 import { useUserProfile } from "../UserProfileProvider";
 
 const SWEEP_FEE_PERCENT = 2.5;
+const MIN_LIQUIDATE_AMOUNT = 200000;
 const fmt = (n: number, currency = "UGX") =>
   new Intl.NumberFormat("en-UG", {
     style: "currency",
@@ -36,7 +37,7 @@ export default function LiquidatePage() {
   const fee = useMemo(() => Number((gross * SWEEP_FEE_PERCENT / 100).toFixed(0)), [gross]);
   const net = gross - fee;
   const canSweep =
-    gross > 0 &&
+    gross >= MIN_LIQUIDATE_AMOUNT &&
     net > 0 &&
     collectionBalance !== null &&
     gross <= collectionBalance;
@@ -149,7 +150,7 @@ export default function LiquidatePage() {
                   <Input
                     id="sweep-amount"
                     type="number"
-                    min={1}
+                    min={MIN_LIQUIDATE_AMOUNT}
                     max={collectionBalance ?? 0}
                     placeholder="Enter amount"
                     value={sweepAmount}
@@ -177,6 +178,11 @@ export default function LiquidatePage() {
               </div>
               {gross > 0 && (
                 <div className="rounded-lg border border-blue-100 bg-blue-50 p-3 text-sm">
+                  {gross < MIN_LIQUIDATE_AMOUNT && (
+                    <div className="mb-2 text-amber-700 font-medium">
+                      Minimum liquidation amount is {fmt(MIN_LIQUIDATE_AMOUNT)}.
+                    </div>
+                  )}
                   <div className="flex justify-between text-gray-700">
                     <span>Gross</span>
                     <span className="font-medium">{fmt(gross)}</span>
