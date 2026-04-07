@@ -14,7 +14,6 @@ import { useSession } from "next-auth/react";
 import { useUserProfile } from "../UserProfileProvider";
 
 const SWEEP_FEE_PERCENT = 2.5;
-const MIN_LIQUIDATE_AMOUNT = 200000;
 const fmt = (n: number, currency = "UGX") =>
   new Intl.NumberFormat("en-UG", {
     style: "currency",
@@ -37,7 +36,7 @@ export default function LiquidatePage() {
   const fee = useMemo(() => Number((gross * SWEEP_FEE_PERCENT / 100).toFixed(0)), [gross]);
   const net = gross - fee;
   const canSweep =
-    gross >= MIN_LIQUIDATE_AMOUNT &&
+    gross > 0 &&
     net > 0 &&
     collectionBalance !== null &&
     gross <= collectionBalance;
@@ -150,7 +149,7 @@ export default function LiquidatePage() {
                   <Input
                     id="sweep-amount"
                     type="number"
-                    min={MIN_LIQUIDATE_AMOUNT}
+                    min={1}
                     max={collectionBalance ?? 0}
                     placeholder="Enter amount"
                     value={sweepAmount}
@@ -178,11 +177,6 @@ export default function LiquidatePage() {
               </div>
               {gross > 0 && (
                 <div className="rounded-lg border border-blue-100 bg-blue-50 p-3 text-sm">
-                  {gross < MIN_LIQUIDATE_AMOUNT && (
-                    <div className="mb-2 text-amber-700 font-medium">
-                      Minimum liquidation amount is {fmt(MIN_LIQUIDATE_AMOUNT)}.
-                    </div>
-                  )}
                   <div className="flex justify-between text-gray-700">
                     <span>Gross</span>
                     <span className="font-medium">{fmt(gross)}</span>
@@ -227,9 +221,9 @@ export default function LiquidatePage() {
             </p>
           )}
           <Button asChild className="bg-main-600 hover:bg-main-700">
-            <Link href="/transfer">
+            <Link href="/transfer?source=collection">
               <Landmark className="h-4 w-4 mr-2" />
-              Go to Withdraw
+              Send from Collection (Bank/Mobile Money)
             </Link>
           </Button>
         </CardContent>
