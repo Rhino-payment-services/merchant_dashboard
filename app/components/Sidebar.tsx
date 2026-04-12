@@ -96,7 +96,7 @@ export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
   const featurePayrollApprovals =
     (liveMerchantData?.featurePayrollApprovals ?? currentMerchant?.featurePayrollApprovals) === true;
 
-  // Payment, Payroll, Withdrawal: require featureLiquidation or featureBulkPayments (backward compat)
+  // Liquidate + payroll: require featureLiquidation or featureBulkPayments (Payment link is always shown).
   const canLiquidate = featureLiquidation || featureBulkPayments;
 
   // State for super merchant status
@@ -147,8 +147,7 @@ export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
   const filteredNavLinks = navLinks.map(section => ({
     ...section,
     links: section.links.filter(link => {
-      // Only show Payment/Payroll/Liquidate when merchant has liquidation or bulk payments
-      if (link.path === '/bulk-payment') return canLiquidate;
+      // Payment (single + bulk + bills) is available to all merchants; Liquidate stays gated.
       if (link.path === '/liquidate') return canLiquidate;
       if (link.path === '/payroll') return featurePayroll && canLiquidate;
       if (link.path === '/payroll/approvals') return featurePayrollApprovals && canLiquidate;
