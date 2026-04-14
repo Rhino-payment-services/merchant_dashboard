@@ -34,9 +34,11 @@ interface Transaction {
   rdbs_transaction_id: string;
   rdbs_approval_date: string;
   rdbs_sender_name: string;
+  rdbs_receiver_name: string;
+  rdbs_receiver_number: string;
   rdbs_amount: number;
   rdbs_type: 'credit' | 'debit';
-  rdbs_approval_status: 'approved' | 'pending' | 'failed';
+  rdbs_approval_status: 'success' | 'pending' | 'failed';
   rdbs_date?: string;
 }
 
@@ -54,8 +56,9 @@ interface ReportSummary {
 export default function ReportsPage() {
   const { profile, loading: profileLoading } = useUserProfile();
   const [dateRange, setDateRange] = useState({ from: '', to: '' });
+  const [exportDateRange, setExportDateRange] = useState({ from: '', to: '' });
   const [transactionType, setTransactionType] = useState<'all' | 'credit' | 'debit'>('all');
-  const [status, setStatus] = useState<'all' | 'approved' | 'pending' | 'failed'>('all');
+  const [status, setStatus] = useState<'all' | 'success' | 'pending' | 'failed'>('all');
   const [searchTerm, setSearchTerm] = useState('');
   const [isExporting, setIsExporting] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
@@ -72,7 +75,7 @@ export default function ReportsPage() {
     if (dateRange.to) filter.endDate = dateRange.to;
     if (status !== 'all') {
       // Map status filter to API status
-      if (status === 'approved') filter.status = 'COMPLETED';
+      if (status === 'success') filter.status = 'COMPLETED';
       else if (status === 'pending') filter.status = 'PENDING';
       else if (status === 'failed') filter.status = 'FAILED';
     }
@@ -94,8 +97,8 @@ export default function ReportsPage() {
   // Transform API transactions to the format expected by the reports page
   const transformTransaction = (apiTxn: any): Transaction => {
     // Map API status to reports page status
-    const mapStatus = (apiStatus: string): 'approved' | 'pending' | 'failed' => {
-      if (apiStatus === 'COMPLETED' || apiStatus === 'SUCCESS') return 'approved';
+    const mapStatus = (apiStatus: string): 'success' | 'pending' | 'failed' => {
+      if (apiStatus === 'COMPLETED' || apiStatus === 'SUCCESS') return 'success';
       if (apiStatus === 'PENDING' || apiStatus === 'PROCESSING') return 'pending';
       return 'failed';
     };
@@ -141,6 +144,50 @@ export default function ReportsPage() {
       }
     };
 
+    // Get receiver name from transaction metadata
+    const getReceiverName = (txn: any): string => {
+      const merchantName =
+        profile?.merchant_names ||
+        profile?.merchantBusinessTradeName ||
+        profile?.businessTradeName ||
+        'Merchant';
+
+      if (txn.direction === 'CREDIT') {
+        return merchantName;
+      }
+
+      const meta = txn.metadata || {};
+      return (
+        meta.recipientName ||
+        meta.receiverName ||
+        meta.counterpartyInfo?.name ||
+        meta.userName ||
+        meta.accountName ||
+        (txn.counterpartyUser?.profile?.firstName && txn.counterpartyUser?.profile?.lastName
+          ? `${txn.counterpartyUser.profile.firstName} ${txn.counterpartyUser.profile.lastName}`
+          : null) ||
+        txn.counterpartyUser?.phone ||
+        txn.counterpartyId ||
+        (txn.type === 'WALLET_TO_MNO' && meta.mnoProvider ? `${meta.mnoProvider} Mobile Money` : null) ||
+        'Recipient'
+      );
+    };
+
+    const getReceiverNumber = (txn: any): string => {
+      const meta = txn.metadata || {};
+      return (
+        meta.recipientPhone ||
+        meta.receiverPhone ||
+        meta.phoneNumber ||
+        meta.counterpartyInfo?.phone ||
+        txn.counterpartyUser?.phone ||
+        txn.phoneNumber ||
+        txn.recipientPhoneNumber ||
+        txn.accountNumber ||
+        'N/A'
+      );
+    };
+
     // Determine transaction type - Wallet Funding should always be credit
     const isWalletFunding = apiTxn.type === 'DEPOSIT' || 
                            apiTxn.type === 'WALLET_FUNDING' || 
@@ -150,6 +197,8 @@ export default function ReportsPage() {
       rdbs_transaction_id: apiTxn.reference || apiTxn.transactionId || apiTxn.id || '',
       rdbs_approval_date: apiTxn.createdAt || apiTxn.updatedAt || new Date().toISOString(),
       rdbs_sender_name: getSenderName(apiTxn),
+      rdbs_receiver_name: getReceiverName(apiTxn),
+      rdbs_receiver_number: getReceiverNumber(apiTxn),
       rdbs_amount: Number(apiTxn.amount || 0),
       // Wallet Funding should always be credit to merchant wallet
       rdbs_type: isWalletFunding ? 'credit' : (apiTxn.direction === 'CREDIT' ? 'credit' : 'debit'),
@@ -207,7 +256,7 @@ export default function ReportsPage() {
     const totalTransactions = filteredTransactions.length;
     const averageTransaction = totalTransactions > 0 ? (totalRevenue + totalExpenses) / totalTransactions : 0;
     const successRate = totalTransactions > 0 ? 
-      (filteredTransactions.filter(t => t.rdbs_approval_status === 'approved').length / totalTransactions) * 100 : 0;
+      (filteredTransactions.filter(t => t.rdbs_approval_status === 'success').length / totalTransactions) * 100 : 0;
 
     return {
       totalRevenue,
@@ -231,24 +280,53 @@ export default function ReportsPage() {
     }).format(amount);
   };
 
+  const getExportTransactions = (): Transaction[] | null => {
+    if (!exportDateRange.from || !exportDateRange.to) {
+      toast.error('Please select export from/to dates');
+      return null;
+    }
+
+    const fromDate = new Date(exportDateRange.from);
+    const toDate = new Date(exportDateRange.to);
+    toDate.setHours(23, 59, 59, 999);
+
+    if (fromDate > toDate) {
+      toast.error('Export from date cannot be after export to date');
+      return null;
+    }
+
+    const exportTxns = filteredTransactions.filter((txn) => {
+      const txnDate = new Date(txn.rdbs_approval_date);
+      return txnDate >= fromDate && txnDate <= toDate;
+    });
+
+    if (exportTxns.length === 0) {
+      toast.error('No transactions found in selected export date range');
+      return null;
+    }
+
+    return exportTxns;
+  };
+
   // Export to Excel
   const exportToExcel = async () => {
     setIsExporting(true);
     try {
-      if (filteredTransactions.length === 0) {
-        toast.error('No transactions to export');
-        setIsExporting(false);
+      const exportTransactions = getExportTransactions();
+      if (!exportTransactions) {
         return;
       }
 
       // Prepare transaction data with all relevant fields
-      const exportData = filteredTransactions.map(txn => {
+      const exportData = exportTransactions.map(txn => {
         const transactionDate = new Date(txn.rdbs_approval_date);
         return {
           'Transaction ID': txn.rdbs_transaction_id || 'N/A',
           'Date': transactionDate.toLocaleDateString('en-UG'),
           'Time': transactionDate.toLocaleTimeString('en-UG'),
           'Sender Name': txn.rdbs_sender_name || 'N/A',
+          'Receiver Name': txn.rdbs_receiver_name || 'N/A',
+          'Receiver Number': txn.rdbs_receiver_number || 'N/A',
           'Transaction Type': txn.rdbs_type?.toUpperCase() || 'N/A',
           'Amount (UGX)': Number(txn.rdbs_amount || 0),
           'Status': txn.rdbs_approval_status?.toUpperCase() || 'N/A',
@@ -272,7 +350,7 @@ export default function ReportsPage() {
       const merchantName = profile?.merchant_names || profile?.merchantBusinessTradeName || profile?.businessTradeName || 'Merchant';
       const sanitizedMerchantName = merchantName.replace(/[^a-zA-Z0-9]/g, '_');
       const dateStr = new Date().toISOString().split('T')[0];
-      const filename = `${sanitizedMerchantName}-transactions-${dateStr}.xlsx`;
+      const filename = `${sanitizedMerchantName}-transactions-${exportDateRange.from}-to-${exportDateRange.to}-${dateStr}.xlsx`;
 
       await writeWorkbookWithSheetsToFile(
         [
@@ -294,9 +372,8 @@ export default function ReportsPage() {
   const exportToPDF = async () => {
     setIsExporting(true);
     try {
-      if (filteredTransactions.length === 0) {
-        toast.error('No transactions to export');
-        setIsExporting(false);
+      const exportTransactions = getExportTransactions();
+      if (!exportTransactions) {
         return;
       }
 
@@ -319,9 +396,9 @@ export default function ReportsPage() {
       pdf.setFontSize(10);
       pdf.setFont('helvetica', 'normal');
       let dateRangeText = `Generated on: ${new Date().toLocaleDateString('en-UG')}`;
-      if (dateRange.from || dateRange.to) {
-        const fromDate = dateRange.from ? new Date(dateRange.from).toLocaleDateString('en-UG') : 'All time';
-        const toDate = dateRange.to ? new Date(dateRange.to).toLocaleDateString('en-UG') : 'Today';
+      if (exportDateRange.from || exportDateRange.to) {
+        const fromDate = exportDateRange.from ? new Date(exportDateRange.from).toLocaleDateString('en-UG') : 'All time';
+        const toDate = exportDateRange.to ? new Date(exportDateRange.to).toLocaleDateString('en-UG') : 'Today';
         dateRangeText += ` | Period: ${fromDate} to ${toDate}`;
       }
       pdf.text(dateRangeText, pageWidth / 2, margin + 20, { align: 'center' });
@@ -353,15 +430,15 @@ export default function ReportsPage() {
       yPosition += 20;
       pdf.setFontSize(16);
       pdf.setFont('helvetica', 'bold');
-      pdf.text(`Transaction Details (${filteredTransactions.length} transactions)`, margin, yPosition);
+      pdf.text(`Transaction Details (${exportTransactions.length} transactions)`, margin, yPosition);
       
       yPosition += 10;
       pdf.setFontSize(9);
       pdf.setFont('helvetica', 'normal');
       
       // Table headers
-      const headers = ['Transaction ID', 'Date', 'Sender', 'Type', 'Amount (UGX)', 'Status'];
-      const columnWidths = [35, 25, 45, 20, 35, 20];
+      const headers = ['Transaction ID', 'Date', 'Sender', 'Receiver', 'Receiver No.', 'Type', 'Amount (UGX)', 'Status'];
+      const columnWidths = [28, 20, 32, 30, 28, 16, 26, 20];
       let xPosition = margin;
       
       // Draw header background
@@ -383,7 +460,7 @@ export default function ReportsPage() {
       const transactionsPerPage = 18;
       let transactionCount = 0;
       
-      filteredTransactions.forEach((txn, index) => {
+      exportTransactions.forEach((txn, index) => {
         // Check if we need a new page
         if (yPosition > pageHeight - margin - 10) {
           pdf.addPage();
@@ -420,17 +497,29 @@ export default function ReportsPage() {
         
         // Sender name (truncate if too long, handle empty strings)
         const senderName = (txn.rdbs_sender_name || 'N/A').toString();
-        const displayName = senderName.length > 22 ? senderName.substring(0, 22) + '...' : senderName;
+        const displayName = senderName.length > 15 ? senderName.substring(0, 15) + '...' : senderName;
         pdf.text(displayName, xPosition, yPosition);
         xPosition += columnWidths[2];
+
+        // Receiver name
+        const receiverName = (txn.rdbs_receiver_name || 'N/A').toString();
+        const displayReceiver = receiverName.length > 14 ? receiverName.substring(0, 14) + '...' : receiverName;
+        pdf.text(displayReceiver, xPosition, yPosition);
+        xPosition += columnWidths[3];
+
+        // Receiver number
+        const receiverNumber = (txn.rdbs_receiver_number || 'N/A').toString();
+        const displayReceiverNumber = receiverNumber.length > 14 ? receiverNumber.substring(0, 14) + '...' : receiverNumber;
+        pdf.text(displayReceiverNumber, xPosition, yPosition);
+        xPosition += columnWidths[4];
         
         // Type
         pdf.text(txn.rdbs_type?.toUpperCase() || 'N/A', xPosition, yPosition);
-        xPosition += columnWidths[3];
+        xPosition += columnWidths[5];
         
         // Amount
         pdf.text(`UGX ${Number(txn.rdbs_amount || 0).toLocaleString()}`, xPosition, yPosition);
-        xPosition += columnWidths[4];
+        xPosition += columnWidths[6];
         
         // Status
         pdf.text(txn.rdbs_approval_status?.toUpperCase() || 'N/A', xPosition, yPosition);
@@ -442,7 +531,7 @@ export default function ReportsPage() {
       // Generate filename
       const sanitizedMerchantName = merchantName.replace(/[^a-zA-Z0-9]/g, '_');
       const dateStr = new Date().toISOString().split('T')[0];
-      const filename = `${sanitizedMerchantName}-transaction-report-${dateStr}.pdf`;
+      const filename = `${sanitizedMerchantName}-transaction-report-${exportDateRange.from}-to-${exportDateRange.to}-${dateStr}.pdf`;
       
       pdf.save(filename);
       toast.success('PDF exported successfully');
@@ -521,6 +610,20 @@ export default function ReportsPage() {
               <p className="text-gray-600">Comprehensive transaction analysis and insights</p>
             </div>
             <div className="flex gap-2">
+              <Input
+                type="date"
+                value={exportDateRange.from}
+                onChange={(e) => setExportDateRange((prev) => ({ ...prev, from: e.target.value }))}
+                className="w-[160px]"
+                title="Export from date"
+              />
+              <Input
+                type="date"
+                value={exportDateRange.to}
+                onChange={(e) => setExportDateRange((prev) => ({ ...prev, to: e.target.value }))}
+                className="w-[160px]"
+                title="Export to date"
+              />
               <Button 
                 onClick={handleRefresh}
                 variant="outline"
@@ -593,11 +696,11 @@ export default function ReportsPage() {
                 <label className="block text-sm font-medium mb-1">Status</label>
                 <select
                   value={status}
-                  onChange={(e) => setStatus(e.target.value as 'all' | 'approved' | 'pending' | 'failed')}
+                  onChange={(e) => setStatus(e.target.value as 'all' | 'success' | 'pending' | 'failed')}
                   className="w-full px-3 py-2 border rounded-md bg-white"
                 >
                   <option value="all">All Status</option>
-                  <option value="approved">Approved</option>
+                  <option value="success">Success</option>
                   <option value="pending">Pending</option>
                   <option value="failed">Failed</option>
                 </select>
@@ -752,6 +855,8 @@ export default function ReportsPage() {
                     <TableHead>Reference ID</TableHead>
                     <TableHead>Date & Time</TableHead>
                     <TableHead>Sender</TableHead>
+                    <TableHead>Receiver</TableHead>
+                    <TableHead>Receiver Number</TableHead>
                     <TableHead>Type</TableHead>
                     <TableHead>Amount</TableHead>
                     <TableHead>Status</TableHead>
@@ -760,7 +865,7 @@ export default function ReportsPage() {
                 <TableBody>
                   {filteredTransactions.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={6} className="text-center py-8 text-gray-500">
+                      <TableCell colSpan={8} className="text-center py-8 text-gray-500">
                         No transactions found matching your criteria.
                       </TableCell>
                     </TableRow>
@@ -781,6 +886,12 @@ export default function ReportsPage() {
                         <TableCell className="font-medium">
                           {txn.rdbs_sender_name}
                         </TableCell>
+                        <TableCell className="font-medium">
+                          {txn.rdbs_receiver_name}
+                        </TableCell>
+                        <TableCell className="font-medium">
+                          {txn.rdbs_receiver_number}
+                        </TableCell>
                         <TableCell>
                           <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
                             txn.rdbs_type === 'credit' 
@@ -795,7 +906,7 @@ export default function ReportsPage() {
                         </TableCell>
                         <TableCell>
                           <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
-                            txn.rdbs_approval_status === 'approved' 
+                            txn.rdbs_approval_status === 'success' 
                               ? 'bg-green-100 text-green-800'
                               : txn.rdbs_approval_status === 'pending'
                               ? 'bg-yellow-100 text-yellow-800'
