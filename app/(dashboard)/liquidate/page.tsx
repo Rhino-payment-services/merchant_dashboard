@@ -888,13 +888,6 @@ export default function LiquidatePage() {
               ) : null}
             </>
           )}
-
-          <Button asChild className="bg-main-600 hover:bg-main-700">
-            <Link href="/transfer?source=collection">
-              <Landmark className="h-4 w-4 mr-2" />
-              Send from Collection (Bank/Mobile Money)
-            </Link>
-          </Button>
         </CardContent>
       </Card>
     </div>
