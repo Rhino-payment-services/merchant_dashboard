@@ -23,7 +23,8 @@ import {
   CheckCircle,
   FileCheck,
   ShieldCheck,
-  Building2
+  Building2,
+  Calendar
 } from 'lucide-react';
 import Image from 'next/image';
 import { useSession } from 'next-auth/react';
@@ -41,6 +42,7 @@ const navLinks = [
     // { name: 'Employees', path: '/employees', icon: Package },
     // { name: 'Payroll', path: '/payroll', icon: FileText },
     { name: 'Payment', path: '/bulk-payment', icon: ArrowRightLeft },
+    { name: 'Events', path: '/events', icon: Calendar },
   ]},
   { section: 'TOOLS', links: [
     { name: 'Report', path: '/reports', icon: FileBarChart },
