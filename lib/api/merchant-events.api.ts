@@ -147,3 +147,66 @@ export async function createMerchantEventWithTiers(
   const response = await apiClient.post<MerchantEventWithTiersResponse>('/merchant-events', payload)
   return response.data
 }
+
+/** GET /merchant-events/:id — full event with tiers, summary, and sales statistics */
+export interface MerchantEventTierFull {
+  id: string
+  eventId?: string
+  tierCode?: string
+  name: string
+  description?: string | null
+  price: number
+  currency?: string
+  quantity: number
+  soldCount?: number
+  minPerOrder?: number
+  maxPerOrder?: number
+  salesStartAt?: string | null
+  salesEndAt?: string | null
+  status?: string
+  isActive?: boolean
+  metadata?: Record<string, unknown> | null
+  createdAt?: string
+  updatedAt?: string
+}
+
+export interface MerchantEventSummary {
+  tierCount?: number
+  orderCount?: number
+  paidOrderCount?: number
+  attendeeCount?: number
+  checkedInCount?: number
+  ticketsSold?: number
+  capacity?: number
+  remainingCapacity?: number
+  grossSales?: number
+}
+
+export interface MerchantEventTierSalesRow {
+  tierId: string
+  tierCode?: string
+  name: string
+  quantity: number
+  soldCount?: number
+  availableCount?: number
+  grossSales?: number
+  paidOrderCount?: number
+  paidTicketCount?: number
+}
+
+export interface MerchantEventSalesStatistics {
+  orderStatusBreakdown?: StatusCount[]
+  paymentStatusBreakdown?: StatusCount[]
+  tierSales?: MerchantEventTierSalesRow[]
+}
+
+export interface MerchantEventDetailResponse extends MerchantEventListItem {
+  tiers?: MerchantEventTierFull[]
+  summary?: MerchantEventSummary
+  salesStatistics?: MerchantEventSalesStatistics
+}
+
+export async function getMerchantEventById(id: string): Promise<MerchantEventDetailResponse> {
+  const response = await apiClient.get<MerchantEventDetailResponse>(`/merchant-events/${id}`)
+  return response.data
+}

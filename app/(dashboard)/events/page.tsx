@@ -35,6 +35,7 @@ import {
   ChevronDown,
   Search,
   Plus,
+  Eye,
 } from "lucide-react"
 import { toast } from "sonner"
 import { useUserProfile } from "../UserProfileProvider"
@@ -45,6 +46,7 @@ import {
   type MerchantEventsStatisticsResponse,
 } from "@/lib/api/merchant-events.api"
 import { CreateEventDialog } from "./CreateEventDialog"
+import { EventDetailDialog } from "./EventDetailDialog"
 
 const PAGE_SIZE = 20
 const ALL = "__all__"
@@ -221,6 +223,7 @@ export default function EventsPage() {
   const [activeFilter, setActiveFilter] = useState("")
   const [publicFilter, setPublicFilter] = useState("")
   const [createEventOpen, setCreateEventOpen] = useState(false)
+  const [selectedEventId, setSelectedEventId] = useState<string | null>(null)
 
   useEffect(() => {
     const t = window.setTimeout(() => {
@@ -494,6 +497,14 @@ export default function EventsPage() {
             disabled={!merchantCode}
           />
 
+          <EventDetailDialog
+            open={selectedEventId != null}
+            onOpenChange={(o) => {
+              if (!o) setSelectedEventId(null)
+            }}
+            eventId={selectedEventId}
+          />
+
           <div className="relative rounded-md border min-h-[120px]">
             <Table>
               <TableHeader>
@@ -509,13 +520,14 @@ export default function EventsPage() {
                     Orders
                   </TableHead>
                   <TableHead className="hidden sm:table-cell">Currency</TableHead>
+                  <TableHead className="text-right w-[72px]">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {items.length === 0 && !listLoading ? (
                   <TableRow>
                     <TableCell
-                      colSpan={7}
+                      colSpan={8}
                       className="h-24 text-center text-sm text-gray-500"
                     >
                       {hasListFilters
@@ -550,6 +562,19 @@ export default function EventsPage() {
                       </TableCell>
                       <TableCell className="hidden sm:table-cell align-top text-gray-700">
                         {ev.currency}
+                      </TableCell>
+                      <TableCell className="text-right align-top">
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8 shrink-0"
+                          onClick={() => setSelectedEventId(ev.id)}
+                          disabled={!merchantCode}
+                          aria-label={`View details for ${ev.title}`}
+                        >
+                          <Eye className="h-4 w-4" aria-hidden />
+                        </Button>
                       </TableCell>
                     </TableRow>
                   ))
