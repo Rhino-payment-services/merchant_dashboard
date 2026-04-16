@@ -34,6 +34,7 @@ import {
   Banknote,
   ChevronDown,
   Search,
+  Plus,
 } from "lucide-react"
 import { toast } from "sonner"
 import { useUserProfile } from "../UserProfileProvider"
@@ -43,6 +44,7 @@ import {
   type MerchantEventListItem,
   type MerchantEventsStatisticsResponse,
 } from "@/lib/api/merchant-events.api"
+import { CreateEventDialog } from "./CreateEventDialog"
 
 const PAGE_SIZE = 20
 const ALL = "__all__"
@@ -218,6 +220,7 @@ export default function EventsPage() {
   const [statusFilter, setStatusFilter] = useState("")
   const [activeFilter, setActiveFilter] = useState("")
   const [publicFilter, setPublicFilter] = useState("")
+  const [createEventOpen, setCreateEventOpen] = useState(false)
 
   useEffect(() => {
     const t = window.setTimeout(() => {
@@ -396,7 +399,8 @@ export default function EventsPage() {
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="flex flex-col gap-3 xl:flex-row xl:flex-wrap xl:items-end">
-            <div className="relative flex-1 min-w-[200px]">
+            <div className="flex flex-col gap-3 xl:flex-row xl:flex-wrap flex-1 min-w-0">
+            <div className="relative flex-1 min-w-[150px]">
               <Search
                 className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400 pointer-events-none"
                 aria-hidden
@@ -464,7 +468,28 @@ export default function EventsPage() {
                 </SelectContent>
               </Select>
             </div>
+            </div>
+            <div className="shrink-0 xl:ml-auto">
+              <Button
+                type="button"
+                className="w-full xl:w-auto gap-2"
+                onClick={() => setCreateEventOpen(true)}
+                disabled={!merchantCode}
+              >
+                <Plus className="h-4 w-4" aria-hidden />
+                Create event
+              </Button>
+            </div>
           </div>
+
+          <CreateEventDialog
+            open={createEventOpen}
+            onOpenChange={setCreateEventOpen}
+            onCreated={() => {
+              void refreshAll()
+            }}
+            disabled={!merchantCode}
+          />
 
           <div className="relative rounded-md border min-h-[120px]">
             <Table>

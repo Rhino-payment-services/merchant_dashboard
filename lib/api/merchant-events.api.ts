@@ -92,3 +92,58 @@ export async function getMerchantEventsStatistics(): Promise<MerchantEventsStati
   )
   return response.data
 }
+
+/** POST /merchant-events — aligns with CreateMerchantEventWithTiersDto */
+export interface CreateMerchantEventTierPayload {
+  tierCode?: string
+  name: string
+  description?: string
+  price: number
+  currency?: string
+  quantity: number
+  minPerOrder?: number
+  maxPerOrder?: number
+  salesStartAt?: string
+  salesEndAt?: string
+  metadata?: Record<string, unknown>
+}
+
+export interface CreateMerchantEventWithTiersPayload {
+  title: string
+  startsAt: string
+  walletId?: string
+  eventCode?: string
+  description?: string
+  bannerUrl?: string
+  location?: string
+  endsAt?: string
+  salesStartAt?: string
+  salesEndAt?: string
+  currency?: string
+  isPublic?: boolean
+  capacity?: number
+  metadata?: Record<string, unknown>
+  tiers: CreateMerchantEventTierPayload[]
+}
+
+export interface MerchantEventTierDetailResponse {
+  id?: string
+  tierCode?: string
+  name: string
+  description?: string | null
+  price?: number
+  currency?: string
+  quantity?: number
+  sold?: number
+}
+
+export interface MerchantEventWithTiersResponse extends MerchantEventListItem {
+  tiers: MerchantEventTierDetailResponse[]
+}
+
+export async function createMerchantEventWithTiers(
+  payload: CreateMerchantEventWithTiersPayload
+): Promise<MerchantEventWithTiersResponse> {
+  const response = await apiClient.post<MerchantEventWithTiersResponse>('/merchant-events', payload)
+  return response.data
+}
