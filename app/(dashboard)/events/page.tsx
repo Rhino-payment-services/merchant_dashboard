@@ -399,10 +399,12 @@ export default function EventsPage() {
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="flex flex-col gap-3 xl:flex-row xl:flex-wrap xl:items-end">
-            <div className="flex flex-col gap-3 xl:flex-row xl:flex-wrap flex-1 min-w-0">
-            <div className="relative flex-1 min-w-[150px]">
+            <div className="flex flex-col items-center justify-end gap-3 xl:flex-row xl:flex-wrap flex-1 min-w-0">
+            <div>
+                <span className="text-xs text-gray-500">Search</span>
+            <div className="relative w-full min-w-[140px] max-w-[200px] shrink-0">
               <Search
-                className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400 pointer-events-none"
+                className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-gray-400 pointer-events-none"
                 aria-hidden
               />
               <Input
@@ -410,10 +412,11 @@ export default function EventsPage() {
                 placeholder="Search title or code…"
                 value={searchInput}
                 onChange={(e) => setSearchInput(e.target.value)}
-                className="pl-9"
+                className=" pl-8 text-sm"
                 disabled={!merchantCode}
                 aria-label="Search events"
               />
+            </div>
             </div>
             <div className="flex flex-col gap-1 min-w-[160px]">
               <span className="text-xs text-gray-500">Status</span>
