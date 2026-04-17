@@ -36,6 +36,7 @@ import {
   Search,
   Plus,
   Eye,
+  QrCode,
 } from "lucide-react"
 import { toast } from "sonner"
 import { useUserProfile } from "../UserProfileProvider"
@@ -47,6 +48,7 @@ import {
 } from "@/lib/api/merchant-events.api"
 import { CreateEventDialog } from "./CreateEventDialog"
 import { EventDetailDialog } from "./EventDetailDialog"
+import { EventCheckoutQrDialog } from "./EventCheckoutQrDialog"
 
 const PAGE_SIZE = 20
 const ALL = "__all__"
@@ -224,6 +226,8 @@ export default function EventsPage() {
   const [publicFilter, setPublicFilter] = useState("")
   const [createEventOpen, setCreateEventOpen] = useState(false)
   const [selectedEventId, setSelectedEventId] = useState<string | null>(null)
+  const [checkoutQrEventId, setCheckoutQrEventId] = useState<string | null>(null)
+  const [checkoutQrEventTitle, setCheckoutQrEventTitle] = useState("")
 
   useEffect(() => {
     const t = window.setTimeout(() => {
@@ -505,6 +509,18 @@ export default function EventsPage() {
             eventId={selectedEventId}
           />
 
+          <EventCheckoutQrDialog
+            open={checkoutQrEventId != null}
+            onOpenChange={(o) => {
+              if (!o) {
+                setCheckoutQrEventId(null)
+                setCheckoutQrEventTitle("")
+              }
+            }}
+            eventId={checkoutQrEventId}
+            eventTitle={checkoutQrEventTitle}
+          />
+
           <div className="relative rounded-md border min-h-[120px]">
             <Table>
               <TableHeader>
@@ -520,6 +536,7 @@ export default function EventsPage() {
                     Orders
                   </TableHead>
                   <TableHead className="hidden sm:table-cell">Currency</TableHead>
+                  <TableHead className="text-center w-[56px]">QR code</TableHead>
                   <TableHead className="text-right w-[72px]">Actions</TableHead>
                 </TableRow>
               </TableHeader>
@@ -527,7 +544,7 @@ export default function EventsPage() {
                 {items.length === 0 && !listLoading ? (
                   <TableRow>
                     <TableCell
-                      colSpan={8}
+                      colSpan={9}
                       className="h-24 text-center text-sm text-gray-500"
                     >
                       {hasListFilters
@@ -562,6 +579,22 @@ export default function EventsPage() {
                       </TableCell>
                       <TableCell className="hidden sm:table-cell align-top text-gray-700">
                         {ev.currency}
+                      </TableCell>
+                      <TableCell className="text-center align-top">
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8 shrink-0 mx-auto"
+                          onClick={() => {
+                            setCheckoutQrEventId(ev.id)
+                            setCheckoutQrEventTitle(ev.title)
+                          }}
+                          disabled={!merchantCode}
+                          aria-label={`Show checkout QR for ${ev.title}`}
+                        >
+                          <QrCode className="h-4 w-4" aria-hidden />
+                        </Button>
                       </TableCell>
                       <TableCell className="text-right align-top">
                         <Button

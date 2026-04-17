@@ -210,3 +210,17 @@ export async function getMerchantEventById(id: string): Promise<MerchantEventDet
   const response = await apiClient.get<MerchantEventDetailResponse>(`/merchant-events/${id}`)
   return response.data
 }
+
+export interface MerchantEventCheckoutUrlResponse {
+  checkoutUrl: string
+  eventCode: string
+}
+
+export async function getMerchantEventCheckoutUrl(
+  eventId: string
+): Promise<MerchantEventCheckoutUrlResponse> {
+  const response = await apiClient.get<MerchantEventCheckoutUrlResponse>(
+    `/merchant-events/${eventId}/checkout-url`
+  )
+  return response.data
+}
