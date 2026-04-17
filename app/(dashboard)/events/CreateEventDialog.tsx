@@ -19,7 +19,13 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import { Plus, Trash2 } from "lucide-react"
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip"
+import { CircleHelp, Plus, Trash2 } from "lucide-react"
 import { toast } from "sonner"
 import { getMyBusinessWallet } from "@/lib/api/team.api"
 import {
@@ -29,6 +35,20 @@ import {
 } from "@/lib/api/merchant-events.api"
 
 const CODE_PATTERN = /^[A-Z0-9-]*$/
+
+const EVENT_CATEGORY_OPTIONS = [
+  { value: "_none", label: "Select a category (optional)" },
+  { value: "conference", label: "Conference" },
+  { value: "concert", label: "Concert" },
+  { value: "sports", label: "Sports" },
+  { value: "festival", label: "Festival" },
+  { value: "workshop", label: "Workshop" },
+  { value: "networking", label: "Networking" },
+  { value: "seminar_webinar", label: "Seminar / webinar" },
+  { value: "charity", label: "Charity / fundraiser" },
+  { value: "private_event", label: "Private event" },
+  { value: "other", label: "Other" },
+] as const
 
 function normalizeCode(s: string): string {
   return s.toUpperCase().replace(/[^A-Z0-9-]/g, "")
@@ -77,7 +97,6 @@ type FormFields = {
   description: string
   bannerUrl: string
   location: string
-  walletId: string
   startsAt: string
   endsAt: string
   salesStartAt: string
@@ -85,7 +104,8 @@ type FormFields = {
   currency: string
   isPublic: string
   capacity: string
-  category: string
+  categoryPreset: string
+  categoryCustom: string
   audience: string
 }
 
@@ -95,7 +115,6 @@ const emptyForm = (): FormFields => ({
   description: "",
   bannerUrl: "",
   location: "",
-  walletId: "",
   startsAt: "",
   endsAt: "",
   salesStartAt: "",
@@ -103,9 +122,41 @@ const emptyForm = (): FormFields => ({
   currency: "UGX",
   isPublic: "true",
   capacity: "",
-  category: "",
+  categoryPreset: "_none",
+  categoryCustom: "",
   audience: "",
 })
+
+function Req() {
+  return (
+    <span className="text-red-600" aria-hidden>
+      *
+    </span>
+  )
+}
+
+function Opt() {
+  return <span className="text-muted-foreground font-normal">(optional)</span>
+}
+
+function FieldHint({ children }: { children: React.ReactNode }) {
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <button
+          type="button"
+          className="inline-flex shrink-0 rounded-sm text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          aria-label="More information"
+        >
+          <CircleHelp className="h-3.5 w-3.5" />
+        </button>
+      </TooltipTrigger>
+      <TooltipContent side="top" className="max-w-xs">
+        {children}
+      </TooltipContent>
+    </Tooltip>
+  )
+}
 
 function getApiErrorMessage(e: unknown): string {
   if (typeof e === "object" && e !== null && "response" in e) {
@@ -119,7 +170,7 @@ function getApiErrorMessage(e: unknown): string {
 }
 
 const STEPS = [
-  { id: 1, title: "Event details", description: "Title, codes, and payout wallet" },
+  { id: 1, title: "Event details", description: "Title, venue, and media" },
   { id: 2, title: "Schedule", description: "Event and sales windows" },
   { id: 3, title: "Sales settings", description: "Currency, visibility, capacity" },
   { id: 4, title: "Ticket tiers", description: "At least one pricing tier" },
@@ -142,7 +193,7 @@ export function CreateEventDialog({
   const [form, setForm] = useState<FormFields>(emptyForm)
   const [tiers, setTiers] = useState<TierRow[]>(() => [newTierRow()])
   const [submitting, setSubmitting] = useState(false)
-  const [walletLoading, setWalletLoading] = useState(false)
+  const [defaultWalletId, setDefaultWalletId] = useState("")
   const [stepError, setStepError] = useState("")
 
   const reset = useCallback(() => {
@@ -151,6 +202,7 @@ export function CreateEventDialog({
     setTiers([newTierRow()])
     setStepError("")
     setSubmitting(false)
+    setDefaultWalletId("")
   }, [])
 
   useEffect(() => {
@@ -158,18 +210,11 @@ export function CreateEventDialog({
     reset()
     let cancelled = false
     ;(async () => {
-      setWalletLoading(true)
       try {
         const w = await getMyBusinessWallet()
-        if (!cancelled) {
-          setForm((f) => ({ ...f, walletId: w.id }))
-        }
+        if (!cancelled) setDefaultWalletId(w.id)
       } catch {
-        if (!cancelled) {
-          setForm((f) => ({ ...f, walletId: "" }))
-        }
-      } finally {
-        if (!cancelled) setWalletLoading(false)
+        if (!cancelled) setDefaultWalletId("")
       }
     })()
     return () => {
@@ -263,9 +308,16 @@ export function CreateEventDialog({
     setStep((x) => Math.max(1, x - 1))
   }
 
+  const resolveCategoryForPayload = (): string => {
+    if (form.categoryPreset === "other") return form.categoryCustom.trim()
+    if (form.categoryPreset === "_none") return ""
+    return form.categoryPreset
+  }
+
   const buildPayload = (): CreateMerchantEventWithTiersPayload => {
     const metadata: Record<string, unknown> = {}
-    if (form.category.trim()) metadata.category = form.category.trim()
+    const category = resolveCategoryForPayload()
+    if (category) metadata.category = category
     if (form.audience.trim()) metadata.audience = form.audience.trim()
 
     const eventCurrency = form.currency.trim() || "UGX"
@@ -302,7 +354,7 @@ export function CreateEventDialog({
 
     const ec = normalizeCode(form.eventCode.trim())
     if (ec) payload.eventCode = ec
-    if (form.walletId.trim()) payload.walletId = form.walletId.trim()
+    if (defaultWalletId.trim()) payload.walletId = defaultWalletId.trim()
     if (form.description.trim()) payload.description = form.description.trim()
     if (form.bannerUrl.trim()) payload.bannerUrl = form.bannerUrl.trim()
     if (form.location.trim()) payload.location = form.location.trim()
@@ -349,385 +401,504 @@ export function CreateEventDialog({
   }
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto gap-0 p-0 sm:max-w-3xl">
-        <DialogHeader className="border-b px-6 py-4">
-          <DialogTitle>Create event</DialogTitle>
-          <p className="text-sm text-muted-foreground font-normal pt-1">
-            Step {step} of {STEPS.length}: {STEPS[step - 1].title} — {STEPS[step - 1].description}
-          </p>
-        </DialogHeader>
-
-        <div className="px-6 py-4 space-y-4">
-          {stepError ? (
-            <p className="text-sm text-red-600" role="alert">
-              {stepError}
+    <TooltipProvider delayDuration={300}>
+      <Dialog open={open} onOpenChange={onOpenChange}>
+        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto gap-0 p-0 sm:max-w-3xl">
+          <DialogHeader className="border-b px-6 py-4">
+            <DialogTitle>Create event</DialogTitle>
+            <p className="text-sm text-muted-foreground font-normal pt-1">
+              Step {step} of {STEPS.length}: {STEPS[step - 1].title} — {STEPS[step - 1].description}
             </p>
-          ) : null}
+          </DialogHeader>
 
-          {step === 1 && (
-            <div className="space-y-3">
-              <div className="space-y-2">
-                <Label htmlFor="ce-title">Title</Label>
-                <Input
-                  id="ce-title"
-                  value={form.title}
-                  onChange={(e) => updateField("title", e.target.value)}
-                  placeholder="RukaPay Business Summit 2026"
-                  disabled={disabled}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="ce-code">Event code (optional)</Label>
-                <Input
-                  id="ce-code"
-                  value={form.eventCode}
-                  onChange={(e) => updateField("eventCode", normalizeCode(e.target.value))}
-                  placeholder="RUKA-BIZ-2026"
-                  disabled={disabled}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="ce-desc">Description</Label>
-                <Textarea
-                  id="ce-desc"
-                  value={form.description}
-                  onChange={(e) => updateField("description", e.target.value)}
-                  placeholder="Describe your event…"
-                  rows={3}
-                  disabled={disabled}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="ce-banner">Banner URL</Label>
-                <Input
-                  id="ce-banner"
-                  type="url"
-                  value={form.bannerUrl}
-                  onChange={(e) => updateField("bannerUrl", e.target.value)}
-                  placeholder="https://…"
-                  disabled={disabled}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="ce-loc">Location</Label>
-                <Input
-                  id="ce-loc"
-                  value={form.location}
-                  onChange={(e) => updateField("location", e.target.value)}
-                  placeholder="Venue name or address"
-                  disabled={disabled}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="ce-wallet">Payout wallet</Label>
-                <Input
-                  id="ce-wallet"
-                  value={form.walletId}
-                  onChange={(e) => updateField("walletId", e.target.value)}
-                  placeholder={walletLoading ? "Loading wallet…" : "Wallet UUID"}
-                  disabled={disabled || walletLoading}
-                />
-                <p className="text-xs text-muted-foreground">
-                  Defaults to your business wallet when available. You can paste another UUID if needed.
-                </p>
-              </div>
-            </div>
-          )}
-
-          {step === 2 && (
-            <div className="space-y-3">
-              <div className="space-y-2">
-                <Label htmlFor="ce-starts">Event starts</Label>
-                <Input
-                  id="ce-starts"
-                  type="datetime-local"
-                  value={form.startsAt}
-                  onChange={(e) => updateField("startsAt", e.target.value)}
-                  disabled={disabled}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="ce-ends">Event ends</Label>
-                <Input
-                  id="ce-ends"
-                  type="datetime-local"
-                  value={form.endsAt}
-                  onChange={(e) => updateField("endsAt", e.target.value)}
-                  disabled={disabled}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="ce-ss">Sales start</Label>
-                <Input
-                  id="ce-ss"
-                  type="datetime-local"
-                  value={form.salesStartAt}
-                  onChange={(e) => updateField("salesStartAt", e.target.value)}
-                  disabled={disabled}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="ce-se">Sales end</Label>
-                <Input
-                  id="ce-se"
-                  type="datetime-local"
-                  value={form.salesEndAt}
-                  onChange={(e) => updateField("salesEndAt", e.target.value)}
-                  disabled={disabled}
-                />
-              </div>
-            </div>
-          )}
-
-          {step === 3 && (
-            <div className="space-y-3">
-              <div className="space-y-2">
-                <Label htmlFor="ce-currency">Currency</Label>
-                <Input
-                  id="ce-currency"
-                  value={form.currency}
-                  onChange={(e) => updateField("currency", e.target.value.toUpperCase())}
-                  placeholder="UGX"
-                  maxLength={10}
-                  disabled={disabled}
-                />
-              </div>
-              <div className="space-y-2">
-                <span className="text-sm font-medium">Visibility</span>
-                <Select
-                  value={form.isPublic}
-                  onValueChange={(v) => updateField("isPublic", v)}
-                  disabled={disabled}
-                >
-                  <SelectTrigger id="ce-public">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="true">Public</SelectItem>
-                    <SelectItem value="false">Private</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="ce-cap">Capacity (optional)</Label>
-                <Input
-                  id="ce-cap"
-                  type="number"
-                  min={1}
-                  step={1}
-                  value={form.capacity}
-                  onChange={(e) => updateField("capacity", e.target.value)}
-                  placeholder="500"
-                  disabled={disabled}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="ce-cat">Category (metadata)</Label>
-                <Input
-                  id="ce-cat"
-                  value={form.category}
-                  onChange={(e) => updateField("category", e.target.value)}
-                  placeholder="conference"
-                  disabled={disabled}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="ce-aud">Audience (metadata)</Label>
-                <Input
-                  id="ce-aud"
-                  value={form.audience}
-                  onChange={(e) => updateField("audience", e.target.value)}
-                  placeholder="merchants"
-                  disabled={disabled}
-                />
-              </div>
-            </div>
-          )}
-
-          {step === 4 && (
-            <div className="space-y-4">
-              {tiers.map((t, idx) => (
-                <div
-                  key={t.key}
-                  className="rounded-lg border border-gray-200 p-3 space-y-3 bg-gray-50/50"
-                >
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="text-sm font-medium text-gray-900">Tier {idx + 1}</span>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      className="text-red-600 hover:text-red-700"
-                      onClick={() => removeTier(t.key)}
-                      disabled={disabled || tiers.length <= 1}
-                      aria-label={`Remove tier ${idx + 1}`}
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
-                  </div>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <div className="space-y-2">
-                      <Label htmlFor={`ce-t${t.key}-code`}>Tier code</Label>
-                      <Input
-                        id={`ce-t${t.key}-code`}
-                        value={t.tierCode}
-                        onChange={(e) => updateTier(t.key, { tierCode: normalizeCode(e.target.value) })}
-                        placeholder="GA"
-                        disabled={disabled}
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor={`ce-t${t.key}-name`}>Name</Label>
-                      <Input
-                        id={`ce-t${t.key}-name`}
-                        value={t.name}
-                        onChange={(e) => updateTier(t.key, { name: e.target.value })}
-                        placeholder="General Admission"
-                        disabled={disabled}
-                      />
-                    </div>
-                    <div className="space-y-2 sm:col-span-2">
-                      <Label htmlFor={`ce-t${t.key}-tdesc`}>Description</Label>
-                      <Input
-                        id={`ce-t${t.key}-tdesc`}
-                        value={t.description}
-                        onChange={(e) => updateTier(t.key, { description: e.target.value })}
-                        placeholder="Optional"
-                        disabled={disabled}
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor={`ce-t${t.key}-price`}>Price</Label>
-                      <Input
-                        id={`ce-t${t.key}-price`}
-                        type="number"
-                        min={0}
-                        step="0.01"
-                        value={t.price}
-                        onChange={(e) => updateTier(t.key, { price: e.target.value })}
-                        placeholder="50000"
-                        disabled={disabled}
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor={`ce-t${t.key}-cur`}>Currency</Label>
-                      <Input
-                        id={`ce-t${t.key}-cur`}
-                        value={t.currency}
-                        onChange={(e) =>
-                          updateTier(t.key, { currency: e.target.value.toUpperCase() })
-                        }
-                        placeholder={`Default: ${form.currency || "UGX"}`}
-                        disabled={disabled}
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor={`ce-t${t.key}-qty`}>Quantity</Label>
-                      <Input
-                        id={`ce-t${t.key}-qty`}
-                        type="number"
-                        min={1}
-                        step={1}
-                        value={t.quantity}
-                        onChange={(e) => updateTier(t.key, { quantity: e.target.value })}
-                        disabled={disabled}
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor={`ce-t${t.key}-min`}>Min per order</Label>
-                      <Input
-                        id={`ce-t${t.key}-min`}
-                        type="number"
-                        min={1}
-                        step={1}
-                        value={t.minPerOrder}
-                        onChange={(e) => updateTier(t.key, { minPerOrder: e.target.value })}
-                        disabled={disabled}
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor={`ce-t${t.key}-max`}>Max per order</Label>
-                      <Input
-                        id={`ce-t${t.key}-max`}
-                        type="number"
-                        min={1}
-                        step={1}
-                        value={t.maxPerOrder}
-                        onChange={(e) => updateTier(t.key, { maxPerOrder: e.target.value })}
-                        placeholder="Optional"
-                        disabled={disabled}
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor={`ce-t${t.key}-tss`}>Tier sales start</Label>
-                      <Input
-                        id={`ce-t${t.key}-tss`}
-                        type="datetime-local"
-                        value={t.salesStartAt}
-                        onChange={(e) => updateTier(t.key, { salesStartAt: e.target.value })}
-                        disabled={disabled}
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor={`ce-t${t.key}-tse`}>Tier sales end</Label>
-                      <Input
-                        id={`ce-t${t.key}-tse`}
-                        type="datetime-local"
-                        value={t.salesEndAt}
-                        onChange={(e) => updateTier(t.key, { salesEndAt: e.target.value })}
-                        disabled={disabled}
-                      />
-                    </div>
-                  </div>
-                </div>
-              ))}
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                className="gap-2"
-                onClick={addTier}
-                disabled={disabled}
-              >
-                <Plus className="h-4 w-4" />
-                Add tier
-              </Button>
-            </div>
-          )}
-        </div>
-
-        <DialogFooter className="border-t px-6 py-4 gap-2 sm:gap-0">
-          <Button
-            type="button"
-            variant="outline"
-            onClick={() => onOpenChange(false)}
-            disabled={submitting}
-          >
-            Cancel
-          </Button>
-          <div className="flex flex-1 justify-end gap-2">
-            {step > 1 ? (
-              <Button type="button" variant="outline" onClick={goPrev} disabled={submitting}>
-                Previous
-              </Button>
+          <div className="px-6 py-4 space-y-4">
+            {stepError ? (
+              <p className="text-sm text-red-600" role="alert">
+                {stepError}
+              </p>
             ) : null}
-            {step < STEPS.length ? (
-              <Button type="button" onClick={goNext} disabled={disabled || submitting}>
-                Next
-              </Button>
-            ) : (
-              <Button
-                type="button"
-                onClick={handleSubmit}
-                disabled={disabled || submitting}
-              >
-                {submitting ? "Creating…" : "Create event"}
-              </Button>
+
+            {step === 1 && (
+              <div className="space-y-3">
+                <div className="space-y-2">
+                  <div className="flex items-center gap-1.5">
+                    <Label htmlFor="ce-title">
+                      Title <Req />
+                    </Label>
+                  </div>
+                  <Input
+                    id="ce-title"
+                    value={form.title}
+                    onChange={(e) => updateField("title", e.target.value)}
+                    placeholder="RukaPay Business Summit 2026"
+                    disabled={disabled}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <div className="flex items-center gap-1.5">
+                    <Label htmlFor="ce-code" className="inline-flex flex-wrap items-center gap-x-1 gap-y-0">
+                      Event code <Opt />
+                    </Label>
+                    <FieldHint>
+                      Optional short code (letters, numbers, hyphens) for links and internal reference.
+                    </FieldHint>
+                  </div>
+                  <Input
+                    id="ce-code"
+                    value={form.eventCode}
+                    onChange={(e) => updateField("eventCode", normalizeCode(e.target.value))}
+                    placeholder="RUKA-BIZ-2026"
+                    disabled={disabled}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="ce-desc" className="inline-flex flex-wrap items-center gap-x-1">
+                    Description <Opt />
+                  </Label>
+                  <Textarea
+                    id="ce-desc"
+                    value={form.description}
+                    onChange={(e) => updateField("description", e.target.value)}
+                    placeholder="Describe your event…"
+                    rows={3}
+                    disabled={disabled}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <div className="flex items-center gap-1.5">
+                    <Label htmlFor="ce-banner" className="inline-flex flex-wrap items-center gap-x-1">
+                      Banner URL <Opt />
+                    </Label>
+                    <FieldHint>Image shown at the top of the event page. Use a direct link to an image file.</FieldHint>
+                  </div>
+                  <Input
+                    id="ce-banner"
+                    type="url"
+                    value={form.bannerUrl}
+                    onChange={(e) => updateField("bannerUrl", e.target.value)}
+                    placeholder="https://…"
+                    disabled={disabled}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="ce-loc" className="inline-flex flex-wrap items-center gap-x-1">
+                    Location <Opt />
+                  </Label>
+                  <Input
+                    id="ce-loc"
+                    value={form.location}
+                    onChange={(e) => updateField("location", e.target.value)}
+                    placeholder="Venue name or address"
+                    disabled={disabled}
+                  />
+                </div>
+              </div>
+            )}
+
+            {step === 2 && (
+              <div className="space-y-3">
+                <div className="space-y-2">
+                  <div className="flex items-center gap-1.5">
+                    <Label htmlFor="ce-starts" className="inline-flex flex-wrap items-center gap-x-1">
+                      Event starts <Req />
+                    </Label>
+                    <FieldHint>When the event itself begins (not necessarily when ticket sales open).</FieldHint>
+                  </div>
+                  <Input
+                    id="ce-starts"
+                    type="datetime-local"
+                    value={form.startsAt}
+                    onChange={(e) => updateField("startsAt", e.target.value)}
+                    disabled={disabled}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <div className="flex items-center gap-1.5">
+                    <Label htmlFor="ce-ends" className="inline-flex flex-wrap items-center gap-x-1">
+                      Event ends <Opt />
+                    </Label>
+                    <FieldHint>Leave blank for open-ended or single-moment events.</FieldHint>
+                  </div>
+                  <Input
+                    id="ce-ends"
+                    type="datetime-local"
+                    value={form.endsAt}
+                    onChange={(e) => updateField("endsAt", e.target.value)}
+                    disabled={disabled}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <div className="flex items-center gap-1.5">
+                    <Label htmlFor="ce-ss" className="inline-flex flex-wrap items-center gap-x-1">
+                      Sales start <Opt />
+                    </Label>
+                    <FieldHint>First moment buyers can purchase tickets. Can differ from event start.</FieldHint>
+                  </div>
+                  <Input
+                    id="ce-ss"
+                    type="datetime-local"
+                    value={form.salesStartAt}
+                    onChange={(e) => updateField("salesStartAt", e.target.value)}
+                    disabled={disabled}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <div className="flex items-center gap-1.5">
+                    <Label htmlFor="ce-se" className="inline-flex flex-wrap items-center gap-x-1">
+                      Sales end <Opt />
+                    </Label>
+                    <FieldHint>Last moment ticket sales are allowed. Often before or at event start.</FieldHint>
+                  </div>
+                  <Input
+                    id="ce-se"
+                    type="datetime-local"
+                    value={form.salesEndAt}
+                    onChange={(e) => updateField("salesEndAt", e.target.value)}
+                    disabled={disabled}
+                  />
+                </div>
+              </div>
+            )}
+
+            {step === 3 && (
+              <div className="space-y-3">
+                <div className="space-y-2">
+                  <div className="flex items-center gap-1.5">
+                    <Label htmlFor="ce-currency" className="inline-flex flex-wrap items-center gap-x-1">
+                      Currency <Req />
+                    </Label>
+                    <FieldHint>Default currency for ticket prices and payouts (ISO-style code, e.g. UGX).</FieldHint>
+                  </div>
+                  <Input
+                    id="ce-currency"
+                    value={form.currency}
+                    onChange={(e) => updateField("currency", e.target.value.toUpperCase())}
+                    placeholder="UGX"
+                    maxLength={10}
+                    disabled={disabled}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-sm font-medium inline-flex flex-wrap items-center gap-x-1">
+                      Visibility <Req />
+                    </span>
+                    <FieldHint>
+                      Public events can be discovered in listings; private are only for people with a link or invite.
+                    </FieldHint>
+                  </div>
+                  <Select
+                    value={form.isPublic}
+                    onValueChange={(v) => updateField("isPublic", v)}
+                    disabled={disabled}
+                  >
+                    <SelectTrigger id="ce-public">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="true">Public</SelectItem>
+                      <SelectItem value="false">Private</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <div className="flex items-center gap-1.5">
+                    <Label htmlFor="ce-cap" className="inline-flex flex-wrap items-center gap-x-1">
+                      Capacity <Opt />
+                    </Label>
+                    <FieldHint>Maximum total attendees for the whole event. Tier quantities can further limit tickets.</FieldHint>
+                  </div>
+                  <Input
+                    id="ce-cap"
+                    type="number"
+                    min={1}
+                    step={1}
+                    value={form.capacity}
+                    onChange={(e) => updateField("capacity", e.target.value)}
+                    placeholder="500"
+                    disabled={disabled}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <div className="flex items-center gap-1.5">
+                    <Label htmlFor="ce-cat" className="inline-flex flex-wrap items-center gap-x-1">
+                      Category <Opt />
+                    </Label>
+                    <FieldHint>Helps organize and filter your events in the dashboard and for buyers.</FieldHint>
+                  </div>
+                  <Select
+                    value={form.categoryPreset}
+                    onValueChange={(v) => updateField("categoryPreset", v)}
+                    disabled={disabled}
+                  >
+                    <SelectTrigger id="ce-cat">
+                      <SelectValue placeholder="Select a category (optional)" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {EVENT_CATEGORY_OPTIONS.map((opt) => (
+                        <SelectItem key={opt.value} value={opt.value}>
+                          {opt.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  {form.categoryPreset === "other" ? (
+                    <div className="space-y-2 pt-1">
+                      <Label htmlFor="ce-cat-custom" className="inline-flex flex-wrap items-center gap-x-1">
+                        Specify category <Opt />
+                      </Label>
+                      <Input
+                        id="ce-cat-custom"
+                        value={form.categoryCustom}
+                        onChange={(e) => updateField("categoryCustom", e.target.value)}
+                        placeholder="e.g. product launch"
+                        disabled={disabled}
+                      />
+                    </div>
+                  ) : null}
+                </div>
+                <div className="space-y-2">
+                  <div className="flex items-center gap-1.5">
+                    <Label htmlFor="ce-aud" className="inline-flex flex-wrap items-center gap-x-1">
+                      Audience <Opt />
+                    </Label>
+                    <FieldHint>Who this event is for (e.g. merchants, partners). Shown in listings if you use it.</FieldHint>
+                  </div>
+                  <Input
+                    id="ce-aud"
+                    value={form.audience}
+                    onChange={(e) => updateField("audience", e.target.value)}
+                    placeholder="merchants"
+                    disabled={disabled}
+                  />
+                </div>
+              </div>
+            )}
+
+            {step === 4 && (
+              <div className="space-y-4">
+                {tiers.map((t, idx) => (
+                  <div
+                    key={t.key}
+                    className="rounded-lg border border-gray-200 p-3 space-y-3 bg-gray-50/50"
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-sm font-medium text-gray-900">Tier {idx + 1}</span>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="text-red-600 hover:text-red-700"
+                        onClick={() => removeTier(t.key)}
+                        disabled={disabled || tiers.length <= 1}
+                        aria-label={`Remove tier ${idx + 1}`}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div className="space-y-2">
+                        <div className="flex items-center gap-1.5">
+                          <Label htmlFor={`ce-t${t.key}-code`} className="inline-flex flex-wrap items-center gap-x-1">
+                            Tier code <Opt />
+                          </Label>
+                          <FieldHint>
+                            Optional short label (e.g. VIP) for reports and checkout. Letters, numbers, hyphens only.
+                          </FieldHint>
+                        </div>
+                        <Input
+                          id={`ce-t${t.key}-code`}
+                          value={t.tierCode}
+                          onChange={(e) => updateTier(t.key, { tierCode: normalizeCode(e.target.value) })}
+                          placeholder="GA"
+                          disabled={disabled}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor={`ce-t${t.key}-name`} className="inline-flex flex-wrap items-center gap-x-1">
+                          Name <Req />
+                        </Label>
+                        <Input
+                          id={`ce-t${t.key}-name`}
+                          value={t.name}
+                          onChange={(e) => updateTier(t.key, { name: e.target.value })}
+                          placeholder="General Admission"
+                          disabled={disabled}
+                        />
+                      </div>
+                      <div className="space-y-2 sm:col-span-2">
+                        <Label htmlFor={`ce-t${t.key}-tdesc`} className="inline-flex flex-wrap items-center gap-x-1">
+                          Description <Opt />
+                        </Label>
+                        <Input
+                          id={`ce-t${t.key}-tdesc`}
+                          value={t.description}
+                          onChange={(e) => updateTier(t.key, { description: e.target.value })}
+                          placeholder="Optional"
+                          disabled={disabled}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor={`ce-t${t.key}-price`} className="inline-flex flex-wrap items-center gap-x-1">
+                          Price <Req />
+                        </Label>
+                        <Input
+                          id={`ce-t${t.key}-price`}
+                          type="number"
+                          min={0}
+                          step="0.01"
+                          value={t.price}
+                          onChange={(e) => updateTier(t.key, { price: e.target.value })}
+                          placeholder="50000"
+                          disabled={disabled}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <div className="flex items-center gap-1.5">
+                          <Label htmlFor={`ce-t${t.key}-cur`} className="inline-flex flex-wrap items-center gap-x-1">
+                            Currency <Opt />
+                          </Label>
+                          <FieldHint>Leave blank to use the event default currency.</FieldHint>
+                        </div>
+                        <Input
+                          id={`ce-t${t.key}-cur`}
+                          value={t.currency}
+                          onChange={(e) =>
+                            updateTier(t.key, { currency: e.target.value.toUpperCase() })
+                          }
+                          placeholder={`Default: ${form.currency || "UGX"}`}
+                          disabled={disabled}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor={`ce-t${t.key}-qty`} className="inline-flex flex-wrap items-center gap-x-1">
+                          Quantity <Req />
+                        </Label>
+                        <Input
+                          id={`ce-t${t.key}-qty`}
+                          type="number"
+                          min={1}
+                          step={1}
+                          value={t.quantity}
+                          onChange={(e) => updateTier(t.key, { quantity: e.target.value })}
+                          disabled={disabled}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <div className="flex items-center gap-1.5">
+                          <Label htmlFor={`ce-t${t.key}-min`} className="inline-flex flex-wrap items-center gap-x-1">
+                            Min per order <Opt />
+                          </Label>
+                          <FieldHint>Minimum tickets in one purchase. Defaults to 1 if left blank.</FieldHint>
+                        </div>
+                        <Input
+                          id={`ce-t${t.key}-min`}
+                          type="number"
+                          min={1}
+                          step={1}
+                          value={t.minPerOrder}
+                          onChange={(e) => updateTier(t.key, { minPerOrder: e.target.value })}
+                          disabled={disabled}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <div className="flex items-center gap-1.5">
+                          <Label htmlFor={`ce-t${t.key}-max`} className="inline-flex flex-wrap items-center gap-x-1">
+                            Max per order <Opt />
+                          </Label>
+                          <FieldHint>Cap tickets per checkout. Leave blank for no extra limit beyond tier quantity.</FieldHint>
+                        </div>
+                        <Input
+                          id={`ce-t${t.key}-max`}
+                          type="number"
+                          min={1}
+                          step={1}
+                          value={t.maxPerOrder}
+                          onChange={(e) => updateTier(t.key, { maxPerOrder: e.target.value })}
+                          placeholder="Optional"
+                          disabled={disabled}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <div className="flex items-center gap-1.5">
+                          <Label htmlFor={`ce-t${t.key}-tss`} className="inline-flex flex-wrap items-center gap-x-1">
+                            Tier sales start <Opt />
+                          </Label>
+                          <FieldHint>Override event-wide sales window for this tier only.</FieldHint>
+                        </div>
+                        <Input
+                          id={`ce-t${t.key}-tss`}
+                          type="datetime-local"
+                          value={t.salesStartAt}
+                          onChange={(e) => updateTier(t.key, { salesStartAt: e.target.value })}
+                          disabled={disabled}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <div className="flex items-center gap-1.5">
+                          <Label htmlFor={`ce-t${t.key}-tse`} className="inline-flex flex-wrap items-center gap-x-1">
+                            Tier sales end <Opt />
+                          </Label>
+                          <FieldHint>Override event-wide sales end for this tier only.</FieldHint>
+                        </div>
+                        <Input
+                          id={`ce-t${t.key}-tse`}
+                          type="datetime-local"
+                          value={t.salesEndAt}
+                          onChange={(e) => updateTier(t.key, { salesEndAt: e.target.value })}
+                          disabled={disabled}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                ))}
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="gap-2"
+                  onClick={addTier}
+                  disabled={disabled}
+                >
+                  <Plus className="h-4 w-4" />
+                  Add tier
+                </Button>
+              </div>
             )}
           </div>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+
+          <DialogFooter className="border-t px-6 py-4 gap-2 sm:gap-0">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => onOpenChange(false)}
+              disabled={submitting}
+            >
+              Cancel
+            </Button>
+            <div className="flex flex-1 justify-end gap-2">
+              {step > 1 ? (
+                <Button type="button" variant="outline" onClick={goPrev} disabled={submitting}>
+                  Previous
+                </Button>
+              ) : null}
+              {step < STEPS.length ? (
+                <Button type="button" onClick={goNext} disabled={disabled || submitting}>
+                  Next
+                </Button>
+              ) : (
+                <Button
+                  type="button"
+                  onClick={handleSubmit}
+                  disabled={disabled || submitting}
+                >
+                  {submitting ? "Creating…" : "Create event"}
+                </Button>
+              )}
+            </div>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </TooltipProvider>
   )
 }
