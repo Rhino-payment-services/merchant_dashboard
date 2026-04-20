@@ -273,11 +273,17 @@ export default function TransactionsPage() {
 
   // Helper to classify which business wallet flavour a transaction used
   const classifyWalletView = (tx: any): 'collection' | 'disbursement' | 'unknown' => {
-    const t = (tx.businessWalletType ||
+    const t = (
+      tx.businessWalletType ||
+      // For debit flows, backend may expose explicit debit wallet type in metadata.
+      tx.metadata?.debitWalletType ||
+      tx.wallet?.walletType ||
       tx.metadata?.businessWalletType ||
       tx.metadata?.walletType ||
       ''
-    ).toString().toUpperCase();
+    )
+      .toString()
+      .toUpperCase();
 
     if (t === 'BUSINESS_DISBURSEMENT' || t === 'BUSINESS_LIQUIDATION') {
       return 'disbursement';
