@@ -1270,6 +1270,7 @@ export default function BulkPaymentPage() {
         'Network': 'MTN',
         'Bank Name': '',
         'Bank Sort Code': '',
+        'Utility Provider': '',
         'Description': 'Mobile money payment',
         'Currency': 'UGX',
       },
@@ -1281,6 +1282,7 @@ export default function BulkPaymentPage() {
         'Network': '',
         'Bank Name': 'Stanbic Bank',
         'Bank Sort Code': '040102',
+        'Utility Provider': '',
         'Description': 'Bank transfer payment',
         'Currency': 'UGX',
       },
@@ -1292,14 +1294,27 @@ export default function BulkPaymentPage() {
         'Network': '',
         'Bank Name': '',
         'Bank Sort Code': '',
+        'Utility Provider': '',
         'Description': 'Commission payment',
+        'Currency': 'UGX',
+      },
+      {
+        'Transaction Mode': 'UTILITIES',
+        'Phone Number / Account Number': '256701234567',
+        'Name': 'Airtime Recipient',
+        'Amount': 15000,
+        'Network': '',
+        'Bank Name': '',
+        'Bank Sort Code': '',
+        'Utility Provider': 'AIRTIME',
+        'Description': 'Airtime top up',
         'Currency': 'UGX',
       },
     ];
 
     if (format === 'csv') {
       // Generate CSV content
-      const headers = ['Transaction Mode', 'Phone Number / Account Number', 'Name', 'Amount', 'Network', 'Bank Name', 'Bank Sort Code', 'Description', 'Currency'];
+      const headers = ['Transaction Mode', 'Phone Number / Account Number', 'Name', 'Amount', 'Network', 'Bank Name', 'Bank Sort Code', 'Utility Provider', 'Description', 'Currency'];
       const csvContent = [
         headers.join(','),
         ...templateData.map(row => 
