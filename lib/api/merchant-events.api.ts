@@ -264,3 +264,18 @@ export async function getMerchantEventCheckoutUrl(
   )
   return response.data
 }
+
+export interface UpdateMerchantEventStatusPayload {
+  status: string
+}
+
+export async function updateMerchantEventStatus(
+  eventId: string,
+  payload: UpdateMerchantEventStatusPayload
+): Promise<MerchantEventListItem> {
+  const response = await apiClient.patch<MerchantEventListItem>(
+    `/merchant-events/${eventId}/status`,
+    payload
+  )
+  return response.data
+}

@@ -41,12 +41,14 @@ import { useUserProfile } from "../UserProfileProvider"
 import {
   getMerchantEventsStatistics,
   listMerchantEvents,
+  updateMerchantEventStatus,
   type MerchantEventListItem,
   type MerchantEventsStatisticsResponse,
 } from "@/lib/api/merchant-events.api"
 import { CreateEventDialog } from "./CreateEventDialog"
 import { EventDetailDialog } from "./EventDetailDialog"
 import { EventCheckoutQrDialog } from "./EventCheckoutQrDialog"
+import { ActivateEventModal } from "./ActivateEventModal"
 
 const PAGE_SIZE = 20
 const ALL = "__all__"
@@ -100,6 +102,9 @@ export default function EventsPage() {
   const [selectedEventId, setSelectedEventId] = useState<string | null>(null)
   const [checkoutQrEventId, setCheckoutQrEventId] = useState<string | null>(null)
   const [checkoutQrEventTitle, setCheckoutQrEventTitle] = useState("")
+  const [activatingEventId, setActivatingEventId] = useState<string | null>(null)
+  const [activatingEventTitle, setActivatingEventTitle] = useState("")
+  const [statusUpdating, setStatusUpdating] = useState(false)
 
   useEffect(() => {
     const t = window.setTimeout(() => {
@@ -193,6 +198,23 @@ export default function EventsPage() {
       setListLoading(false)
     }
   }, [merchantCode, listParams, page])
+
+  const handleActivateEvent = useCallback(async () => {
+    if (!activatingEventId) return
+    try {
+      setStatusUpdating(true)
+      await updateMerchantEventStatus(activatingEventId, { status: "ACTIVE" })
+      toast.success("Event activated successfully.")
+      setActivatingEventId(null)
+      setActivatingEventTitle("")
+      await refreshAll()
+    } catch (e) {
+      console.error("Failed to activate event", e)
+      toast.error("Failed to activate event. Please try again.")
+    } finally {
+      setStatusUpdating(false)
+    }
+  }, [activatingEventId, refreshAll])
 
   const s = stats
 
@@ -368,6 +390,21 @@ export default function EventsPage() {
             eventTitle={checkoutQrEventTitle}
           />
 
+          <ActivateEventModal
+            open={activatingEventId != null}
+            eventTitle={activatingEventTitle}
+            loading={statusUpdating}
+            onOpenChange={(open) => {
+              if (!open) {
+                setActivatingEventId(null)
+                setActivatingEventTitle("")
+              }
+            }}
+            onConfirm={() => {
+              void handleActivateEvent()
+            }}
+          />
+
           <div className="relative rounded-md border min-h-[120px]">
             <Table>
               <TableHeader>
@@ -420,7 +457,27 @@ export default function EventsPage() {
                         {ev.location ?? "—"}
                       </TableCell>
                       <TableCell className="align-top">
-                        <Badge variant={statusBadgeVariant(ev.status)}>{ev.status}</Badge>
+                        {ev.status.toUpperCase() === "DRAFT" ? (
+                          <button
+                            type="button"
+                            className="inline-flex rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed"
+                            onClick={() => {
+                              setActivatingEventId(ev.id)
+                              setActivatingEventTitle(ev.title)
+                            }}
+                            disabled={!merchantCode || statusUpdating}
+                            aria-label={`Activate ${ev.title}`}
+                          >
+                            <Badge
+                              variant={statusBadgeVariant(ev.status)}
+                              className="cursor-pointer transition-opacity hover:opacity-80"
+                            >
+                              {ev.status}
+                            </Badge>
+                          </button>
+                        ) : (
+                          <Badge variant={statusBadgeVariant(ev.status)}>{ev.status}</Badge>
+                        )}
                       </TableCell>
                       <TableCell className="text-right tabular-nums align-top">
                         {(ev.ticketsSold ?? 0).toLocaleString()}
