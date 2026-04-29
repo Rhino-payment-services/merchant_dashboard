@@ -286,21 +286,11 @@ export default function EventsPage() {
       </div>
 
       <Card className="mb-6">
-        <CardHeader className="pb-2">
-          <CardTitle className="text-lg">Your events</CardTitle>
-          <p className="text-sm text-gray-500 font-normal">
-            {!merchantCode
-              ? "…"
-              : listLoading
-                ? "…"
-                : `${total.toLocaleString()} event${total === 1 ? "" : "s"}`}
-          </p>
-        </CardHeader>
         <CardContent className="space-y-4">
           <div className="flex flex-col gap-3 xl:flex-row xl:flex-wrap xl:items-end">
-            <div>All Events ({total.toLocaleString()})</div>
+            <span className="text-base font-medium text-gray-900">All Events ({total.toLocaleString()})</span>
             <div className="flex w-full flex-col items-stretch justify-end gap-3 xl:flex-1 xl:flex-row xl:flex-wrap xl:items-end">
-              <div className="w-full xl:min-w-[380px] xl:max-w-[560px] xl:flex-1">
+              <div className="w-full xl:min-w-[320px] xl:max-w-[560px] xl:flex-1">
                 <div className="relative w-full">
                   <Search
                     className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-gray-400"
@@ -382,6 +372,7 @@ export default function EventsPage() {
             <Table>
               <TableHeader>
                 <TableRow>
+                  <TableHead className="w-[52px] text-center">#</TableHead>
                   <TableHead className="min-w-[180px]">Event</TableHead>
                   <TableHead className="hidden lg:table-cell min-w-[220px]">
                     Schedule
@@ -401,7 +392,7 @@ export default function EventsPage() {
                 {items.length === 0 && !listLoading ? (
                   <TableRow>
                     <TableCell
-                      colSpan={9}
+                      colSpan={10}
                       className="h-24 text-center text-sm text-gray-500"
                     >
                       {hasListFilters
@@ -410,8 +401,11 @@ export default function EventsPage() {
                     </TableCell>
                   </TableRow>
                 ) : (
-                  items.map((ev) => (
+                  items.map((ev, idx) => (
                     <TableRow key={ev.id}>
+                      <TableCell className="text-center align-top tabular-nums text-gray-500">
+                        {(page - 1) * PAGE_SIZE + idx + 1}
+                      </TableCell>
                       <TableCell className="align-top whitespace-normal">
                         <div className="font-medium text-gray-900">{ev.title}</div>
                         <div className="text-xs text-gray-500 mt-0.5">{ev.eventCode}</div>
