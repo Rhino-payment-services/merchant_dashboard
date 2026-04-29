@@ -39,6 +39,7 @@ import {
   type PublicMerchantEventStatusResponse,
   type PublicMerchantEventTierDto,
 } from "@/lib/api/public-merchant-events.api"
+import { API_URL } from "@/lib/config"
 
 const BRAND = "#08163d"
 
@@ -70,6 +71,15 @@ function formatMoney(amount: number, currency: string) {
   } catch {
     return `${amount.toLocaleString()} ${currency}`
   }
+}
+
+function resolveBannerUrl(bannerUrl: string): string {
+  const url = bannerUrl.trim()
+  if (!url) return ""
+  if (url.startsWith("http://") || url.startsWith("https://")) return url
+  const base = API_URL.replace(/\/$/, "")
+  const path = url.startsWith("/") ? url : `/${url}`
+  return `${base}${path}`
 }
 
 function normalizeUgPhone(input: string): string {
@@ -480,7 +490,7 @@ function PublicEventCheckoutPage({ params }: PageProps) {
         <div className="relative mb-6 aspect-[21/9] w-full overflow-hidden rounded-xl border bg-gray-100">
           {/* eslint-disable-next-line @next/next/no-img-element -- merchant-provided URLs */}
           <img
-            src={detail.bannerUrl}
+            src={resolveBannerUrl(detail.bannerUrl)}
             alt=""
             className="h-full w-full object-cover"
           />
