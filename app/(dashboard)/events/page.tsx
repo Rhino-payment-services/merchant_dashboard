@@ -298,83 +298,48 @@ export default function EventsPage() {
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="flex flex-col gap-3 xl:flex-row xl:flex-wrap xl:items-end">
-            <div className="flex flex-col items-center justify-end gap-3 xl:flex-row xl:flex-wrap flex-1 min-w-0">
-            <div>
-                <span className="text-xs text-gray-500">Search</span>
-            <div className="relative w-full min-w-[140px] max-w-[200px] shrink-0">
-              <Search
-                className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-gray-400 pointer-events-none"
-                aria-hidden
-              />
-              <Input
-                type="search"
-                placeholder="Search title or code…"
-                value={searchInput}
-                onChange={(e) => setSearchInput(e.target.value)}
-                className=" pl-8 text-sm"
-                disabled={!merchantCode}
-                aria-label="Search events"
-              />
-            </div>
-            </div>
-            <div className="flex flex-col gap-1 min-w-[160px]">
-              <span className="text-xs text-gray-500">Status</span>
-              <Select
-                value={statusFilter || ALL}
-                onValueChange={(v) => setStatusFilter(v === ALL ? "" : v)}
-                disabled={!merchantCode}
-              >
-                <SelectTrigger className="w-full xl:w-[180px]">
-                  <SelectValue placeholder="All statuses" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value={ALL}>All statuses</SelectItem>
-                  <SelectItem value="ACTIVE">Active</SelectItem>
-                  <SelectItem value="DRAFT">Draft</SelectItem>
-                  <SelectItem value="ENDED">Ended</SelectItem>
-                  <SelectItem value="CANCELLED">Cancelled</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="flex flex-col gap-1 min-w-[160px]">
-              <span className="text-xs text-gray-500">Listing</span>
-              <Select
-                value={activeFilter || ALL}
-                onValueChange={(v) => setActiveFilter(v === ALL ? "" : v)}
-                disabled={!merchantCode}
-              >
-                <SelectTrigger className="w-full xl:w-[180px]">
-                  <SelectValue placeholder="Any" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value={ALL}>Any</SelectItem>
-                  <SelectItem value="true">Active listing</SelectItem>
-                  <SelectItem value="false">Inactive listing</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="flex flex-col gap-1 min-w-[160px]">
-              <span className="text-xs text-gray-500">Visibility</span>
-              <Select
-                value={publicFilter || ALL}
-                onValueChange={(v) => setPublicFilter(v === ALL ? "" : v)}
-                disabled={!merchantCode}
-              >
-                <SelectTrigger className="w-full xl:w-[180px]">
-                  <SelectValue placeholder="Any" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value={ALL}>Any</SelectItem>
-                  <SelectItem value="true">Public</SelectItem>
-                  <SelectItem value="false">Private</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
+            <div>All Events ({total.toLocaleString()})</div>
+            <div className="flex w-full flex-col items-stretch justify-end gap-3 xl:flex-1 xl:flex-row xl:flex-wrap xl:items-end">
+              <div className="w-full xl:min-w-[380px] xl:max-w-[560px] xl:flex-1">
+                <div className="relative w-full">
+                  <Search
+                    className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-gray-400"
+                    aria-hidden
+                  />
+                  <Input
+                    type="search"
+                    placeholder="Search title or code…"
+                    value={searchInput}
+                    onChange={(e) => setSearchInput(e.target.value)}
+                    className="h-10 pl-8 text-sm"
+                    disabled={!merchantCode}
+                    aria-label="Search events"
+                  />
+                </div>
+              </div>
+              <div className="min-w-[180px]">
+                <Select
+                  value={statusFilter || ALL}
+                  onValueChange={(v) => setStatusFilter(v === ALL ? "" : v)}
+                  disabled={!merchantCode}
+                >
+                  <SelectTrigger className="h-10 w-full xl:w-[200px]">
+                    <SelectValue placeholder="All statuses" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value={ALL}>All statuses</SelectItem>
+                    <SelectItem value="ACTIVE">Active</SelectItem>
+                    <SelectItem value="DRAFT">Draft</SelectItem>
+                    <SelectItem value="ENDED">Ended</SelectItem>
+                    <SelectItem value="CANCELLED">Cancelled</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
             <div className="shrink-0 xl:ml-auto">
               <Button
                 type="button"
-                className="w-full xl:w-auto gap-2"
+                className="h-10 w-full gap-2 xl:w-auto"
                 onClick={() => setCreateEventOpen(true)}
                 disabled={!merchantCode}
               >
