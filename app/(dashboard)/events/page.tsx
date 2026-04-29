@@ -34,6 +34,7 @@ import {
   Search,
   Plus,
   Eye,
+  Pencil,
   QrCode,
 } from "lucide-react"
 import { toast } from "sonner"
@@ -46,6 +47,7 @@ import {
   type MerchantEventsStatisticsResponse,
 } from "@/lib/api/merchant-events.api"
 import { CreateEventDialog } from "./CreateEventDialog"
+import { EditEventDialog } from "./EditEventDialog"
 import { EventDetailDialog } from "./EventDetailDialog"
 import { EventCheckoutQrDialog } from "./EventCheckoutQrDialog"
 import { ActivateEventModal } from "./ActivateEventModal"
@@ -101,6 +103,7 @@ export default function EventsPage() {
   const [publicFilter, setPublicFilter] = useState("")
   const [createEventOpen, setCreateEventOpen] = useState(false)
   const [selectedEventId, setSelectedEventId] = useState<string | null>(null)
+  const [editEventId, setEditEventId] = useState<string | null>(null)
   const [checkoutQrEventId, setCheckoutQrEventId] = useState<string | null>(null)
   const [checkoutQrEventTitle, setCheckoutQrEventTitle] = useState("")
   const [ordersDrawerOpen, setOrdersDrawerOpen] = useState(false)
@@ -374,6 +377,18 @@ export default function EventsPage() {
             disabled={!merchantCode}
           />
 
+          <EditEventDialog
+            open={editEventId != null}
+            onOpenChange={(o) => {
+              if (!o) setEditEventId(null)
+            }}
+            eventId={editEventId}
+            onUpdated={() => {
+              void refreshAll()
+            }}
+            disabled={!merchantCode}
+          />
+
           <EventDetailDialog
             open={selectedEventId != null}
             onOpenChange={(o) => {
@@ -439,7 +454,7 @@ export default function EventsPage() {
                   </TableHead>
                   <TableHead className="hidden sm:table-cell">Currency</TableHead>
                   <TableHead className="text-center w-[56px]">QR code</TableHead>
-                  <TableHead className="text-right w-[72px]">Actions</TableHead>
+                  <TableHead className="text-right w-[120px]">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -534,17 +549,30 @@ export default function EventsPage() {
                         </Button>
                       </TableCell>
                       <TableCell className="text-right align-top">
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="icon"
-                          className="h-8 w-8 shrink-0"
-                          onClick={() => setSelectedEventId(ev.id)}
-                          disabled={!merchantCode}
-                          aria-label={`View details for ${ev.title}`}
-                        >
-                          <Eye className="h-4 w-4" aria-hidden />
-                        </Button>
+                        <div className="flex items-center justify-end gap-1">
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8 shrink-0"
+                            onClick={() => setEditEventId(ev.id)}
+                            disabled={!merchantCode}
+                            aria-label={`Edit ${ev.title}`}
+                          >
+                            <Pencil className="h-4 w-4" aria-hidden />
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8 shrink-0"
+                            onClick={() => setSelectedEventId(ev.id)}
+                            disabled={!merchantCode}
+                            aria-label={`View details for ${ev.title}`}
+                          >
+                            <Eye className="h-4 w-4" aria-hidden />
+                          </Button>
+                        </div>
                       </TableCell>
                     </TableRow>
                   ))

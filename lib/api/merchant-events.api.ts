@@ -95,6 +95,8 @@ export async function getMerchantEventsStatistics(): Promise<MerchantEventsStati
 
 /** POST /merchant-events — aligns with CreateMerchantEventWithTiersDto */
 export interface CreateMerchantEventTierPayload {
+  /** Set on PATCH when updating an existing tier */
+  id?: string
   tierCode?: string
   name: string
   description?: string
@@ -145,6 +147,34 @@ export async function createMerchantEventWithTiers(
   payload: CreateMerchantEventWithTiersPayload
 ): Promise<MerchantEventWithTiersResponse> {
   const response = await apiClient.post<MerchantEventWithTiersResponse>('/merchant-events', payload)
+  return response.data
+}
+
+/** PATCH /merchant-events/:id — update event and optional tiers */
+export interface UpdateMerchantEventWithTiersPayload {
+  title?: string
+  description?: string
+  bannerUrl?: string
+  location?: string
+  startsAt?: string
+  endsAt?: string
+  salesStartAt?: string
+  salesEndAt?: string
+  currency?: string
+  isPublic?: boolean
+  capacity?: number
+  metadata?: Record<string, unknown>
+  tiers?: CreateMerchantEventTierPayload[]
+}
+
+export async function updateMerchantEventWithTiers(
+  eventId: string,
+  payload: UpdateMerchantEventWithTiersPayload
+): Promise<MerchantEventWithTiersResponse> {
+  const response = await apiClient.patch<MerchantEventWithTiersResponse>(
+    `/merchant-events/${eventId}`,
+    payload
+  )
   return response.data
 }
 
