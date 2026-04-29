@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { PhoneNumberInput } from "@/components/ui/phone-input"
 import { Badge } from "@/components/ui/badge"
 import { Label } from "@/components/ui/label"
 import {
@@ -578,38 +579,36 @@ function PublicEventCheckoutPage({ params }: PageProps) {
               ) : null}
 
               <div className="space-y-2">
-                <Label htmlFor="phone">Mobile money number</Label>
-                <Input
-                  id="phone"
-                  type="tel"
-                  inputMode="numeric"
-                  autoComplete="tel"
+                <Label>Mobile money number</Label>
+                <PhoneNumberInput
                   placeholder="0700 123 456"
                   value={buyerPhone}
-                  onChange={(e) => setBuyerPhone(e.target.value)}
-                  required
+                  onChange={setBuyerPhone}
+                  defaultCountry="ug"
                 />
                 <p className="text-xs text-gray-500">Uganda numbers only; used for payment prompt.</p>
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="email">Email (optional)</Label>
+                <Label htmlFor="email">Email</Label>
                 <Input
                   id="email"
                   type="email"
                   value={buyerEmail}
                   onChange={(e) => setBuyerEmail(e.target.value)}
                   autoComplete="email"
+                  required
                 />
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="name">Your name (optional)</Label>
+                <Label htmlFor="name">Your name</Label>
                 <Input
                   id="name"
                   value={buyerName}
                   onChange={(e) => setBuyerName(e.target.value)}
                   autoComplete="name"
+                  required
                 />
               </div>
 
