@@ -49,6 +49,7 @@ import { CreateEventDialog } from "./CreateEventDialog"
 import { EventDetailDialog } from "./EventDetailDialog"
 import { EventCheckoutQrDialog } from "./EventCheckoutQrDialog"
 import { ActivateEventModal } from "./ActivateEventModal"
+import { EventOrdersDrawer } from "./EventOrdersDrawer"
 
 const PAGE_SIZE = 20
 const ALL = "__all__"
@@ -102,6 +103,9 @@ export default function EventsPage() {
   const [selectedEventId, setSelectedEventId] = useState<string | null>(null)
   const [checkoutQrEventId, setCheckoutQrEventId] = useState<string | null>(null)
   const [checkoutQrEventTitle, setCheckoutQrEventTitle] = useState("")
+  const [ordersDrawerOpen, setOrdersDrawerOpen] = useState(false)
+  const [ordersEventId, setOrdersEventId] = useState<string | null>(null)
+  const [ordersEventTitle, setOrdersEventTitle] = useState("")
   const [activatingEventId, setActivatingEventId] = useState<string | null>(null)
   const [activatingEventTitle, setActivatingEventTitle] = useState("")
   const [statusUpdating, setStatusUpdating] = useState(false)
@@ -405,6 +409,19 @@ export default function EventsPage() {
             }}
           />
 
+          <EventOrdersDrawer
+            open={ordersDrawerOpen}
+            onOpenChange={(o) => {
+              setOrdersDrawerOpen(o)
+              if (!o) {
+                setOrdersEventId(null)
+                setOrdersEventTitle("")
+              }
+            }}
+            eventId={ordersEventId}
+            eventTitle={ordersEventTitle}
+          />
+
           <div className="relative rounded-md border min-h-[120px]">
             <Table>
               <TableHeader>
@@ -483,7 +500,19 @@ export default function EventsPage() {
                         {(ev.ticketsSold ?? 0).toLocaleString()}
                       </TableCell>
                       <TableCell className="text-right tabular-nums align-top hidden sm:table-cell">
-                        {(ev.orderCount ?? 0).toLocaleString()}
+                        <button
+                          type="button"
+                          className="rounded-sm hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:no-underline"
+                          onClick={() => {
+                            setOrdersEventId(ev.id)
+                            setOrdersEventTitle(ev.title)
+                            setOrdersDrawerOpen(true)
+                          }}
+                          disabled={!merchantCode || (ev.orderCount ?? 0) === 0}
+                          aria-label={`View orders for ${ev.title}`}
+                        >
+                          {(ev.orderCount ?? 0).toLocaleString()}
+                        </button>
                       </TableCell>
                       <TableCell className="hidden sm:table-cell align-top text-gray-700">
                         {ev.currency}

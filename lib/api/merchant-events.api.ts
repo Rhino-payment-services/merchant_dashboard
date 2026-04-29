@@ -279,3 +279,63 @@ export async function updateMerchantEventStatus(
   )
   return response.data
 }
+
+export interface EventOrderTier {
+  id: string
+  tierCode?: string
+  name: string
+  price: number
+}
+
+export interface EventOrderTransaction {
+  id: string
+  transactionReference?: string
+  status?: string
+}
+
+export interface EventOrderItem {
+  id: string
+  orderReference: string
+  quantity: number
+  unitPrice: number
+  totalAmount: number
+  currency: string
+  status: string
+  paymentStatus: string
+  buyerName?: string
+  buyerPhone?: string
+  buyerEmail?: string
+  tier: EventOrderTier
+  transaction: EventOrderTransaction | null
+  attendeeCount: number
+  expiresAt?: string | null
+  paidAt?: string | null
+  createdAt: string
+  updatedAt: string
+}
+
+export interface EventOrdersResponse {
+  items: EventOrderItem[]
+  total: number
+  page: number
+  limit: number
+  totalPages: number
+}
+
+export interface GetEventOrdersParams {
+  page?: number
+  limit?: number
+}
+
+export async function getEventOrders(
+  eventId: string,
+  params: GetEventOrdersParams = {}
+): Promise<EventOrdersResponse> {
+  const response = await apiClient.get<EventOrdersResponse>(`/merchant-events/${eventId}/orders`, {
+    params: {
+      page: params.page ?? 1,
+      limit: params.limit ?? 20,
+    },
+  })
+  return response.data
+}
