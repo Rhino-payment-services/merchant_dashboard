@@ -30,9 +30,11 @@ import { toast } from "sonner"
 import { getMyBusinessWallet } from "@/lib/api/team.api"
 import {
   createMerchantEventWithTiers,
+  uploadEventBanner,
   type CreateMerchantEventTierPayload,
   type CreateMerchantEventWithTiersPayload,
 } from "@/lib/api/merchant-events.api"
+import { BannerUploadCard } from "./BannerUploadCard"
 
 const CODE_PATTERN = /^[A-Z0-9-]*$/
 
@@ -59,6 +61,16 @@ function datetimeLocalToIso(local: string): string | null {
   const d = new Date(local)
   if (Number.isNaN(d.getTime())) return null
   return d.toISOString()
+}
+
+function normalizeBannerPath(path: string): string {
+  const raw = path.trim()
+  if (!raw) return ""
+  const withoutLeadingPublic = raw.replace(/^\/?public\/+/i, "")
+  const withLeadingSlash = withoutLeadingPublic.startsWith("/")
+    ? withoutLeadingPublic
+    : `/${withoutLeadingPublic}`
+  return withLeadingSlash.replace(/^\/+/, "/")
 }
 
 function newTierRow(): TierRow {
@@ -195,6 +207,8 @@ export function CreateEventDialog({
   const [submitting, setSubmitting] = useState(false)
   const [defaultWalletId, setDefaultWalletId] = useState("")
   const [stepError, setStepError] = useState("")
+  const [bannerFile, setBannerFile] = useState<File | null>(null)
+  const [uploadingBanner, setUploadingBanner] = useState(false)
 
   const reset = useCallback(() => {
     setStep(1)
@@ -203,6 +217,8 @@ export function CreateEventDialog({
     setStepError("")
     setSubmitting(false)
     setDefaultWalletId("")
+    setBannerFile(null)
+    setUploadingBanner(false)
   }, [])
 
   useEffect(() => {
@@ -294,6 +310,10 @@ export function CreateEventDialog({
   }
 
   const goNext = () => {
+    if (uploadingBanner) {
+      setStepError("Please wait for the banner upload to finish.")
+      return
+    }
     const err = validateStep(step)
     if (err) {
       setStepError(err)
@@ -314,7 +334,7 @@ export function CreateEventDialog({
     return form.categoryPreset
   }
 
-  const buildPayload = (): CreateMerchantEventWithTiersPayload => {
+  const buildPayload = (uploadedBannerUrl?: string): CreateMerchantEventWithTiersPayload => {
     const metadata: Record<string, unknown> = {}
     const category = resolveCategoryForPayload()
     if (category) metadata.category = category
@@ -356,7 +376,8 @@ export function CreateEventDialog({
     if (ec) payload.eventCode = ec
     if (defaultWalletId.trim()) payload.walletId = defaultWalletId.trim()
     if (form.description.trim()) payload.description = form.description.trim()
-    if (form.bannerUrl.trim()) payload.bannerUrl = form.bannerUrl.trim()
+    const bannerUrl = normalizeBannerPath(uploadedBannerUrl ?? form.bannerUrl)
+    if (bannerUrl) payload.bannerUrl = bannerUrl
     if (form.location.trim()) payload.location = form.location.trim()
     const endsAt = datetimeLocalToIso(form.endsAt)
     if (endsAt) payload.endsAt = endsAt
@@ -379,7 +400,14 @@ export function CreateEventDialog({
     setStepError("")
     setSubmitting(true)
     try {
-      await createMerchantEventWithTiers(buildPayload())
+      let uploadedBannerUrl = normalizeBannerPath(form.bannerUrl)
+      if (bannerFile) {
+        setUploadingBanner(true)
+        const uploaded = await uploadEventBanner(bannerFile)
+        uploadedBannerUrl = normalizeBannerPath(uploaded.bannerUrl)
+      }
+
+      await createMerchantEventWithTiers(buildPayload(uploadedBannerUrl))
       toast.success("Event created.")
       onOpenChange(false)
       onCreated()
@@ -387,6 +415,7 @@ export function CreateEventDialog({
       console.error(e)
       toast.error(getApiErrorMessage(e))
     } finally {
+      setUploadingBanner(false)
       setSubmitting(false)
     }
   }
@@ -466,18 +495,21 @@ export function CreateEventDialog({
                 </div>
                 <div className="space-y-2">
                   <div className="flex items-center gap-1.5">
-                    <Label htmlFor="ce-banner" className="inline-flex flex-wrap items-center gap-x-1">
-                      Banner URL <Opt />
+                    <Label className="inline-flex flex-wrap items-center gap-x-1">
+                      Event banner <Opt />
                     </Label>
-                    <FieldHint>Image shown at the top of the event page. Use a direct link to an image file.</FieldHint>
+                    <FieldHint>
+                      Upload an image for the event page. JPEG, PNG, WebP, or GIF — max 5MB.
+                    </FieldHint>
                   </div>
-                  <Input
-                    id="ce-banner"
-                    type="url"
+                  <BannerUploadCard
                     value={form.bannerUrl}
-                    onChange={(e) => updateField("bannerUrl", e.target.value)}
-                    placeholder="https://…"
-                    disabled={disabled}
+                    selectedFile={bannerFile}
+                    onFileChange={(file) => {
+                      setBannerFile(file)
+                      if (!file) updateField("bannerUrl", "")
+                    }}
+                    disabled={disabled || submitting}
                   />
                 </div>
                 <div className="space-y-2">
@@ -883,14 +915,18 @@ export function CreateEventDialog({
                 </Button>
               ) : null}
               {step < STEPS.length ? (
-                <Button type="button" onClick={goNext} disabled={disabled || submitting}>
+                <Button
+                  type="button"
+                  onClick={goNext}
+                  disabled={disabled || submitting || uploadingBanner}
+                >
                   Next
                 </Button>
               ) : (
                 <Button
                   type="button"
                   onClick={handleSubmit}
-                  disabled={disabled || submitting}
+                  disabled={disabled || submitting || uploadingBanner}
                 >
                   {submitting ? "Creating…" : "Create event"}
                 </Button>

@@ -148,6 +148,46 @@ export async function createMerchantEventWithTiers(
   return response.data
 }
 
+/** POST /merchant-events/upload-banner — multipart field name: `banner` */
+export interface EventBannerUploadResponse {
+  bannerUrl: string
+  fileName: string
+  originalName: string
+  mimeType: string
+  size: number
+}
+
+export type UploadEventBannerOptions = {
+  onUploadProgress?: (percentLoaded: number) => void
+  signal?: AbortSignal
+}
+
+export async function uploadEventBanner(
+  file: File,
+  options?: UploadEventBannerOptions
+): Promise<EventBannerUploadResponse> {
+  const formData = new FormData()
+  formData.append('banner', file)
+
+  const response = await apiClient.post<EventBannerUploadResponse>(
+    '/merchant-events/upload-banner',
+    formData,
+    {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+      signal: options?.signal,
+      onUploadProgress: (e) => {
+        const total = e.total
+        if (total && options?.onUploadProgress) {
+          options.onUploadProgress(Math.round((e.loaded * 100) / total))
+        }
+      },
+    }
+  )
+  return response.data
+}
+
 /** GET /merchant-events/:id — full event with tiers, summary, and sales statistics */
 export interface MerchantEventTierFull {
   id: string

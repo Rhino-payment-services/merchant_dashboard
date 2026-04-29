@@ -31,8 +31,6 @@ import {
   Users,
   UserCheck,
   Ticket,
-  Banknote,
-  ChevronDown,
   Search,
   Plus,
   Eye,
@@ -58,19 +56,6 @@ function triBool(v: string): boolean | undefined {
   return v === "true"
 }
 
-function formatByCurrency(amount: number, currency: string) {
-  try {
-    return new Intl.NumberFormat("en-UG", {
-      style: "currency",
-      currency,
-      minimumFractionDigits: 0,
-      maximumFractionDigits: 2,
-    }).format(amount)
-  } catch {
-    return `${amount.toLocaleString()} ${currency}`
-  }
-}
-
 const dateTimeFmt = new Intl.DateTimeFormat("en-UG", {
   dateStyle: "medium",
   timeStyle: "short",
@@ -84,119 +69,6 @@ function formatEventRange(startsAt: string, endsAt: string) {
   } catch {
     return "—"
   }
-}
-
-function DetailedStatisticsSection({
-  loading,
-  s,
-}: {
-  loading: boolean
-  s: MerchantEventsStatisticsResponse | null
-}) {
-  const extraKpi = [
-    { label: "Total tiers", value: s?.totalTiers ?? 0, icon: Layers },
-    { label: "Total orders", value: s?.totalOrders ?? 0, icon: ShoppingCart },
-    { label: "Total attendees", value: s?.totalAttendees ?? 0, icon: Users },
-    { label: "Checked in", value: s?.checkedInCount ?? 0, icon: UserCheck },
-  ]
-
-  return (
-    <div className="space-y-6 pt-2">
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        {extraKpi.map(({ label, value, icon: Icon }) => (
-          <Card key={label} className="p-4">
-            <div className="flex items-start justify-between gap-2">
-              <div className="min-w-0">
-                <h3 className="text-sm font-medium text-gray-500">{label}</h3>
-                <p className="text-2xl font-bold text-gray-900 mt-1 tabular-nums">
-                  {loading ? "…" : value.toLocaleString()}
-                </p>
-              </div>
-              <Icon className="h-8 w-8 text-gray-400 shrink-0" aria-hidden />
-            </div>
-          </Card>
-        ))}
-      </div>
-
-      <Card>
-        <CardHeader className="pb-2">
-          <div className="flex items-center gap-2">
-            <Banknote className="h-5 w-5 text-gray-500" />
-            <CardTitle className="text-lg">Gross sales by currency</CardTitle>
-          </div>
-        </CardHeader>
-        <CardContent>
-          {loading ? (
-            <p className="text-sm text-gray-500">Loading…</p>
-          ) : !s?.grossSalesByCurrency?.length ? (
-            <p className="text-sm text-gray-500">No gross sales data yet.</p>
-          ) : (
-            <ul className="space-y-2">
-              {s.grossSalesByCurrency.map((row) => (
-                <li
-                  key={row.currency}
-                  className="flex justify-between gap-4 text-sm border-b border-gray-100 last:border-0 pb-2 last:pb-0"
-                >
-                  <span className="font-medium text-gray-700">{row.currency}</span>
-                  <span className="tabular-nums font-semibold text-gray-900">
-                    {formatByCurrency(row.grossSales, row.currency)}
-                  </span>
-                </li>
-              ))}
-            </ul>
-          )}
-        </CardContent>
-      </Card>
-
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-lg">Order status</CardTitle>
-          </CardHeader>
-          <CardContent>
-            {loading ? (
-              <p className="text-sm text-gray-500">Loading…</p>
-            ) : (
-              <ul className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-2 text-sm">
-                {(s?.orderStatusBreakdown ?? []).map((row) => (
-                  <li
-                    key={row.status}
-                    className="flex justify-between gap-2 border-b border-gray-50 pb-1"
-                  >
-                    <span className="text-gray-600">{row.status}</span>
-                    <span className="font-medium tabular-nums">{row.count}</span>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-lg">Payment status</CardTitle>
-          </CardHeader>
-          <CardContent>
-            {loading ? (
-              <p className="text-sm text-gray-500">Loading…</p>
-            ) : (
-              <ul className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-2 text-sm">
-                {(s?.paymentStatusBreakdown ?? []).map((row) => (
-                  <li
-                    key={row.status}
-                    className="flex justify-between gap-2 border-b border-gray-50 pb-1"
-                  >
-                    <span className="text-gray-600">{row.status}</span>
-                    <span className="font-medium tabular-nums">{row.count}</span>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </CardContent>
-        </Card>
-      </div>
-    </div>
-  )
 }
 
 function statusBadgeVariant(status: string): "default" | "secondary" | "outline" | "destructive" {
@@ -350,6 +222,26 @@ export default function EventsPage() {
       label: "Paid orders",
       value: loading ? "…" : (s?.paidOrders ?? 0).toLocaleString(),
       icon: CircleCheck,
+    },
+    {
+      label: "Total tiers",
+      value: loading ? "…" : (s?.totalTiers ?? 0).toLocaleString(),
+      icon: Layers,
+    },
+    {
+      label: "Total orders",
+      value: loading ? "…" : (s?.totalOrders ?? 0).toLocaleString(),
+      icon: ShoppingCart,
+    },
+    {
+      label: "Total attendees",
+      value: loading ? "…" : (s?.totalAttendees ?? 0).toLocaleString(),
+      icon: Users,
+    },
+    {
+      label: "Checked in",
+      value: loading ? "…" : (s?.checkedInCount ?? 0).toLocaleString(),
+      icon: UserCheck,
     },
   ]
 
@@ -674,18 +566,6 @@ export default function EventsPage() {
         </CardContent>
       </Card>
 
-      <details className="group rounded-lg border border-gray-200 bg-white">
-        <summary className="flex cursor-pointer list-none items-center justify-between gap-2 px-4 py-3 text-sm font-medium text-gray-900 hover:bg-gray-50 rounded-lg [&::-webkit-details-marker]:hidden">
-          <span className="flex items-center gap-2">
-            <ChevronDown className="h-4 w-4 shrink-0 transition-transform group-open:rotate-180 text-gray-500" />
-            Detailed statistics
-          </span>
-          <span className="text-xs font-normal text-gray-500">Gross sales, breakdowns, more KPIs</span>
-        </summary>
-        <div className="border-t border-gray-100 px-4 pb-4">
-          <DetailedStatisticsSection loading={loading} s={s} />
-        </div>
-      </details>
     </div>
   )
 }

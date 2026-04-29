@@ -22,6 +22,7 @@ import {
   getMerchantEventById,
   type MerchantEventDetailResponse,
 } from "@/lib/api/merchant-events.api"
+import { API_URL } from "@/lib/config"
 import { toast } from "sonner"
 import { RefreshCw } from "lucide-react"
 
@@ -76,6 +77,25 @@ function metadataEntries(metadata: Record<string, unknown> | undefined): [string
   return Object.entries(metadata).filter(
     (e): e is [string, string] => typeof e[1] === "string" && e[1].trim() !== ""
   )
+}
+
+function normalizeBannerPath(path: string): string {
+  const raw = path.trim()
+  if (!raw) return ""
+  const withoutLeadingPublic = raw.replace(/^\/?public\/+/i, "")
+  const withLeadingSlash = withoutLeadingPublic.startsWith("/")
+    ? withoutLeadingPublic
+    : `/${withoutLeadingPublic}`
+  return withLeadingSlash.replace(/^\/+/, "/")
+}
+
+function resolveBannerSrc(bannerUrl: string): string {
+  const t = normalizeBannerPath(bannerUrl)
+  if (!t) return ""
+  if (t.startsWith("http://") || t.startsWith("https://")) return t
+  const base = API_URL.replace(/\/$/, "")
+  const path = t.startsWith("/") ? t : `/${t}`
+  return `${base}${path}`
 }
 
 export type EventDetailDialogProps = {
@@ -156,7 +176,7 @@ export function EventDetailDialog({ open, onOpenChange, eventId }: EventDetailDi
               {detail.bannerUrl ? (
                 <div className="rounded-lg overflow-hidden border bg-gray-50 aspect-[21/9] max-h-48">
                   <img
-                    src={detail.bannerUrl}
+                    src={resolveBannerSrc(detail.bannerUrl)}
                     alt=""
                     className="w-full h-full object-cover"
                   />
