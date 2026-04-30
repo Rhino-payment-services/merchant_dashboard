@@ -19,7 +19,7 @@ const getValidMnoProvider = (provider: string | undefined): string => {
 
 // Single Payment DTO
 export interface SinglePaymentDto {
-  mode: 'WALLET_TO_MNO' | 'WALLET_TO_BANK' | 'WALLET_TO_WALLET' | 'UTILITIES' | 'WALLET_TO_MERCHANT' | 'WALLET_TO_INTERNAL_MERCHANT' | 'WALLET_TO_EXTERNAL_MERCHANT' | 'MERCHANT_TO_WALLET'
+  mode: 'WALLET_TO_MNO' | 'WALLET_TO_BANK' | 'UTILITIES' | 'WALLET_TO_MERCHANT' | 'WALLET_TO_INTERNAL_MERCHANT' | 'WALLET_TO_EXTERNAL_MERCHANT' | 'MERCHANT_TO_WALLET'
   amount: number
   currency: string
   description?: string
@@ -55,11 +55,14 @@ export interface SinglePaymentDto {
   invoiceNumber?: string
   
   metadata?: Record<string, any>
+
+  /** Optional: for /transactions/validate fee preview */
+  userId?: string
 }
 
 // Validation DTO that matches the backend ValidateTransactionDto
 export interface ValidateTransactionRequestDto {
-  transactionType?: 'WALLET_TO_MNO' | 'WALLET_TO_BANK' | 'BILL_PAYMENT' | 'MNO_TO_WALLET' | 'WALLET_TO_WALLET' | 'WALLET_TO_MERCHANT' | 'MERCHANT_TO_WALLET'
+  transactionType?: 'WALLET_TO_MNO' | 'WALLET_TO_BANK' | 'BILL_PAYMENT' | 'MNO_TO_WALLET' | 'WALLET_TO_MERCHANT' | 'MERCHANT_TO_WALLET'
   transactionModeCode?: string // Use mode code for custom modes like MERCHANT_TO_WALLET
   phoneNumber?: string
   network?: string // MNO provider
@@ -141,10 +144,20 @@ export const processSinglePayment = async (paymentData: SinglePaymentDto, userId
       recipientPhoneNumber: paymentData.recipientPhoneNumber,
       recipientUserId: paymentData.recipientUserId,
       
-      // Utility fields
+      // Utility fields (airtime / data: account ref is the MSISDN)
       utilityProvider: paymentData.utilityProvider,
-      utilityAccountNumber: paymentData.utilityAccountNumber,
-      customerRef: paymentData.customerRef,
+      utilityAccountNumber:
+        paymentData.mode === 'UTILITIES'
+          ? paymentData.utilityAccountNumber ||
+            paymentData.customerRef ||
+            paymentData.phoneNumber
+          : paymentData.utilityAccountNumber,
+      customerRef:
+        paymentData.mode === 'UTILITIES'
+          ? paymentData.customerRef ||
+            paymentData.utilityAccountNumber ||
+            paymentData.phoneNumber
+          : paymentData.customerRef,
       area: paymentData.area,
       
       // Merchant fields
@@ -153,7 +166,18 @@ export const processSinglePayment = async (paymentData: SinglePaymentDto, userId
       orderId: paymentData.orderId,
       invoiceNumber: paymentData.invoiceNumber,
       
-      metadata: paymentData.metadata
+      metadata: (() => {
+        const m = paymentData.metadata ? { ...paymentData.metadata } : undefined;
+        if (
+          paymentData.mode === 'UTILITIES' &&
+          paymentData.utilityProvider === 'DATA_BUNDLES' &&
+          m
+        ) {
+          const q = Number(m.dataQuantity);
+          if (!Number.isNaN(q)) m.dataQuantity = q;
+        }
+        return m;
+      })(),
     };
 
     console.log('API: Processing single payment:', processData);
@@ -187,14 +211,16 @@ export const validateTransaction = async (paymentData: SinglePaymentDto): Promis
     // Transform SinglePaymentDto to ValidateTransactionRequestDto
     // For MERCHANT_TO_WALLET, use transactionModeCode to ensure correct routing
     const validationData: ValidateTransactionRequestDto = {
-      ...(paymentData.mode === 'MERCHANT_TO_WALLET' 
+      ...(paymentData.mode === 'MERCHANT_TO_WALLET'
         ? { transactionModeCode: paymentData.mode } // Use mode code for MERCHANT_TO_WALLET
-        : { transactionType: paymentData.mode as any } // Map mode to transactionType for others
+        : paymentData.mode === 'UTILITIES'
+          ? { transactionType: 'BILL_PAYMENT' } // Send BILL_PAYMENT for bill transactions
+          : { transactionType: paymentData.mode as any } // Map mode to transactionType for others
       ),
       amount: paymentData.amount,
       currency: paymentData.currency || 'UGX',
       geographicRegion: 'UG',
-      userId: undefined, // Will be set by backend from JWT
+      userId: paymentData.userId,
     };
 
   // Map transaction-specific fields
@@ -214,7 +240,10 @@ export const validateTransaction = async (paymentData: SinglePaymentDto): Promis
     console.log('  accountName:', paymentData.accountName);
     console.log('  Sending bankCode:', validationData.bankCode);
   } else if (paymentData.mode === 'UTILITIES') {
-    validationData.customerRef = paymentData.customerRef;
+    validationData.customerRef =
+      paymentData.customerRef ||
+      paymentData.utilityAccountNumber ||
+      paymentData.phoneNumber;
     validationData.billType = paymentData.utilityProvider;
     validationData.area = paymentData.area;
     validationData.customerPhoneNumber = paymentData.phoneNumber;
@@ -228,32 +257,48 @@ export const validateTransaction = async (paymentData: SinglePaymentDto): Promis
   console.log('API: Validating transaction:', validationData);
     const response = await apiClient.post('/transactions/validate', validationData);
     console.log('API: Validation response:', response.data);
-    
+
+    const data = response.data;
+    if (!data || typeof data !== 'object') {
+      return {
+        isValid: false,
+        errors: ['Invalid validation response'],
+        warnings: [],
+        recipientName: undefined,
+        partnerCode: undefined,
+        partnerName: undefined,
+        validationResult: {},
+        feePreview: undefined,
+      };
+    }
+
     // Transform response to match expected format
-    const validationResult = response.data.validationResult || {};
-    const recipientName = validationResult.accountName || 
-                          validationResult.data?.accountName || 
-                          validationResult.data?.name || 
+    const validationResult = data.validationResult || {};
+    const recipientName = validationResult.accountName ||
+                          validationResult.customerName ||
+                          validationResult.data?.accountName ||
+                          validationResult.data?.name ||
+                          validationResult.data?.customerName ||
                           validationResult.data?.recipientName;
 
     return {
-      isValid: response.data.success || false,
-      errors: response.data.error ? [response.data.error] : [],
-      warnings: response.data.warnings || [],
+      isValid: data.success || false,
+      errors: data.error ? [data.error] : [],
+      warnings: data.warnings || [],
       recipientName: recipientName,
-      partnerCode: response.data.partnerCode,
-      partnerName: response.data.partnerName,
+      partnerCode: data.partnerCode,
+      partnerName: data.partnerName,
       validationResult: validationResult,
-      feePreview: response.data.feeDetails ? {
+      feePreview: data.feeDetails ? {
         tariffId: '',
         tariffName: '',
-        feeAmount: response.data.feeDetails.feeAmount,
-        feePercentage: response.data.feeDetails.feePercentage || 0,
-        totalFee: response.data.feeDetails.feeAmount,
-        netAmount: response.data.feeDetails.totalAmount - response.data.feeDetails.feeAmount,
-        currency: response.data.feeDetails.currency,
-        rukapayFee: response.data.feeDetails.platformRevenue || 0,
-        partnerFee: response.data.feeDetails.partnerRevenue || 0,
+        feeAmount: data.feeDetails.feeAmount,
+        feePercentage: data.feeDetails.feePercentage || 0,
+        totalFee: data.feeDetails.feeAmount,
+        netAmount: (data.feeDetails.totalAmount ?? 0) - (data.feeDetails.feeAmount ?? 0),
+        currency: data.feeDetails.currency,
+        rukapayFee: data.feeDetails.platformRevenue || 0,
+        partnerFee: data.feeDetails.partnerRevenue || 0,
         governmentTax: 0,
         telecomBankCharge: 0,
         calculationDetails: {}

@@ -17,6 +17,28 @@ import TransactionReceipt from '@/components/TransactionReceipt';
 import { useUserProfile } from '../UserProfileProvider';
 
 type StatusType = 'COMPLETED' | 'PENDING' | 'PROCESSING' | 'FAILED' | 'CANCELLED' | 'REFUNDED' | "SUCCESS";
+
+function getTransactionTypeDisplay(txn: any): string {
+  const meta = txn?.metadata || {};
+  const ref = txn?.reference || '';
+  if (
+    txn?.type === 'WALLET_TO_WALLET' &&
+    (meta.sweepToDisbursement || meta.sweepFromCollection || (ref && String(ref).startsWith('SWEEP_')))
+  ) {
+    return 'Liquidate';
+  }
+  const typeMap: Record<string, string> = {
+    WALLET_TO_WALLET: 'P2P Transfer',
+    MNO_TO_WALLET: 'Receive from Mobile Money',
+    WALLET_TO_MNO: 'Send to Mobile Money',
+    MERCHANT_TO_WALLET: 'Receive from Merchant',
+    WALLET_TO_MERCHANT: 'Pay Merchant',
+    DEPOSIT: 'Deposit',
+    WITHDRAWAL: 'Withdrawal',
+  };
+  return typeMap[txn?.type] || txn?.type || 'N/A';
+}
+
 const statusColor: Record<StatusType, string> = {
   COMPLETED: 'text-green-600 bg-green-50',
   PENDING: 'text-yellow-700 bg-yellow-50',
@@ -25,6 +47,56 @@ const statusColor: Record<StatusType, string> = {
   CANCELLED: 'text-gray-600 bg-gray-50',
   REFUNDED: 'text-orange-600 bg-orange-50',
   SUCCESS: 'text-green-600 bg-green-50',
+};
+
+// Helper to remove duplicate admin-funded deposit rows that share the same reference/amount/etc.
+// This prevents ADMIN_FUND credits from appearing twice in the UI when the ledger stores
+// multiple records for the same logical funding action.
+const dedupeAdminFundTransactions = (items: any[]) => {
+  const seen = new Set<string>();
+  const result: any[] = [];
+
+  for (const tx of items || []) {
+    const isAdminFund = tx?.type === 'DEPOSIT' && tx?.metadata?.fundedByAdmin;
+    if (!isAdminFund) {
+      result.push(tx);
+      continue;
+    }
+
+    // Admin funding currently comes back both as a Transaction and a LedgerEntry
+    // with the same reference/amount/admin but slightly different timestamps.
+    // Deduplicate purely on business identity (reference + amount + admin),
+    // so we only show one logical "Admin fund" row per funding action.
+    const keyParts = [
+      tx.reference ?? '',
+      tx.amount ?? '',
+      tx.direction ?? '',
+      tx.status ?? '',
+      tx.metadata?.adminId ?? '',
+      tx.metadata?.adminEmail ?? '',
+    ];
+    const key = keyParts.join('|');
+
+    if (seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    result.push(tx);
+  }
+
+  return result;
+};
+
+const formatReferenceForDisplay = (txn: any): string => {
+  const reference = String(txn?.reference || '').trim();
+  if (!reference) return 'N/A';
+
+  const isAdminFund = txn?.type === 'DEPOSIT' && txn?.metadata?.fundedByAdmin;
+  if (!isAdminFund || reference.length <= 24) {
+    return reference;
+  }
+
+  return `${reference.slice(0, 14)}...${reference.slice(-8)}`;
 };
 
 interface BulkTransaction {
@@ -44,15 +116,80 @@ interface BulkTransaction {
   transactionResults?: any[];
 }
 
+function computeNetAmountAndTotalFee(tx: any) {
+  const amount = Number(tx?.amount) || 0;
+  const direction = String(tx?.direction || '').toUpperCase();
+  const feeBreakdown = tx?.metadata?.feeBreakdown || {};
+
+  const rukapayFeeFromBreakdown = feeBreakdown.rukapayFee || 0;
+  const rukapayFee =
+    rukapayFeeFromBreakdown > 0 ? rukapayFeeFromBreakdown : Number(tx?.rukapayFee) || 0;
+
+  const partnerFeeFromBreakdown = feeBreakdown.partnerFee || feeBreakdown.thirdPartyFee || 0;
+  const partnerFee =
+    partnerFeeFromBreakdown > 0 ? partnerFeeFromBreakdown : Number(tx?.thirdPartyFee) || 0;
+
+  const govTaxFromBreakdown = feeBreakdown.governmentTax || feeBreakdown.govTax || 0;
+  const governmentTax =
+    govTaxFromBreakdown > 0 ? govTaxFromBreakdown : Number(tx?.governmentTax) || 0;
+
+  const processingFee = feeBreakdown.processingFee || Number(tx?.processingFee) || 0;
+  const networkFee = feeBreakdown.networkFee || Number(tx?.networkFee) || 0;
+  const complianceFee = feeBreakdown.complianceFee || Number(tx?.complianceFee) || 0;
+  const telecomBankCharge = feeBreakdown.telecomBankCharge || 0;
+
+  let calculatedTotalFees =
+    rukapayFee +
+    partnerFee +
+    governmentTax +
+    processingFee +
+    networkFee +
+    complianceFee +
+    telecomBankCharge;
+
+  if (feeBreakdown.totalFee !== undefined && feeBreakdown.totalFee !== null) {
+    calculatedTotalFees = Number(feeBreakdown.totalFee);
+  }
+
+  let totalFee = calculatedTotalFees;
+
+  if (totalFee === 0) {
+    const feeField = Number(tx?.fee) || 0;
+    if (feeField > 0) {
+      totalFee = feeField;
+    } else {
+      const netAmountField = Number(tx?.netAmount) || 0;
+      if (netAmountField > 0 && amount !== netAmountField) {
+        totalFee = Math.abs(amount - netAmountField);
+      }
+    }
+  }
+
+  const netAmountForDisplay =
+    direction === 'DEBIT' ? amount + totalFee : Number(tx?.netAmount) || amount;
+
+  return {
+    totalFee,
+    netAmountForDisplay,
+  };
+}
+
 export default function TransactionsPage() {
   const { data: session } = useSession();
   const { profile } = useUserProfile();
+  // Use ONLY session for which merchant's transactions to load (never profile – profile can be a single merchant and would show same data when switching)
+  const sessionMerchantCode = (session?.user as any)?.merchantCode;
+  const firstSessionMerchantCode = (session?.user as any)?.merchants?.[0]?.merchantCode;
+  const currentMerchantCode = sessionMerchantCode != null
+    ? String(sessionMerchantCode)
+    : (firstSessionMerchantCode != null ? String(firstSessionMerchantCode) : (profile?.merchant_code ?? profile?.merchantCode) != null ? String(profile?.merchant_code ?? profile?.merchantCode ?? '') : null);
   const [search, setSearch] = useState('');
   const [from, setFrom] = useState<string>("");
   const [to, setTo] = useState<string>("");
   const [status, setStatus] = useState<string>("");
   const [currentPage, setCurrentPage] = useState(1);
   const [currentLimit, setCurrentLimit] = useState(10);
+  const [walletView, setWalletView] = useState<'all' | 'collection' | 'disbursement'>('all');
   
   // Support for viewing child merchant transactions (for super merchants)
   const [childMerchantId, setChildMerchantId] = useState<string | null>(null);
@@ -70,6 +207,10 @@ export default function TransactionsPage() {
       }
     }
   }, []);
+  // When user switches business, reset to first page so we don't show wrong pagination
+  React.useEffect(() => {
+    setCurrentPage(1);
+  }, [currentMerchantCode]);
 
   // Receipt state
   const [selectedTransaction, setSelectedTransaction] = useState<any>(null);
@@ -107,14 +248,18 @@ export default function TransactionsPage() {
     error, 
     refetch, 
     isRefetching 
-  } = useMyTransactions(filter, childMerchantId || undefined);
+  } = useMyTransactions(filter, childMerchantId || undefined, currentMerchantCode);
 
   // Debug logging
   console.log('Transactions Page - API Response:', transactionsData);
   console.log('Transactions Page - Error:', error);
 
   // Extract data from API response
-  const transactions = transactionsData?.transactions || [];
+  const rawTransactions = transactionsData?.transactions || [];
+  const transactions = useMemo(
+    () => dedupeAdminFundTransactions(rawTransactions),
+    [rawTransactions],
+  );
   const paginationInfo = transactionsData?.pagination || {
     page: 1,
     limit: 10,
@@ -126,35 +271,71 @@ export default function TransactionsPage() {
     walletType: 'PERSONAL'
   };
 
-  // Calculate summary statistics from transactions
+  // Helper to classify which business wallet flavour a transaction used
+  const classifyWalletView = (tx: any): 'collection' | 'disbursement' | 'unknown' => {
+    const t = (
+      tx.businessWalletType ||
+      // For debit flows, backend may expose explicit debit wallet type in metadata.
+      tx.metadata?.debitWalletType ||
+      tx.wallet?.walletType ||
+      tx.metadata?.businessWalletType ||
+      tx.metadata?.walletType ||
+      ''
+    )
+      .toString()
+      .toUpperCase();
+
+    if (t === 'BUSINESS_DISBURSEMENT' || t === 'BUSINESS_LIQUIDATION') {
+      return 'disbursement';
+    }
+    if (t === 'BUSINESS' || t === 'BUSINESS_COLLECTION') {
+      return 'collection';
+    }
+    return 'unknown';
+  };
+
+  // Slice unified list into per-wallet views (collection/disbursement)
+  const viewScopedTransactions = useMemo(() => {
+    if (walletView === 'all') return transactions;
+    return transactions.filter((tx: any) => {
+      const bucket = classifyWalletView(tx);
+      if (walletView === 'collection') return bucket === 'collection';
+      if (walletView === 'disbursement') return bucket === 'disbursement';
+      return true;
+    });
+  }, [transactions, walletView]);
+
+  // Calculate summary statistics from currently-scoped transactions
   const calculatedSummary = useMemo(() => {
-    const totalAmount = transactions.reduce((sum, tx) => sum + (tx.amount || 0), 0);
-    const totalFee = transactions.reduce((sum, tx) => sum + (tx.fee || 0), 0);
-    const successfulCount = transactions.filter(tx => tx.status === 'SUCCESS' || tx.status === 'COMPLETED').length;
-    const failedCount = transactions.filter(tx => tx.status === 'FAILED').length;
+    const base = viewScopedTransactions;
+    const totalAmount = base.reduce((sum, tx) => sum + (tx.amount || 0), 0);
+    const totalFee = base.reduce((sum, tx) => sum + (tx.fee || 0), 0);
+    const successfulCount = base.filter(tx => tx.status === 'SUCCESS' || tx.status === 'COMPLETED').length;
+    const failedCount = base.filter(tx => tx.status === 'FAILED').length;
     
     return {
       totalAmount,
       totalFee,
       successfulCount,
       failedCount,
-      totalTransactions: transactions.length,
+        totalTransactions: base.length,
       walletType: (summary as any).walletType || 'PERSONAL'
     };
-  }, [transactions, (summary as any).walletType]);
+  }, [viewScopedTransactions, (summary as any).walletType]);
 
-  // Filter transactions client-side for search only
+  // Filter transactions client-side by search within the current wallet view
   const filteredTransactions = useMemo(() => {
-    if (!search) return transactions;
+    const base = viewScopedTransactions;
+    if (!search) return base;
 
     const searchLower = search.toLowerCase();
-    return transactions.filter(tx => 
+    return base.filter(tx => 
       tx.transactionId?.toLowerCase().includes(searchLower) ||
       tx.id?.toLowerCase().includes(searchLower) ||
       tx.reference?.toLowerCase().includes(searchLower) ||
       tx.description?.toLowerCase().includes(searchLower)
     );
-  }, [transactions, search]);
+  }, [viewScopedTransactions, search]);
 
   // Calculate total pages based on API pagination (not filtered results)
   const totalPages = paginationInfo?.totalPages || 1;
@@ -214,13 +395,24 @@ export default function TransactionsPage() {
           };
         }
       } else if (txn.type === 'WALLET_TO_WALLET' || txn.counterpartyId || txn.counterpartyUser) {
-        // P2P - Wallet to Wallet - sender is another RukaPay user
-        const senderName = txn.counterpartyUser?.profile?.firstName && txn.counterpartyUser?.profile?.lastName
-          ? `${txn.counterpartyUser.profile.firstName} ${txn.counterpartyUser.profile.lastName}`
-          : txn.metadata?.counterpartyInfo?.name || txn.metadata?.userName || 'RukaPay User';
+        // P2P / personal-wallet-to-merchant: sender is the counterpartyUser.
+        // When counterpartyUser.profile.firstName is missing, prefer counterpartyUser.phone
+        // over metadata.counterpartyInfo.name — the latter may be set to the sender's
+        // business name when they also own a merchant account.
+        const cp = txn.counterpartyUser
+        const senderName =
+          (cp?.profile?.firstName && cp?.profile?.lastName
+            ? `${cp.profile.firstName} ${cp.profile.lastName}`
+            : null)
+          || txn.metadata?.senderName
+          || txn.metadata?.userName
+          || (cp ? null : txn.metadata?.counterpartyInfo?.name)  // only use counterpartyInfo if no counterpartyUser
+          || cp?.phone
+          || txn.counterpartyId
+          || 'RukaPay User';
         return {
           name: senderName,
-          contact: txn.counterpartyUser?.phone || txn.counterpartyId || ''
+          contact: cp?.phone || txn.counterpartyId || ''
         };
       } else if (txn.metadata?.counterpartyInfo) {
         return {
@@ -238,6 +430,28 @@ export default function TransactionsPage() {
   };
 
   // Helper function to format receiver info with details
+  const getPreferredRecipientName = (txn: any): string | null => {
+    const meta = txn?.metadata || {};
+    const fromMetadata = [
+      meta.recipientName,
+      meta.receiverName,
+      meta.counterpartyInfo?.name,
+      meta.userName,
+      meta.accountName,
+      meta.customerName,
+    ]
+      .map((v: any) => String(v || '').trim())
+      .find((v: string) => v.length > 0);
+
+    if (fromMetadata) return fromMetadata;
+
+    if (txn?.counterpartyUser?.profile?.firstName && txn?.counterpartyUser?.profile?.lastName) {
+      return `${txn.counterpartyUser.profile.firstName} ${txn.counterpartyUser.profile.lastName}`.trim();
+    }
+
+    return null;
+  };
+
   const getReceiverInfo = (txn: any) => {
     // Check for admin-funded deposits first
     if (txn.type === 'DEPOSIT' && txn.metadata?.fundedByAdmin) {
@@ -258,49 +472,44 @@ export default function TransactionsPage() {
       };
     } else {
       // DEBIT direction - merchant is sending to someone
-      // Extract receiver info based on transaction type (matching admin dashboard logic)
-      if (txn.type === 'WALLET_TO_WALLET' || txn.counterpartyId || txn.counterpartyUser) {
-        // P2P - Wallet to Wallet - receiver is another RukaPay user
-        const receiverName = txn.counterpartyUser?.profile?.firstName && txn.counterpartyUser?.profile?.lastName
-          ? `${txn.counterpartyUser.profile.firstName} ${txn.counterpartyUser.profile.lastName}`
-          : txn.metadata?.counterpartyInfo?.name || txn.metadata?.userName || 'RukaPay User';
+      const preferredRecipientName = getPreferredRecipientName(txn);
+      // Check MNO/phone/bank first because metadata.merchantName is the SENDER's business
+      // name, not the receiver. Without this order, MNO disbursements would incorrectly
+      // show the sending merchant as the receiver.
+      if (txn.type === 'WALLET_TO_MNO' || (txn.metadata?.mnoProvider && txn.metadata?.phoneNumber)) {
+        return {
+          name: preferredRecipientName || `${txn.metadata?.mnoProvider || 'Mobile'} Money`,
+          contact: txn.metadata?.phoneNumber || ''
+        };
+      } else if (txn.type === 'WALLET_TO_WALLET' || txn.counterpartyId || txn.counterpartyUser) {
+        const receiverName = preferredRecipientName || 'RukaPay User';
         return {
           name: receiverName,
           contact: txn.counterpartyUser?.phone || txn.counterpartyId || ''
         };
-      } else if (txn.type === 'WALLET_TO_MERCHANT' || txn.type === 'WALLET_TO_INTERNAL_MERCHANT' || txn.type?.includes('MERCHANT') || txn.metadata?.merchantName) {
-        // Wallet to Merchant - receiver is merchant
+      } else if (txn.metadata?.phoneNumber) {
         return {
-          name: txn.metadata?.merchantName || txn.metadata?.counterpartyInfo?.name || txn.metadata?.userName || 'Merchant',
+          name: preferredRecipientName || 'Mobile Money User',
+          contact: txn.metadata?.phoneNumber || ''
+        };
+      } else if (txn.type === 'WALLET_TO_MERCHANT' || txn.type === 'WALLET_TO_INTERNAL_MERCHANT' || txn.type?.includes('MERCHANT')) {
+        return {
+          name: preferredRecipientName || txn.metadata?.merchantName || 'Merchant',
           contact: txn.metadata?.merchantCode || txn.metadata?.accountNumber || ''
         };
       } else if (txn.metadata?.counterpartyInfo) {
         return {
-          name: txn.metadata.counterpartyInfo.name,
+          name: preferredRecipientName || txn.metadata.counterpartyInfo.name,
           contact: txn.metadata.counterpartyInfo.phone || txn.metadata.counterpartyInfo.accountNumber || ''
         };
-      } else if (txn.metadata?.mnoProvider) {
-        // External Mobile Money - show recipient name if available
-        return {
-          name: txn.metadata?.userName || txn.metadata?.recipientName || `${txn.metadata.mnoProvider} Mobile Money`,
-          contact: txn.metadata?.phoneNumber || ''
-        };
-      } else if (txn.metadata?.phoneNumber) {
-        // External Mobile Money (no provider specified)
-        return {
-          name: txn.metadata?.userName || txn.metadata?.recipientName || 'Mobile Money User',
-          contact: txn.metadata?.phoneNumber || ''
-        };
       } else if (txn.metadata?.accountNumber) {
-        // Bank/Utility/Other External Account
         return {
-          name: txn.metadata?.userName || txn.metadata?.recipientName || 'External Account',
+          name: preferredRecipientName || 'External Account',
           contact: txn.metadata?.accountNumber || ''
         };
       } else {
-        // Fallback
         return {
-          name: txn.metadata?.recipientName || txn.metadata?.userName || 'Recipient',
+          name: preferredRecipientName || 'Recipient',
           contact: txn.metadata?.phoneNumber || txn.metadata?.accountNumber || ''
         };
       }
@@ -522,6 +731,48 @@ export default function TransactionsPage() {
           </TabsList>
 
           <TabsContent value="transactions" className="space-y-6">
+            {/* Wallet view toggle: All / Collection / Disbursement */}
+            <Card className="p-3 mb-4">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-sm font-medium text-gray-700">Wallet view:</span>
+                <div className="inline-flex rounded-md border border-gray-200 bg-white p-0.5">
+                  <button
+                    type="button"
+                    onClick={() => setWalletView('all')}
+                    className={`px-3 py-1 text-xs font-medium rounded-md ${
+                      walletView === 'all'
+                        ? 'bg-blue-600 text-white shadow-sm'
+                        : 'text-gray-700 hover:bg-gray-100'
+                    }`}
+                  >
+                    All business wallets
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setWalletView('collection')}
+                    className={`px-3 py-1 text-xs font-medium rounded-md ${
+                      walletView === 'collection'
+                        ? 'bg-blue-600 text-white shadow-sm'
+                        : 'text-gray-700 hover:bg-gray-100'
+                    }`}
+                  >
+                    Collection only
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setWalletView('disbursement')}
+                    className={`px-3 py-1 text-xs font-medium rounded-md ${
+                      walletView === 'disbursement'
+                        ? 'bg-blue-600 text-white shadow-sm'
+                        : 'text-gray-700 hover:bg-gray-100'
+                    }`}
+                  >
+                    Disbursement only
+                  </button>
+                </div>
+              </div>
+            </Card>
+
             {/* Summary Cards */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
           <Card className="p-4">
@@ -601,7 +852,7 @@ export default function TransactionsPage() {
         {/* Transactions Table */}
         <Card>
           <div className="overflow-x-auto">
-            <Table>
+            <Table className="min-w-[900px]">
               <TableHeader>
                 <TableRow>
                   <TableHead>Reference ID</TableHead>
@@ -609,6 +860,7 @@ export default function TransactionsPage() {
                   <TableHead>Receiver</TableHead>
                   <TableHead>Amount</TableHead>
                   <TableHead>Charges</TableHead>
+                  <TableHead>Wallet</TableHead>
                   <TableHead>Type</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead>Description</TableHead>
@@ -619,7 +871,7 @@ export default function TransactionsPage() {
               <TableBody>
                 {isLoading ? (
                   <TableRow>
-                    <TableCell colSpan={9} className="text-center py-8">
+                    <TableCell colSpan={11} className="text-center py-8">
                       <div className="flex items-center justify-center">
                         <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
                         <span className="ml-2">Loading transactions...</span>
@@ -628,7 +880,7 @@ export default function TransactionsPage() {
                   </TableRow>
                 ) : filteredTransactions.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={9} className="text-center py-8">
+                    <TableCell colSpan={11} className="text-center py-8">
                       <div className="text-gray-500">No transactions found</div>
                     </TableCell>
                   </TableRow>
@@ -641,8 +893,8 @@ export default function TransactionsPage() {
 
                     return (
                       <TableRow key={transaction.id}>
-                        <TableCell className="font-mono text-sm">
-                          {transaction.reference || 'N/A'}
+                        <TableCell className="font-mono text-sm" title={transaction.reference || 'N/A'}>
+                          {formatReferenceForDisplay(transaction)}
                         </TableCell>
                         <TableCell className="text-sm">
                           <div className="flex flex-col">
@@ -683,6 +935,27 @@ export default function TransactionsPage() {
                             </span>
                            {transaction.metadata?.revenue?.amount?.toLocaleString() ?? "N/A"}
                           </div>
+                        </TableCell>
+                        {/* Wallet source: show which business wallet handled this transaction */}
+                        <TableCell>
+                          {(() => {
+                            const bucket = classifyWalletView(transaction as any);
+                            if (bucket === 'disbursement') {
+                              return (
+                                <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-purple-100 text-purple-800">
+                                  Disbursement
+                                </span>
+                              );
+                            }
+                            if (bucket === 'collection') {
+                              return (
+                                <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                                  Collection
+                                </span>
+                              );
+                            }
+                            return <span className="text-xs text-gray-400">—</span>;
+                          })()}
                         </TableCell>
                         <TableCell>
                           <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
@@ -887,7 +1160,8 @@ export default function TransactionsPage() {
             <Card>
               <div className="p-4">
                 <h3 className="text-lg font-semibold text-gray-900 mb-4">Bulk Transactions</h3>
-                <Table>
+                <div className="overflow-x-auto">
+                <Table className="min-w-[800px]">
                   <TableHeader>
                     <TableRow>
                       <TableHead>Bulk ID</TableHead>
@@ -1022,6 +1296,7 @@ export default function TransactionsPage() {
                     ))}
                   </TableBody>
                 </Table>
+                </div>
 
                 {filteredBulkTransactions.length === 0 && (
                   <div className="text-center py-12">
@@ -1075,7 +1350,13 @@ export default function TransactionsPage() {
                 </div>
                 <div>
                   <div className="text-sm text-gray-500">Total Amount</div>
-                  <div className="font-semibold">{selectedBulkTransaction.totalAmount} {selectedBulkTransaction.currency}</div>
+                  <div className="font-semibold">
+                    {(
+                      (selectedBulkTransaction.totalAmount || 0) +
+                      (selectedBulkTransaction.totalFees || 0)
+                    ).toLocaleString()}{' '}
+                    {selectedBulkTransaction.currency}
+                  </div>
                 </div>
                 <div>
                   <div className="text-sm text-gray-500">Created</div>
@@ -1160,6 +1441,7 @@ export default function TransactionsPage() {
             const txn = selectedTransactionForDetails;
             const senderInfo = getSenderInfo(txn);
             const receiverInfo = getReceiverInfo(txn);
+            const { totalFee, netAmountForDisplay } = computeNetAmountAndTotalFee(txn);
             const formatAmount = (amount: number) => {
               return new Intl.NumberFormat('en-UG', {
                 style: 'currency',
@@ -1271,7 +1553,7 @@ export default function TransactionsPage() {
                       </div>
                       <div className="flex justify-between">
                         <span className="text-gray-600">Type:</span>
-                        <span className="font-medium text-gray-900">{txn.type || 'N/A'}</span>
+                        <span className="font-medium text-gray-900">{getTransactionTypeDisplay(txn)}</span>
                       </div>
                       <div className="flex justify-between">
                         <span className="text-gray-600">Date & Time:</span>
@@ -1294,20 +1576,22 @@ export default function TransactionsPage() {
                     <div className="space-y-2 text-sm">
                       <div className="flex justify-between">
                         <span className="text-gray-600">Transaction Amount:</span>
-                        <span className="font-bold text-gray-900">{formatAmount(Number(txn.amount || 0))}</span>
+                        <span className="font-bold text-gray-900">
+                          {formatAmount(Number(txn.amount || 0))}
+                        </span>
                       </div>
-                      {txn.fee !== undefined && txn.fee > 0 && (
+                      {totalFee > 0 && (
                         <div className="flex justify-between border-t pt-2">
                           <span className="text-blue-600">Transaction Fee:</span>
                           <span className="font-medium text-blue-600">
-                            {formatAmount(Number(txn.fee || 0))}
+                            {formatAmount(totalFee)}
                           </span>
                         </div>
                       )}
                       <div className="flex justify-between border-t-2 pt-2 mt-2">
                         <span className="text-green-600 font-bold">Net Amount:</span>
                         <span className="font-bold text-green-600 text-lg">
-                          {formatAmount(Number(txn.netAmount || txn.amount || 0))}
+                          {formatAmount(netAmountForDisplay)}
                         </span>
                       </div>
                     </div>
@@ -1336,6 +1620,11 @@ export default function TransactionsPage() {
                           👨‍💼 Admin Funding
                         </div>
                       )}
+                      {(txn.metadata?.sweepToDisbursement || txn.metadata?.sweepFromCollection) && (
+                        <div className="text-xs text-amber-700 font-medium mt-1">
+                          Debited: {txn.metadata?.debitWalletType || 'Collection'} wallet
+                        </div>
+                      )}
                     </div>
                   </div>
 
@@ -1357,6 +1646,11 @@ export default function TransactionsPage() {
                       {txn.type === 'DEPOSIT' && txn.metadata?.fundedByAdmin && (
                         <div className="text-xs text-green-600 font-medium mt-1">
                           💰 Wallet Credit
+                        </div>
+                      )}
+                      {(txn.metadata?.sweepToDisbursement || txn.metadata?.sweepFromCollection) && (
+                        <div className="text-xs text-green-700 font-medium mt-1">
+                          Credited: {txn.metadata?.creditWalletType || 'Disbursement'} wallet
                         </div>
                       )}
                     </div>

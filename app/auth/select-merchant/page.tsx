@@ -1,7 +1,7 @@
 "use client"
 
 import React, { useEffect, useState, Suspense } from 'react'
-import { useRouter, useSearchParams } from 'next/navigation'
+import { useRouter } from 'next/navigation'
 import { useSession } from 'next-auth/react'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
@@ -13,6 +13,7 @@ function SelectMerchantContent() {
   const router = useRouter()
   const { data: session, status, update } = useSession()
   const [isLoading, setIsLoading] = useState(false)
+  const [selectedMerchantCode, setSelectedMerchantCode] = useState<string | null>(null)
 
   useEffect(() => {
     document.title = 'Select Merchant - RukaPay'
@@ -23,6 +24,7 @@ function SelectMerchantContent() {
 
   const handleSelectMerchant = async (merchantCode: string) => {
     setIsLoading(true)
+    setSelectedMerchantCode(merchantCode)
     try {
       await update({ merchantCode })
       toast.success('Merchant selected')
@@ -42,22 +44,38 @@ function SelectMerchantContent() {
       }
     } catch (err) {
       toast.error('Failed to switch merchant')
-    } finally {
       setIsLoading(false)
+      setSelectedMerchantCode(null)
     }
   }
 
-  if (status === 'loading' || status === 'unauthenticated') {
+  // Show full-screen loader while switching (or initial session load) — must be first so nothing else flashes
+  if (isLoading || status === 'loading') {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-main-50 via-white to-main-50 flex items-center justify-center p-4">
+        <div className="text-center space-y-4">
+          <div className="w-10 h-10 border-2 border-main-600 border-t-transparent rounded-full animate-spin mx-auto" />
+          {selectedMerchantCode ? (
+            <>
+              <p className="text-gray-700 font-medium text-lg">Switching merchant…</p>
+              <p className="text-sm text-gray-500">
+                Loading dashboard for <span className="font-semibold">{selectedMerchantCode}</span>
+              </p>
+            </>
+          ) : (
+            <p className="text-gray-600">Loading…</p>
+          )}
+        </div>
+      </div>
+    )
+  }
+
+  if (status === 'unauthenticated') {
     return (
       <div className="min-h-screen bg-gradient-to-br from-main-50 via-white to-main-50 flex items-center justify-center">
-        <div className="text-center">
-          <div className="w-8 h-8 border-2 border-main-600 border-t-transparent rounded-full animate-spin mx-auto mb-4" />
-          <p className="text-gray-600">{status === 'loading' ? 'Loading...' : 'Please log in first'}</p>
-          {status === 'unauthenticated' && (
-            <Button onClick={() => router.push('/auth/login')} className="mt-4">
-              Go to Login
-            </Button>
-          )}
+        <div className="text-center space-y-4">
+          <p className="text-gray-600">Please log in first</p>
+          <Button onClick={() => router.push('/auth/login')}>Go to Login</Button>
         </div>
       </div>
     )
@@ -93,10 +111,9 @@ function SelectMerchantContent() {
     const currentCode = (session?.user as any)?.merchantCode
     if (currentCode !== m.merchantCode) {
       handleSelectMerchant(m.merchantCode)
-      return <div className="min-h-screen flex items-center justify-center"><div className="animate-spin w-8 h-8 border-2 border-main-600 border-t-transparent rounded-full" /></div>
+      return null // loader above will render on next tick once isLoading=true
     }
     router.replace('/')
-    router.refresh()
     return null
   }
 
@@ -107,7 +124,6 @@ function SelectMerchantContent() {
     return null
   }
 
-  // Multiple merchants - show selection
   return (
     <div className="min-h-screen bg-gradient-to-br from-main-50 via-white to-main-50 flex items-center justify-center p-4">
       <div className="w-full max-w-md">

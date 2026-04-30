@@ -280,12 +280,12 @@ export function UserProfileProvider({
       return profileData;
     },
     enabled: (isAuthenticated || !!session) && !!userData?.id,
-    refetchOnWindowFocus: false, // Only refetch when user explicitly refreshes
-    refetchOnMount: false, // Don't auto-refetch on component mount
-    staleTime: Infinity, // Data doesn't become stale automatically
-    gcTime: 5 * 60 * 1000, // Keep data in cache for 5 minutes
-    retry: 3,
-    retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 30000),
+    // Completely opt out of background refetching – only manual refetch() should update this.
+    staleTime: Infinity,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
+    refetchOnMount: false,
+    retry: 2,
   });
 
   return (

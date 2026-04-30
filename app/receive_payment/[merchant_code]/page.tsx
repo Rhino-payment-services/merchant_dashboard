@@ -165,28 +165,38 @@ export default function ReceivePaymentPage({ params }: PaymentPageProps) {
         setTransactionRef(result.transactionReference)
       }
 
-      // Check if payment failed at initiation
-      if (!response.ok || result.status === 'FAILED') {
+      // Only treat as failed when backend explicitly says FAILED or HTTP error
+      // Avoid showing "Payment Failed" while USSD prompt may still be in flight
+      if (!response.ok) {
+        throw new Error(result.error || result.message || 'Payment failed')
+      }
+      if (result.status === 'FAILED') {
         throw new Error(result.error || result.message || 'Payment failed')
       }
 
-      // Handle different statuses
-      if (result.status === 'PROCESSING' || result.status === 'PENDING') {
-        // Payment initiated successfully - customer needs to confirm on phone
-        // Stay on processing screen - polling will update status
-        toast.success('Payment initiated! Check your phone for USSD prompt.')
-        // Keep in processing state - polling will handle final status
-        
-      } else if (result.status === 'SUCCESS') {
-        // Immediate success (rare)
+      // SUCCESS: show success screen
+      if (result.status === 'SUCCESS') {
         setPaymentStep('success')
         setIsLoading(false)
         toast.success('Payment successful!')
-        
-      } else {
-        // Unknown status
-        throw new Error(result.message || 'Payment status unknown')
+        return
       }
+
+      // PROCESSING, PENDING, or any other non-FAILED response with a transaction reference:
+      // Show "Check your phone" so we don't show failure while prompts are still being sent
+      if (
+        result.status === 'PROCESSING' ||
+        result.status === 'PENDING' ||
+        result.transactionReference
+      ) {
+        setPaymentStep('processing')
+        setIsLoading(false)
+        toast.success('Payment initiated! Check your phone for USSD prompt.')
+        return
+      }
+
+      // No reference and unknown status - genuine unknown
+      throw new Error(result.message || result.error || 'Payment status unknown')
       
     } catch (error) {
       console.error('Payment error:', error)

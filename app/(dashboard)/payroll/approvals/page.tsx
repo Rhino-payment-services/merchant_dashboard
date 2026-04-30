@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useSession } from 'next-auth/react';
+import { useRouter } from 'next/navigation';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -27,7 +28,8 @@ import {
   AlertTriangle,
   Eye,
   User,
-  Calendar
+  Calendar,
+  ShieldX
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Textarea } from '@/components/ui/textarea';
@@ -63,6 +65,7 @@ const formatDate = (date: string) => {
 
 export default function PayrollApprovalsPage() {
   const { data: session } = useSession();
+  const router = useRouter();
   const { profile } = useUserProfile();
   const [pendingPayrolls, setPendingPayrolls] = useState<any[]>([]);
   const [selectedPayroll, setSelectedPayroll] = useState<any>(null);
@@ -71,6 +74,13 @@ export default function PayrollApprovalsPage() {
   const [showRejectDialog, setShowRejectDialog] = useState(false);
   const [rejectionReason, setRejectionReason] = useState('');
   const [approvalNotes, setApprovalNotes] = useState('');
+  
+  const merchants = (session?.user as any)?.merchants ?? [];
+  const currentMerchantCode = (session?.user as any)?.merchantCode;
+  const currentMerchant = currentMerchantCode
+    ? merchants.find((m: any) => m?.merchantCode === currentMerchantCode)
+    : merchants[0];
+  const featurePayrollApprovals = currentMerchant?.featurePayrollApprovals === true;
   
   // Build user session with isWalletOwner flag
   const userSession: UserSession = {
@@ -246,6 +256,29 @@ export default function PayrollApprovalsPage() {
       </Badge>
     );
   };
+
+  if (session && currentMerchant && featurePayrollApprovals !== true) {
+    return (
+      <div className="flex items-center justify-center min-h-[60vh] px-4">
+        <Card className="max-w-md w-full">
+          <CardHeader>
+            <div className="flex items-center gap-3 mb-2">
+              <ShieldX className="h-8 w-8 text-red-500" />
+              <CardTitle>Access Denied</CardTitle>
+            </div>
+            <CardDescription>
+              Payroll approvals are not enabled for this merchant. Contact your administrator.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Button onClick={() => router.push('/')} className="w-full">
+              Return to Dashboard
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
 
   return (
     <div className="container mx-auto py-8 px-4">

@@ -27,6 +27,7 @@ export default function Home() {
   const [transactionsLoading, setTransactionsLoading] = useState(true);
   const [isSuperMerchant, setIsSuperMerchant] = useState(false);
   const [superMerchantLoading, setSuperMerchantLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
 
   const merchantCode = (session?.user as any)?.merchantCode;
   const userId = (session?.user as any)?.id;
@@ -107,33 +108,39 @@ export default function Home() {
     }
   }, [currentMerchantIdForCheck, loading, sessionMerchantId, sessionMerchants]);
 
-  // Fetch recent transactions when merchantCode is available (avoids race after switching)
-  useEffect(() => {
+  // Helper to (re)load recent transactions for the current merchant
+  const loadRecentTransactions = async () => {
     if (!merchantCode) return;
-    const fetchRecentTransactions = async () => {
-      try {
-        setTransactionsLoading(true);
-        const data = await getMyTransactions({ limit: 5 });
-        setRecentTransactions(data.transactions || []);
-      } catch (error) {
-        console.error('Error fetching recent transactions:', error);
-        setRecentTransactions([]);
-      } finally {
-        setTransactionsLoading(false);
-      }
-    };
-    fetchRecentTransactions();
-  }, [merchantCode, isRefetching]);
-
-  const handleRefresh = async () => {
     try {
-      await refetch();
-      toast.success('Dashboard data refreshed successfully!');
+      setTransactionsLoading(true);
+      const data = await getMyTransactions({ limit: 5 });
+      setRecentTransactions(data.transactions || []);
     } catch (error) {
-      toast.error('Failed to refresh dashboard data');
+      console.error('Error fetching recent transactions:', error);
+      setRecentTransactions([]);
+    } finally {
+      setTransactionsLoading(false);
     }
   };
 
+  // Initial / merchant-change load for recent transactions
+  useEffect(() => {
+    if (!merchantCode) return;
+    loadRecentTransactions();
+  }, [merchantCode]);
+
+  const handleRefresh = async () => {
+    try {
+      setRefreshing(true);
+      await refetch();
+      await loadRecentTransactions();
+      toast.success('Dashboard data refreshed successfully!');
+    } catch (error) {
+      toast.error('Failed to refresh dashboard data');
+    } finally {
+      setRefreshing(false);
+    }
+  };
   // Get merchant ID - prioritize session merchant ID (the actual selected merchant)
   const currentMerchantId = sessionMerchantId || profile?.merchantId || '';
   
@@ -150,18 +157,27 @@ export default function Home() {
         sessionMerchants: sessionMerchants.map((m: any) => ({
           id: m.id,
           code: m.merchantCode,
-          name: m.businessTradeName
-        }))
+          name: m.businessTradeName,
+        })),
       });
     }
-  }, [loading, currentMerchantId, merchantCode, isSuperMerchant, superMerchantLoading, profile?.merchantId, sessionMerchantId]);
+  }, [
+    loading,
+    currentMerchantId,
+    merchantCode,
+    isSuperMerchant,
+    superMerchantLoading,
+    profile?.merchantId,
+    sessionMerchantId,
+    sessionMerchants,
+  ]);
 
   // Regular merchant dashboard content
   const RegularDashboard = () => (
     <>
       {/* Stat Cards */}
       <div className="relative">
-        {isRefetching && (
+        {refreshing && (
           <div className="absolute top-2 right-2 z-10">
             <div className="bg-blue-50 border border-blue-200 rounded-lg px-3 py-1 flex items-center gap-2">
               <RefreshCw className="h-3 w-3 animate-spin text-blue-600" />
@@ -221,7 +237,7 @@ export default function Home() {
                     <span className="text-gray-500 font-normal"> · {profile.owner_name}</span>
                   )}
                 </span>
-                {isRefetching && (
+                {(refreshing || isRefetching) && (
                   <span className="text-xs text-blue-600 bg-blue-50 px-2 py-1 rounded-full flex items-center gap-1">
                     <RefreshCw className="h-3 w-3 animate-spin" />
                     Updating...
@@ -234,11 +250,11 @@ export default function Home() {
                 variant="outline"
                 size="sm"
                 onClick={handleRefresh}
-                disabled={loading || isRefetching}
+                disabled={loading || refreshing || isRefetching}
                 className="flex items-center gap-2"
               >
-                <RefreshCw className={`h-4 w-4 ${isRefetching ? 'animate-spin' : ''}`} />
-                {loading ? 'Loading...' : isRefetching ? 'Refreshing...' : 'Refresh'}
+                <RefreshCw className={`h-4 w-4 ${refreshing || isRefetching ? 'animate-spin' : ''}`} />
+                {loading ? 'Loading...' : refreshing || isRefetching ? 'Refreshing...' : 'Refresh'}
               </Button>
               {!loading && (profile?.merchant_names || profile?.merchantBusinessTradeName) && (
                 <QRCodeButton
@@ -265,7 +281,6 @@ export default function Home() {
             </ul>
           </div>
         )}
-
         {/* Super Merchant gets tabs, regular merchants get standard dashboard */}
         {!superMerchantLoading && isSuperMerchant && currentMerchantId ? (
           <Tabs defaultValue="aggregate" className="w-full">

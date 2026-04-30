@@ -58,6 +58,12 @@ const PRESET_CATEGORY_VALUES = new Set(
   EVENT_CATEGORY_OPTIONS.filter((o) => o.value !== "_none").map((o) => o.value)
 )
 
+type EventCategoryValue = Exclude<typeof EVENT_CATEGORY_OPTIONS[number]['value'], '_none'>
+
+function isValidCategoryValue(value: string): value is EventCategoryValue {
+  return PRESET_CATEGORY_VALUES.has(value as EventCategoryValue)
+}
+
 function isoToDatetimeLocal(iso: string | null | undefined): string {
   if (!iso || !String(iso).trim()) return ""
   try {
@@ -170,7 +176,7 @@ function mapDetailToForm(detail: MerchantEventDetailResponse): FormFields {
   let categoryPreset = "_none"
   let categoryCustom = ""
   if (catRaw) {
-    if (PRESET_CATEGORY_VALUES.has(catRaw) && catRaw !== "other") {
+    if (isValidCategoryValue(catRaw) && catRaw !== "other") {
       categoryPreset = catRaw
     } else if (catRaw === "other") {
       categoryPreset = "other"

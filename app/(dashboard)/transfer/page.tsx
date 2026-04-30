@@ -21,7 +21,6 @@ import {
   CheckCircle,
   User,
 } from "lucide-react";
-import * as XLSX from "xlsx";
 import { UGANDAN_BANKS } from "@/app/lib/bankList";
 import { useUserProfile } from "../UserProfileProvider";
 import {
@@ -29,9 +28,11 @@ import {
   useValidatePhoneNumber,
   useBankCashDeposit,
   useSendFormMobileMoney,
+  useMobileMoneyCollection,
 } from "@/lib/api/payment.api";
 import { toast } from 'sonner';
 import { useSession } from "next-auth/react";
+import { useSearchParams } from "next/navigation";
 
 const mainTabs = [
   { label: "Send Money", icon: Send },
@@ -44,6 +45,7 @@ const sendTabs = [
   { label: "Mobile Money", icon: Smartphone },
   { label: "Bank Account", icon: Landmark },
 ];
+const MIN_COLLECTION_BANK_PAYOUT = 200000;
 
 interface MobileMoneyForm {
   phone: string;
@@ -78,6 +80,9 @@ interface ValidationSuccess {
 
 export default function TransferPage() {
   const { profile } = useUserProfile();
+  const searchParams = useSearchParams();
+  const source = (searchParams.get("source") || "").toLowerCase();
+  const isCollectionSource = source === "collection";
   const [activeTab, setActiveTab] = useState(0);
   const [activeSendTab, setActiveSendTab] = useState(0);
   const  {data: session} = useSession()
@@ -121,6 +126,7 @@ export default function TransferPage() {
   const validatePhoneNumber = useValidatePhoneNumber();
   const bankCashDeposit = useBankCashDeposit();
   const sendFormMobileMoney = useSendFormMobileMoney();
+  const mobileMoneyCollection = useMobileMoneyCollection();
 
   // Salary payment state
   const [salaryRows, setSalaryRows] = useState<any[]>([]);
@@ -256,6 +262,9 @@ export default function TransferPage() {
       console.log("validationSuccess========>", validationSuccess);
       
       if (validationSuccess.type === 'bank') {
+        if (isCollectionSource && Number(validationSuccess.formData.amount) < MIN_COLLECTION_BANK_PAYOUT) {
+          throw new Error("Minimum amount for bank payout from collection is UGX 200,000");
+        }
         // Validate required fields for bank payment
         if (!validationSuccess.formData.accountNumber || !validationSuccess.formData.amount || !validationSuccess.formData.bankSortCode || !validationSuccess.formData.customerPhone) {
           throw new Error("Missing required bank payment data");
@@ -289,6 +298,9 @@ export default function TransferPage() {
         }
         
       } else if (validationSuccess.type === 'mobile_money') {
+        if (isCollectionSource && Number(validationSuccess.formData.amount) < MIN_COLLECTION_BANK_PAYOUT) {
+          throw new Error("Minimum amount for payout from collection is UGX 200,000");
+        }
         // Validate required fields for mobile money payment
         if (!validationSuccess.formData.phoneNumber || !validationSuccess.formData.amount) {
           throw new Error("Missing required mobile money payment data");
@@ -303,7 +315,9 @@ export default function TransferPage() {
         };
         
         console.log("Mobile Money Payment Data:", mobileMoneyPaymentData);
-        const result = await sendFormMobileMoney.mutateAsync(mobileMoneyPaymentData);
+        const result = isCollectionSource
+          ? await mobileMoneyCollection.mutateAsync(mobileMoneyPaymentData)
+          : await sendFormMobileMoney.mutateAsync(mobileMoneyPaymentData);
         console.log("sendFormMobileMoney result========>", result);
         
         if (result?.status === 1) {
@@ -337,6 +351,11 @@ export default function TransferPage() {
     setSuccess("");
     
     try {
+      const mobileAmount = Number(mobileMoneyForm.amount);
+      if (isCollectionSource && mobileAmount < MIN_COLLECTION_BANK_PAYOUT) {
+        throw new Error("Minimum amount for payout from collection is UGX 200,000");
+      }
+
       // Validate mobile money details first
       await validateMobileMoneyDetails(mobileMoneyForm.phone, mobileMoneyForm.amount);
       
@@ -372,6 +391,11 @@ export default function TransferPage() {
     setSuccess("");
     
     try {
+      const bankAmount = Number(bankAccountForm.amount);
+      if (isCollectionSource && bankAmount < MIN_COLLECTION_BANK_PAYOUT) {
+        throw new Error("Minimum amount for bank payout from collection is UGX 200,000");
+      }
+
       // Validate customer phone number
       if (!bankAccountForm.customerPhone || !/^0?7\d{8}$/.test(bankAccountForm.customerPhone)) {
         throw new Error("Please enter a valid customer phone number (e.g., 0748123456)");
@@ -469,10 +493,15 @@ export default function TransferPage() {
           value={mobileMoneyForm.amount}
           onChange={handleMobileMoneyChange}
           required
-          min={1}
+          min={isCollectionSource ? MIN_COLLECTION_BANK_PAYOUT : 1}
           className="w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-main-500"
           placeholder="Enter amount"
         />
+        {isCollectionSource && (
+          <small className="text-gray-500">
+            Minimum for payout from collection is UGX 200,000.
+          </small>
+        )}
       </div>
       <div>
         <label className="block text-sm font-medium mb-1">Reason</label>
@@ -547,10 +576,15 @@ export default function TransferPage() {
           value={bankAccountForm.amount}
           onChange={handleBankAccountChange}
           required
-          min={1}
+          min={isCollectionSource ? MIN_COLLECTION_BANK_PAYOUT : 1}
           className="w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-main-500"
           placeholder="Enter amount"
         />
+        {isCollectionSource && (
+          <small className="text-gray-500">
+            Minimum for bank payout from collection is UGX 200,000.
+          </small>
+        )}
       </div>
       <div>
         <label className="block text-sm font-medium mb-1">Reason</label>
@@ -579,6 +613,11 @@ export default function TransferPage() {
       </Head>
       <div className="min-h-screen">
       <div className="w-full  py-8 px-4">
+        {isCollectionSource && (
+          <div className="mb-4 rounded-lg border border-blue-200 bg-blue-50 p-3 text-sm text-blue-800">
+            Collection payout mode: this flow sends from collection balance.
+          </div>
+        )}
         {/* Wallet Balance */}
         <div className="mb-8 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
           <div className="flex items-center gap-4 bg-white rounded-xl shadow px-6 py-4">
@@ -595,7 +634,11 @@ export default function TransferPage() {
         {/* Page Header */}
         <div className="mb-8">
           <h1 className="text-3xl font-bold text-[#08163d] mb-2">Transfer & Withdrawal</h1>
-          <p className="text-gray-600">Send money to mobile money, bank accounts, or other merchants</p>
+          <p className="text-gray-600">
+            {isCollectionSource
+              ? "Send money from collection balance to mobile money or bank."
+              : "Send money to mobile money, bank accounts, or other merchants"}
+          </p>
         </div>
         
         {/* Main Tabs */}

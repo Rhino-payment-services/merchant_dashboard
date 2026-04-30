@@ -6,7 +6,7 @@ import { useUserProfile } from '../(dashboard)/UserProfileProvider';
 import { RefreshCw } from 'lucide-react';
 
 export default function StatsOverviewChart() {
-  const { profile, loading, isRefetching } = useUserProfile();
+  const { profile } = useUserProfile();
 
   const [period, setPeriod] = useState<'Monthly' | 'Weekly'>('Monthly');
   
@@ -103,14 +103,6 @@ export default function StatsOverviewChart() {
   return (
     <div>
       <Card className="mb-4 relative">
-        {isRefetching && (
-          <div className="absolute top-2 right-2 z-10">
-            <div className="bg-blue-50 border border-blue-200 rounded-lg px-2 py-1 flex items-center gap-1">
-              <RefreshCw className="h-3 w-3 animate-spin text-blue-600" />
-              <span className="text-xs text-blue-600 font-medium">Updating...</span>
-            </div>
-          </div>
-        )}
         <CardHeader className="flex flex-row items-center justify-between pb-2">
           <div className="font-semibold text-lg">Merchant {period} Summary</div>
           <div className="flex gap-2 items-center">

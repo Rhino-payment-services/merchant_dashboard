@@ -45,6 +45,54 @@ type Transaction = {
   status: string;
 };
 
+// Helper to remove duplicate admin-funded deposit rows that share the same reference/amount/etc.
+// This keeps ADMIN_FUND credits from appearing twice in the dashboard widget.
+const dedupeAdminFundTransactions = (items: any[]) => {
+  const seen = new Set<string>();
+  const result: any[] = [];
+
+  for (const tx of items || []) {
+    const isAdminFund = tx?.type === 'DEPOSIT' && tx?.metadata?.fundedByAdmin;
+    if (!isAdminFund) {
+      result.push(tx);
+      continue;
+    }
+
+    // Admin funding appears twice (Transaction + LedgerEntry) with same
+    // reference/amount/admin but different timestamps. Deduplicate on the
+    // business identity so the dashboard only shows one row per funding.
+    const keyParts = [
+      tx.reference ?? '',
+      tx.amount ?? '',
+      tx.direction ?? '',
+      tx.status ?? '',
+      tx.metadata?.adminId ?? '',
+      tx.metadata?.adminEmail ?? '',
+    ];
+    const key = keyParts.join('|');
+
+    if (seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    result.push(tx);
+  }
+
+  return result;
+};
+
+const formatReferenceForDisplay = (txn: any): string => {
+  const reference = String(txn?.reference || '').trim();
+  if (!reference) return 'N/A';
+
+  const isAdminFund = txn?.type === 'DEPOSIT' && txn?.metadata?.fundedByAdmin;
+  if (!isAdminFund || reference.length <= 24) {
+    return reference;
+  }
+
+  return `${reference.slice(0, 14)}...${reference.slice(-8)}`;
+};
+
 interface transactionType {
   transactions?: any[];
   isNewFormat?: boolean;
@@ -52,12 +100,13 @@ interface transactionType {
 
 export default function RecentTransactions({ transactions, isNewFormat = false, merchantName }: transactionType & { merchantName?: string }) {
   const router = useRouter();
-  const { isRefetching, profile } = useUserProfile();
+  const { profile } = useUserProfile();
 
-  // Sort transactions - handle both old and new formats
+  // Clean and sort transactions - handle both old and new formats
   const sortedTransactions = useMemo(() => {
     if (!transactions) return [];
-    return [...transactions].sort((a, b) => {
+    const cleaned = dedupeAdminFundTransactions(transactions);
+    return [...cleaned].sort((a, b) => {
       if (isNewFormat) {
         return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
       }
@@ -143,6 +192,28 @@ export default function RecentTransactions({ transactions, isNewFormat = false, 
   };
 
   const getReceiverInfo = (txn: any) => {
+    const getPreferredRecipientName = (row: any): string | null => {
+      const meta = row?.metadata || {};
+      const fromMetadata = [
+        meta.recipientName,
+        meta.receiverName,
+        meta.counterpartyInfo?.name,
+        meta.userName,
+        meta.accountName,
+        meta.customerName,
+      ]
+        .map((v: any) => String(v || '').trim())
+        .find((v: string) => v.length > 0);
+
+      if (fromMetadata) return fromMetadata;
+
+      if (row?.counterpartyUser?.profile?.firstName && row?.counterpartyUser?.profile?.lastName) {
+        return `${row.counterpartyUser.profile.firstName} ${row.counterpartyUser.profile.lastName}`.trim();
+      }
+
+      return null;
+    };
+
     // Check for admin-funded deposits first
     if (txn.type === 'DEPOSIT' && txn.metadata?.fundedByAdmin) {
       // Merchant is receiving funds from admin
@@ -160,53 +231,76 @@ export default function RecentTransactions({ transactions, isNewFormat = false, 
       };
     } else {
       // DEBIT direction - merchant is sending to someone
-      // Extract receiver info based on transaction type (matching transactions page logic)
-      if (txn.type === 'WALLET_TO_WALLET' || txn.counterpartyId || txn.counterpartyUser) {
-        // P2P - Wallet to Wallet - receiver is another RukaPay user
-        const receiverName = txn.counterpartyUser?.profile?.firstName && txn.counterpartyUser?.profile?.lastName
-          ? `${txn.counterpartyUser.profile.firstName} ${txn.counterpartyUser.profile.lastName}`
-          : txn.metadata?.counterpartyInfo?.name || txn.metadata?.userName || 'RukaPay User';
+      const preferredRecipientName = getPreferredRecipientName(txn);
+      // Check MNO/phone first: metadata.merchantName is the SENDER's business name,
+      // not the receiver. Without this order MNO disbursements show the merchant as receiver.
+      if (txn.type === 'WALLET_TO_MNO' || (txn.metadata?.mnoProvider && txn.metadata?.phoneNumber)) {
+        return {
+          name: preferredRecipientName || `${txn.metadata?.mnoProvider || 'Mobile'} Money`,
+          contact: txn.metadata?.phoneNumber || ''
+        };
+      } else if (txn.type === 'WALLET_TO_WALLET' || txn.counterpartyId || txn.counterpartyUser) {
+        const receiverName = preferredRecipientName || 'RukaPay User';
         return {
           name: receiverName,
           contact: txn.counterpartyUser?.phone || txn.counterpartyId || ''
         };
-      } else if (txn.type === 'WALLET_TO_MERCHANT' || txn.type === 'WALLET_TO_INTERNAL_MERCHANT' || txn.type?.includes('MERCHANT') || txn.metadata?.merchantName) {
-        // Wallet to Merchant - receiver is merchant
+      } else if (txn.metadata?.phoneNumber) {
         return {
-          name: txn.metadata?.merchantName || txn.metadata?.counterpartyInfo?.name || txn.metadata?.userName || 'Merchant',
+          name: preferredRecipientName || 'Mobile Money User',
+          contact: txn.metadata?.phoneNumber || ''
+        };
+      } else if (txn.type === 'WALLET_TO_MERCHANT' || txn.type === 'WALLET_TO_INTERNAL_MERCHANT' || txn.type?.includes('MERCHANT')) {
+        return {
+          name: preferredRecipientName || txn.metadata?.merchantName || 'Merchant',
           contact: txn.metadata?.merchantCode || txn.metadata?.accountNumber || ''
         };
       } else if (txn.metadata?.counterpartyInfo) {
         return {
-          name: txn.metadata.counterpartyInfo.name,
+          name: preferredRecipientName || txn.metadata.counterpartyInfo.name,
           contact: txn.metadata.counterpartyInfo.phone || (txn.metadata.counterpartyInfo as any)?.accountNumber || ''
         };
-      } else if (txn.metadata?.mnoProvider) {
-        // External Mobile Money - show recipient name if available
-        return {
-          name: txn.metadata?.userName || txn.metadata?.recipientName || `${txn.metadata.mnoProvider} Mobile Money`,
-          contact: txn.metadata?.phoneNumber || ''
-        };
-      } else if (txn.metadata?.phoneNumber) {
-        // External Mobile Money (no provider specified)
-        return {
-          name: txn.metadata?.userName || txn.metadata?.recipientName || 'Mobile Money User',
-          contact: txn.metadata?.phoneNumber || ''
-        };
       } else if (txn.metadata?.accountNumber) {
-        // Bank/Utility/Other External Account
         return {
-          name: txn.metadata?.userName || txn.metadata?.recipientName || 'External Account',
+          name: preferredRecipientName || 'External Account',
           contact: txn.metadata?.accountNumber || ''
         };
       } else {
-        // Fallback
         return {
-          name: txn.metadata?.recipientName || txn.metadata?.userName || 'Recipient',
+          name: preferredRecipientName || 'Recipient',
           contact: txn.metadata?.phoneNumber || txn.metadata?.accountNumber || ''
         };
       }
     }
+  };
+
+  // Prefer a human-friendly description and avoid repeating the reference ID
+  const getDescription = (txn: any) => {
+    if (!isNewFormat) {
+      return txn.rdbs_description || "-";
+    }
+
+    const ref = (txn.reference || "").toString().trim();
+    const primaryDesc = (txn.description || "").toString().trim();
+
+    // If description is missing or just duplicates the reference, try metadata fields
+    if (!primaryDesc || primaryDesc === ref) {
+      const metaDesc =
+        (txn.metadata?.description ||
+          txn.metadata?.narration ||
+          txn.metadata?.note ||
+          "") as string;
+
+      const cleanedMeta = metaDesc.toString().trim();
+      if (cleanedMeta && cleanedMeta !== ref) {
+        return cleanedMeta;
+      }
+
+      // No better option – show a clean dash instead of repeating the reference
+      return "-";
+    }
+
+    return primaryDesc;
   };
 
   const handleViewAll = () => {
@@ -221,14 +315,6 @@ export default function RecentTransactions({ transactions, isNewFormat = false, 
 
   return (
     <div className="relative">
-      {isRefetching && (
-        <div className="absolute top-2 right-2 z-10">
-          <div className="bg-blue-50 border border-blue-200 rounded-lg px-2 py-1 flex items-center gap-2">
-            <RefreshCw className="h-3 w-3 animate-spin text-blue-600" />
-            <span className="text-xs text-blue-600 font-medium">Updating...</span>
-          </div>
-        </div>
-      )}
       <div className="flex items-center justify-between mb-4">
         <div className="font-semibold text-lg">Recent Transactions</div>
         <div className="flex gap-2">
@@ -273,8 +359,8 @@ export default function RecentTransactions({ transactions, isNewFormat = false, 
 
                 return (
                   <TableRow key={isNewFormat ? txn.id : txn.rdbs_transaction_id || idx} className="hover:bg-gray-50 transition">
-                    <TableCell className="font-mono text-sm">
-                      {isNewFormat ? txn.reference : txn.rdbs_transaction_id}
+                    <TableCell className="font-mono text-sm" title={isNewFormat ? (txn.reference || 'N/A') : txn.rdbs_transaction_id}>
+                      {isNewFormat ? formatReferenceForDisplay(txn) : txn.rdbs_transaction_id}
                     </TableCell>
                     <TableCell className="text-sm">
                       <div className="flex flex-col">
@@ -334,10 +420,7 @@ export default function RecentTransactions({ transactions, isNewFormat = false, 
                       </span>
                     </TableCell>
                     <TableCell className="max-w-xs truncate">
-                      {isNewFormat 
-                        ? (txn.description || txn.reference || '-')
-                        : (txn.rdbs_description || '-')
-                      }
+                      {getDescription(txn)}
                     </TableCell>
                     <TableCell className="text-sm">
                       {isNewFormat 

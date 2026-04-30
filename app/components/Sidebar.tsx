@@ -24,7 +24,8 @@ import {
   FileCheck,
   ShieldCheck,
   Building2,
-  Calendar
+  Calendar,
+  Droplets
 } from 'lucide-react';
 import Image from 'next/image';
 import { useSession } from 'next-auth/react';
@@ -34,15 +35,12 @@ import { checkMerchantIsSuperMerchant } from '@/lib/api/super-merchant.api';
 const navLinks = [
   { section: 'GENERAL', links: [
     { name: 'Dashboard', path: '/', icon: LayoutDashboard },
-    { name: 'Transaction', path: '/transactions', icon: CreditCard },
-    // { name: 'Withdraw', path: '/transfer', icon: ArrowRightLeft },
-    { name: 'Top Up', path: '/top-up', icon: ArrowDown },
+    { name: 'Transactions', path: '/transactions', icon: CreditCard },
+    { name: 'Request Payment', path: '/top-up', icon: ArrowDown },
     { name: 'QR Code', path: '/qr-code', icon: QrCode },
-    // { name: 'Save', path: '/save', icon: BarChart3 },
-    // { name: 'Employees', path: '/employees', icon: Package },
-    // { name: 'Payroll', path: '/payroll', icon: FileText },
     { name: 'Payment', path: '/bulk-payment', icon: ArrowRightLeft },
     { name: 'Events', path: '/events', icon: Calendar },
+    { name: 'Liquidate', path: '/liquidate', icon: Droplets },
   ]},
   { section: 'TOOLS', links: [
     { name: 'Report', path: '/reports', icon: FileBarChart },
@@ -85,6 +83,24 @@ export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
       })
     : merchants[0];
   
+  const businessName = profile?.merchant_names || profile?.businessTradeName || currentMerchant?.businessTradeName 
+    || ((effectiveMerchantCode) ? `Business · ${effectiveMerchantCode}` : null);
+  
+  // Feature flags — prefer live wallet data (profile.merchantData) so admin changes
+  // take effect without requiring the merchant to re-login.
+  const liveMerchantData = profile?.merchantData || profile?.businessWallet?.merchant;
+  const featureBulkPayments =
+    (liveMerchantData?.featureBulkPayments ?? currentMerchant?.featureBulkPayments) === true;
+  const featureLiquidation =
+    (liveMerchantData?.featureLiquidation ?? (currentMerchant as any)?.featureLiquidation) === true;
+  const featurePayroll =
+    (liveMerchantData?.featurePayroll ?? currentMerchant?.featurePayroll) === true;
+  const featurePayrollApprovals =
+    (liveMerchantData?.featurePayrollApprovals ?? currentMerchant?.featurePayrollApprovals) === true;
+
+  // Liquidate + payroll: require featureLiquidation or featureBulkPayments (Payment link is always shown).
+  const canLiquidate = featureLiquidation || featureBulkPayments;
+
   // State for super merchant status
   const [isSuperMerchant, setIsSuperMerchant] = useState(false);
   
@@ -129,17 +145,14 @@ export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
     }
   }, [session, currentMerchant, merchants, profile?.merchantId]);
   
-  const businessName = profile?.merchant_names || profile?.businessTradeName || currentMerchant?.businessTradeName 
-    || ((effectiveMerchantCode) ? `Business · ${effectiveMerchantCode}` : null);
-  
-  // Filter navLinks based on super merchant status
+  // Filter navLinks based on feature flags
   const filteredNavLinks = navLinks.map(section => ({
     ...section,
     links: section.links.filter(link => {
-      // Only show Payment link for super merchants
-      if (link.path === '/bulk-payment') {
-        return isSuperMerchant;
-      }
+      // Payment (single + bulk + bills) is available to all merchants; Liquidate stays gated.
+      if (link.path === '/liquidate') return canLiquidate;
+      if (link.path === '/payroll') return featurePayroll && canLiquidate;
+      if (link.path === '/payroll/approvals') return featurePayrollApprovals && canLiquidate;
       return true;
     })
   })).filter(section => section.links.length > 0); // Remove empty sections

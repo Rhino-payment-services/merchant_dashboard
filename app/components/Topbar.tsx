@@ -9,12 +9,20 @@ import {
   DropdownMenuItem,
   DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { removeCustomerId } from "@/app/lib/mockBackend";
 import { useRouter } from "next/navigation";
 import { useMerchantAuth } from "@/lib/context/MerchantAuthContext";
 import { useUserProfile } from "../(dashboard)/UserProfileProvider";
 import { useSession } from "next-auth/react";
-import { Menu, X, Building2 } from "lucide-react";
+import { Menu, X, Building2, ChevronDown, Loader2 } from "lucide-react";
+import { toast } from "sonner";
 
 const mockNotifications = [
   {
@@ -44,10 +52,51 @@ interface TopbarProps {
 
 export default function Topbar({ onMenuToggle, isMenuOpen }: TopbarProps) {
   const router = useRouter();
-  const { data: session } = useSession();
+  const { data: session, update: updateSession } = useSession();
   const { profile, loading } = useUserProfile();
   const { user, logout } = useMerchantAuth();
   const merchants = (session?.user as any)?.merchants || [];
+  const currentMerchantCode = (session?.user as any)?.merchantCode;
+  const profileMerchantCode = profile?.merchant_code || profile?.merchantCode;
+  const effectiveMerchantCode = currentMerchantCode || profileMerchantCode;
+
+  // Optimistic state: set immediately on click so the UI doesn't snap back
+  const [pendingMerchantCode, setPendingMerchantCode] = useState<string | null>(null);
+  const [switching, setSwitching] = useState(false);
+
+  // Resolve displayed merchant using pending code first (optimistic), then session
+  const displayedMerchantCode = pendingMerchantCode || effectiveMerchantCode;
+  const findMerchant = (code: string | null) =>
+    code
+      ? merchants.find((m: any) => {
+          const mCode = String(m?.merchantCode || '').trim();
+          const eCode = String(code || '').trim();
+          return mCode === eCode || mCode === eCode.padStart(4, '0') || eCode === mCode.padStart(4, '0');
+        })
+      : merchants[0];
+  const displayedMerchant = findMerchant(displayedMerchantCode);
+
+  // While switching, use merchant array name (profile is still stale); otherwise prefer profile
+  const businessDisplayName = switching
+    ? (displayedMerchant?.businessTradeName || (displayedMerchantCode ? `Business · ${displayedMerchantCode}` : 'Select business'))
+    : (profile?.merchant_names || profile?.businessTradeName || displayedMerchant?.businessTradeName || (displayedMerchantCode ? `Business · ${displayedMerchantCode}` : 'Select business'));
+
+  const handleSwitchMerchant = async (merchantCode: string) => {
+    const code = String(merchantCode || '').trim();
+    if (!code || code === effectiveMerchantCode || switching) return;
+    try {
+      setSwitching(true);
+      setPendingMerchantCode(code); // optimistically show new name right away
+      await updateSession({ merchantCode: code });
+      toast.success("Company switched");
+      // Hard navigate so the new session is guaranteed to be picked up everywhere
+      window.location.href = '/';
+    } catch {
+      setPendingMerchantCode(null); // rollback on failure
+      setSwitching(false);
+      toast.error("Failed to switch company");
+    }
+  };
 
   const handleLogout = async () => {
     try {
@@ -95,14 +144,53 @@ export default function Topbar({ onMenuToggle, isMenuOpen }: TopbarProps) {
         </Button>
       </div>
 
-      {/* Search Bar */}
-      <div className={`flex-1 flex items-center gap-4 ${isMenuOpen ? 'hidden md:flex' : 'flex'} min-w-0`}>
-        <input
-          type="text"
-          placeholder="Search anything ..."
-          className="w-full max-w-xs px-4 py-2 rounded-lg border bg-gray-50 focus:outline-none focus:ring-2 focus:ring-main-200"
-        />
-      </div>
+      {/* Business selector dropdown (matches staging) */}
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild disabled={switching}>
+          <button
+            type="button"
+            disabled={switching}
+            className="flex items-center gap-2 min-w-0 max-w-[200px] sm:max-w-[260px] px-3 py-2 rounded-lg border border-gray-200 bg-white hover:bg-gray-50 text-left focus:outline-none focus:ring-2 focus:ring-main-200 disabled:opacity-60 disabled:cursor-not-allowed"
+          >
+            {switching ? (
+              <Loader2 className="w-4 h-4 text-main-600 flex-shrink-0 animate-spin" />
+            ) : (
+              <Building2 className="w-4 h-4 text-main-600 flex-shrink-0" />
+            )}
+            <span className="truncate text-sm font-medium text-gray-900">
+              {loading && !switching ? '...' : businessDisplayName}
+            </span>
+            {!switching && <ChevronDown className="w-4 h-4 text-gray-500 flex-shrink-0 ml-auto" />}
+          </button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="start" className="w-56 mt-2">
+          {merchants.length > 0 ? (
+            merchants.map((m: any) => {
+              const mCode = String(m?.merchantCode || '').trim();
+              const isActive = mCode === String(displayedMerchantCode || '').trim() ||
+                mCode === String(displayedMerchantCode || '').trim().padStart(4, '0');
+              return (
+                <DropdownMenuItem
+                  key={m.merchantCode || m.id}
+                  onClick={() => handleSwitchMerchant(m.merchantCode ?? m.id)}
+                  className={`cursor-pointer ${isActive ? 'bg-main-50 font-semibold' : ''}`}
+                >
+                  <Building2 className={`w-4 h-4 mr-2 ${isActive ? 'text-main-600' : 'text-gray-400'}`} />
+                  <span className="truncate">{m.businessTradeName || m.merchantCode || 'Merchant'}</span>
+                  {isActive && <span className="ml-auto w-2 h-2 rounded-full bg-main-600 flex-shrink-0" />}
+                </DropdownMenuItem>
+              );
+            })
+          ) : (
+            <Link href="/auth/select-merchant">
+              <DropdownMenuItem className="flex items-center gap-2 cursor-pointer">
+                <Building2 className="w-4 h-4" />
+                Switch Merchant
+              </DropdownMenuItem>
+            </Link>
+          )}
+        </DropdownMenuContent>
+      </DropdownMenu>
 
       <div className="flex items-center gap-4">
         {/* Notification icon */}
