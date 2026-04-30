@@ -1,6 +1,7 @@
 "use client"
 
 import React, { useCallback, useEffect, useState } from "react"
+import NextImage from "next/image"
 import QRCode from "qrcode"
 import {
   Dialog,
@@ -18,7 +19,6 @@ import {
   Printer,
   Download,
   Copy,
-  Share2,
   CheckCircle2,
   RefreshCw,
 } from "lucide-react"
@@ -307,26 +307,53 @@ export function EventCheckoutQrDialog({
     }
   }
 
-  const handleShare = async () => {
+  const handleWhatsApp = () => {
+    if (!checkoutUrl) {
+      toast.error("No link to share")
+      return
+    }
+    const text = encodeURIComponent(`${eventTitle} ${checkoutUrl}`)
+    window.open(`https://wa.me/?text=${text}`, "_blank", "noopener,noreferrer")
+  }
+
+  const handleTwitter = () => {
+    if (!checkoutUrl) {
+      toast.error("No link to share")
+      return
+    }
+    const text = encodeURIComponent(eventTitle)
+    const url = encodeURIComponent(checkoutUrl)
+    window.open(
+      `https://twitter.com/intent/tweet?text=${text}&url=${url}`,
+      "_blank",
+      "noopener,noreferrer"
+    )
+  }
+
+  const handleFacebook = () => {
+    if (!checkoutUrl) {
+      toast.error("No link to share")
+      return
+    }
+    const url = encodeURIComponent(checkoutUrl)
+    window.open(
+      `https://www.facebook.com/sharer/sharer.php?u=${url}`,
+      "_blank",
+      "noopener,noreferrer"
+    )
+  }
+
+  const handleInstagram = async () => {
     if (!checkoutUrl) {
       toast.error("No link to share")
       return
     }
     try {
-      if (navigator.share) {
-        await navigator.share({
-          title: eventTitle,
-          text: `Get tickets: ${eventTitle}`,
-          url: checkoutUrl,
-        })
-        toast.success("Shared successfully")
-      } else {
-        await handleCopyLink()
-      }
+      await navigator.clipboard.writeText(checkoutUrl)
+      toast.success("Link copied - paste in Instagram")
     } catch (e) {
-      if ((e as Error).name !== "AbortError") {
-        console.error("Error sharing", e)
-      }
+      console.error("Error copying Instagram share link", e)
+      toast.error("Failed to copy link")
     }
   }
 
@@ -422,16 +449,6 @@ export function EventCheckoutQrDialog({
                   type="button"
                   variant="outline"
                   className="gap-2"
-                  onClick={() => void handleShare()}
-                  disabled={!canAct}
-                >
-                  <Share2 className="h-4 w-4" />
-                  Share
-                </Button>
-                <Button
-                  type="button"
-                  variant="outline"
-                  className="gap-2"
                   onClick={() => void handleCopyLink()}
                   disabled={!checkoutUrl || busy}
                 >
@@ -447,6 +464,72 @@ export function EventCheckoutQrDialog({
                     </>
                   )}
                 </Button>
+              </div>
+
+              <div className="pt-3 border-t border-border/60 space-y-2">
+                <p className="text-sm font-medium text-foreground">Share on social media</p>
+                <div className="flex flex-wrap gap-2 justify-center sm:justify-start">
+                  <button
+                    type="button"
+                    className="h-10 w-10 cursor-pointer"
+                    onClick={handleWhatsApp}
+                    disabled={!canAct}
+                    aria-label="Share on WhatsApp"
+                  >
+                    <NextImage
+                      src="/images/WhatsApp_icon.png"
+                      alt=""
+                      width={30}
+                      height={30}
+                      className="object-contain"
+                    />
+                  </button>
+                  <button
+                    type="button"
+                    className="h-10 w-10 cursor-pointer"
+                    onClick={handleTwitter}
+                    disabled={!canAct}
+                    aria-label="Share on X"
+                  >
+                    <NextImage
+                      src="/images/new-x-twitter-logo-png-photo-1.png"
+                      alt=""
+                      width={20}
+                      height={20}
+                      className="object-contain"
+                    />
+                  </button>
+                  <button
+                    type="button"
+                    className="h-10 w-10 cursor-pointer"
+                    onClick={handleFacebook}
+                    disabled={!canAct}
+                    aria-label="Share on Facebook"
+                  >
+                    <NextImage
+                      src="/images/Facebook_Logo_(2019).png"
+                      alt=""
+                      width={20}
+                      height={20}
+                      className="object-contain"
+                    />
+                  </button>
+                  <button
+                    type="button"
+                    className="h-10 w-10 cursor-pointer"
+                    onClick={() => void handleInstagram()}
+                    disabled={!canAct}
+                    aria-label="Copy link for Instagram"
+                  >
+                    <NextImage
+                      src="/images/Instagram_icon.png"
+                      alt=""
+                      width={20}
+                      height={20}
+                      className="object-contain"
+                    />
+                  </button>
+                </div>
               </div>
             </>
           )}
