@@ -48,11 +48,12 @@ function formatOptionalDate(iso?: string | null) {
 
 function attendeeStatusBadgeVariant(
   status: string
-): "default" | "secondary" | "outline" | "destructive" {
+): "default" | "secondary" | "outline" | "destructive" | "success" | "info" | "warning" | "danger" {
   const normalized = status.toUpperCase()
-  if (normalized === "CHECKED_IN") return "default"
-  if (normalized === "CONFIRMED") return "default"
-  if (normalized === "PENDING") return "secondary"
+  if (normalized === "ACTIVE") return "info"
+  if (normalized === "CHECKED_IN") return "success"
+  if (normalized === "CONFIRMED") return "info"
+  if (normalized === "PENDING") return "warning"
   if (normalized === "CANCELLED" || normalized === "REFUNDED") return "destructive"
   return "secondary"
 }

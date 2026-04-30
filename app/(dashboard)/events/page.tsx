@@ -77,10 +77,11 @@ function formatEventRange(startsAt: string, endsAt: string) {
   }
 }
 
-function statusBadgeVariant(status: string): "default" | "secondary" | "outline" | "destructive" {
+function statusBadgeVariant(status: string): "default" | "secondary" | "outline" | "destructive" | "success" {
   const u = status.toUpperCase()
-  if (u === "ACTIVE" || u === "PUBLISHED") return "default"
+  if (u === "ACTIVE" || u === "PUBLISHED") return "success"
   if (u === "CANCELLED" || u === "ENDED") return "destructive"
+  if (u === "DRAFT") return "outline"
   return "secondary"
 }
 
@@ -518,7 +519,7 @@ export default function EventsPage() {
                           >
                             <Badge
                               variant={statusBadgeVariant(ev.status)}
-                              className="cursor-pointer transition-opacity hover:opacity-80"
+                              className="cursor-pointer capitalize transition-opacity hover:opacity-80"
                             >
                               {ev.status}
                             </Badge>
