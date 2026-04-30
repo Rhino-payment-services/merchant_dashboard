@@ -23,8 +23,11 @@ import {
 } from "@/components/ui/table"
 import {
   getEventAttendees,
+  getEventCheckInStats,
   type EventAttendeeItem,
+  type EventCheckInStatsResponse,
 } from "@/lib/api/merchant-events.api"
+import { EventCheckInStatsCard } from "./EventCheckInStatsCard"
 
 const PAGE_SIZE = 20
 
@@ -72,6 +75,9 @@ export function EventAttendeesDrawer({
   const [page, setPage] = useState(1)
   const [totalPages, setTotalPages] = useState(1)
   const [total, setTotal] = useState(0)
+  const [checkInStats, setCheckInStats] = useState<EventCheckInStatsResponse | null>(null)
+  const [statsLoading, setStatsLoading] = useState(false)
+  const [statsError, setStatsError] = useState<string | null>(null)
 
   useEffect(() => {
     if (!open) return
@@ -83,12 +89,17 @@ export function EventAttendeesDrawer({
       setItems([])
       setLoadError(null)
       setLoading(false)
+      setCheckInStats(null)
+      setStatsLoading(false)
+      setStatsError(null)
       return
     }
 
     let cancelled = false
     setLoading(true)
     setLoadError(null)
+    setStatsLoading(true)
+    setStatsError(null)
 
     void getEventAttendees(eventId, { page, limit: PAGE_SIZE })
       .then((data) => {
@@ -107,6 +118,20 @@ export function EventAttendeesDrawer({
       })
       .finally(() => {
         if (!cancelled) setLoading(false)
+      })
+
+    void getEventCheckInStats(eventId)
+      .then((data) => {
+        if (!cancelled) setCheckInStats(data)
+      })
+      .catch((e: unknown) => {
+        console.error("Failed to load event check-in stats", e)
+        if (cancelled) return
+        setCheckInStats(null)
+        setStatsError("Could not load check-in stats.")
+      })
+      .finally(() => {
+        if (!cancelled) setStatsLoading(false)
       })
 
     return () => {
@@ -139,6 +164,12 @@ export function EventAttendeesDrawer({
         </DrawerHeader>
 
         <div className="flex-1 overflow-y-auto p-4 space-y-3">
+          <EventCheckInStatsCard
+            stats={checkInStats}
+            loading={statsLoading}
+            error={statsError}
+          />
+
           {loading ? (
             <div className="flex flex-col items-center justify-center gap-3 py-16 text-gray-500">
               <RefreshCw className="h-7 w-7 animate-spin" aria-hidden />

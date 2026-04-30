@@ -412,3 +412,32 @@ export async function getEventAttendees(
   )
   return response.data
 }
+
+export interface EventCheckInStatsStatusBreakdown {
+  ACTIVE: number
+  CHECKED_IN: number
+  CANCELLED: number
+  VOID: number
+}
+
+export interface EventCheckInRecentCheckIn {
+  attendeeName: string
+  ticketCode: string
+  checkedInAt: string
+}
+
+export interface EventCheckInStatsResponse {
+  totalAttendees: number
+  checkedInCount: number
+  pendingCount: number
+  checkInRate: number
+  statusBreakdown: EventCheckInStatsStatusBreakdown
+  recentCheckIns: EventCheckInRecentCheckIn[]
+}
+
+export async function getEventCheckInStats(eventId: string): Promise<EventCheckInStatsResponse> {
+  const response = await apiClient.get<EventCheckInStatsResponse>(
+    `/merchant-events/${eventId}/check-in-stats`
+  )
+  return response.data
+}
