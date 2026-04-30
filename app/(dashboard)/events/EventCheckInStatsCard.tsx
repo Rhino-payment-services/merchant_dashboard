@@ -106,30 +106,6 @@ export function EventCheckInStatsCard({ stats, loading, error }: EventCheckInSta
                 </Badge>
               </div>
             </div>
-
-            <div>
-              <h4 className="text-sm font-medium text-gray-900 mb-2">Recent check-ins</h4>
-              {stats.recentCheckIns.length === 0 ? (
-                <p className="text-sm text-gray-600">No recent check-ins yet.</p>
-              ) : (
-                <ul className="space-y-2">
-                  {stats.recentCheckIns.slice(0, 5).map((row) => (
-                    <li
-                      key={`${row.ticketCode}-${row.checkedInAt}`}
-                      className="rounded-md border p-2.5 text-sm flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1.5"
-                    >
-                      <div className="min-w-0">
-                        <p className="font-medium truncate">{row.attendeeName || "—"}</p>
-                        <p className="text-xs text-gray-500 font-mono truncate">{row.ticketCode || "—"}</p>
-                      </div>
-                      <p className="text-xs text-gray-500 whitespace-nowrap">
-                        {formatOptionalDate(row.checkedInAt)}
-                      </p>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </div>
           </>
         ) : null}
       </CardContent>

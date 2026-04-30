@@ -55,9 +55,10 @@ function formatOptionalDate(iso?: string | null) {
   }
 }
 
-function statusBadgeVariant(status: string): "default" | "secondary" | "outline" | "destructive" {
+function statusBadgeVariant(status: string): "default" | "secondary" | "outline" | "destructive" | "success" | "warning" {
   const normalized = status.toUpperCase()
-  if (normalized === "PAID" || normalized === "COMPLETED" || normalized === "SUCCESSFUL") return "default"
+  if (normalized === "PAID" || normalized === "COMPLETED" || normalized === "SUCCESS" || normalized === "CONFIRMED") return "success"
+  if (normalized === "PENDING") return "warning"
   if (normalized === "FAILED" || normalized === "CANCELLED" || normalized === "EXPIRED") return "destructive"
   return "secondary"
 }

@@ -77,11 +77,12 @@ function formatEventRange(startsAt: string, endsAt: string) {
   }
 }
 
-function statusBadgeVariant(status: string): "default" | "secondary" | "outline" | "destructive" | "success" {
+function statusBadgeVariant(status: string): "default" | "secondary" | "outline" | "destructive" | "success" | "warning" {
   const u = status.toUpperCase()
   if (u === "ACTIVE" || u === "PUBLISHED") return "success"
   if (u === "CANCELLED" || u === "ENDED") return "destructive"
-  if (u === "DRAFT") return "outline"
+  if (u === "DRAFT") return "warning"
+  if (u === "PENDING") return "warning"
   return "secondary"
 }
 
@@ -531,7 +532,7 @@ export default function EventsPage() {
                       <TableCell className="text-right tabular-nums align-top">
                         <button
                           type="button"
-                          className="rounded-sm hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:no-underline"
+                          className="rounded-sm hover:bg-blue-50 px-1.5 py-0.5 cursor-pointer font-light text-blue-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:no-underline"
                           onClick={() => {
                             setAttendeesEventId(ev.id)
                             setAttendeesEventTitle(ev.title)
@@ -546,7 +547,7 @@ export default function EventsPage() {
                       <TableCell className="text-right tabular-nums align-top hidden sm:table-cell">
                         <button
                           type="button"
-                          className="rounded-sm hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:no-underline"
+                          className="rounded-sm hover:bg-blue-50 px-1.5 py-0.5 cursor-pointer font-light text-blue-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:no-underline"
                           onClick={() => {
                             setOrdersEventId(ev.id)
                             setOrdersEventTitle(ev.title)
@@ -566,7 +567,7 @@ export default function EventsPage() {
                           type="button"
                           variant="ghost"
                           size="icon"
-                          className="h-8 w-8 shrink-0 mx-auto"
+                          className="h-8 cur w-8 shrink-0 mx-auto"
                           onClick={() => {
                             setCheckoutQrEventId(ev.id)
                             setCheckoutQrEventTitle(ev.title)
