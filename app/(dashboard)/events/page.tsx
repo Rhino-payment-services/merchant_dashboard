@@ -349,7 +349,6 @@ export default function EventsPage() {
                     <SelectItem value={ALL}>All statuses</SelectItem>
                     <SelectItem value="ACTIVE">Active</SelectItem>
                     <SelectItem value="DRAFT">Draft</SelectItem>
-                    <SelectItem value="ENDED">Ended</SelectItem>
                     <SelectItem value="CANCELLED">Cancelled</SelectItem>
                   </SelectContent>
                 </Select>
