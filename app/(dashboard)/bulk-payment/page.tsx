@@ -43,7 +43,7 @@ const BILLER_SELECT_NONE = '__none__';
 const URA_PRN_MIN_LENGTH = 8;
 
 const isAirtimeOrDataUtility = (provider: string | undefined) =>
-  provider === 'AIRTIME';
+  provider === 'AIRTIME' || provider === 'DATA_BUNDLES';
 
 const normalizeUtilityProvider = (raw: unknown): string => {
   const up = String(raw ?? '').trim().toUpperCase();
@@ -1344,7 +1344,6 @@ export default function BulkPaymentPage() {
 
   const downloadTemplate = async (format: 'excel' | 'csv' = 'csv') => {
     const billColumns = {
-      'Utility Provider': '',
       'Customer Ref': '',
       'Area': '',
     } as const;
