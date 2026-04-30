@@ -43,7 +43,15 @@ const BILLER_SELECT_NONE = '__none__';
 const URA_PRN_MIN_LENGTH = 8;
 
 const isAirtimeOrDataUtility = (provider: string | undefined) =>
-  provider === 'AIRTIME' || provider === 'DATA_BUNDLES';
+  provider === 'AIRTIME';
+
+const normalizeUtilityProvider = (raw: unknown): string => {
+  const up = String(raw ?? '').trim().toUpperCase();
+  if (!up) return '';
+  if (up === 'AIRTIME') return 'AIRTIME';
+  if (up === 'DATA_BUNDLES' || up === 'MOBILE_DATA' || up === 'MOBILE DATA') return 'DATA_BUNDLES';
+  return up;
+};
 
 const isUraUtility = (provider: string | undefined) =>
   provider === URA_UTILITY_PROVIDER;
@@ -363,20 +371,6 @@ export default function BulkPaymentPage() {
           ? normalizePhoneToUganda(singlePayment.phoneNumber)
           : singlePayment.phoneNumber;
 
-      const bundleMeta =
-        singlePayment.utilityProvider === 'DATA_BUNDLES'
-          ? {
-              ...singlePayment.metadata,
-              dataQuantity: Number(singlePayment.metadata?.dataQuantity) || 0,
-              dataUnit: singlePayment.metadata?.dataUnit || 'MB',
-              dataValidity: singlePayment.metadata?.dataValidity || 'Week',
-              dataProductName:
-                singlePayment.metadata?.dataProductName ||
-                singlePayment.metadata?.productName ||
-                'Mobile Data',
-            }
-          : singlePayment.metadata;
-
       const payload: SinglePaymentDto = {
         ...singlePayment,
         phoneNumber:
@@ -393,7 +387,7 @@ export default function BulkPaymentPage() {
           singlePayment.mode === 'UTILITIES' && isAirtimeOrDataUtility(singlePayment.utilityProvider) && normalizedUtilPhone
             ? normalizedUtilPhone
             : singlePayment.utilityAccountNumber,
-        metadata: singlePayment.mode === 'UTILITIES' ? bundleMeta : singlePayment.metadata,
+        metadata: singlePayment.metadata,
         recipientPhoneNumber: singlePayment.mode === 'MERCHANT_TO_WALLET' && singlePayment.recipientPhoneNumber
           ? normalizePhoneToUganda(singlePayment.recipientPhoneNumber)
           : singlePayment.recipientPhoneNumber,
@@ -447,22 +441,19 @@ export default function BulkPaymentPage() {
   }
 
   if (formData.mode === 'UTILITIES') {
-    const up = formData.utilityProvider;
+    const up = normalizeUtilityProvider(formData.utilityProvider);
     if (!up) {
       toast.error('Select a bill provider');
       return;
     }
+    if (up === 'DATA_BUNDLES') {
+      toast.error('Mobile data bundles are currently hidden on merchant dashboard. Use Airtime.');
+      return;
+    }
     if (isAirtimeOrDataUtility(up)) {
       if (!formData.phoneNumber?.trim()) {
-        toast.error('Phone number is required for airtime and mobile data');
+        toast.error('Phone number is required for airtime');
         return;
-      }
-      if (up === 'DATA_BUNDLES') {
-        const q = Number(formData.metadata?.dataQuantity);
-        if (!q || Number.isNaN(q)) {
-          toast.error('Bundle quantity is required for mobile data (e.g. MB/GB amount)');
-          return;
-        }
       }
     } else if (!formData.customerRef?.trim()) {
       toast.error('Customer / account reference is required for this biller');
@@ -488,6 +479,9 @@ export default function BulkPaymentPage() {
           p.id === editingId
             ? {
                 ...(formData as PaymentItem),
+                ...(formData.mode === 'UTILITIES'
+                  ? { utilityProvider: normalizeUtilityProvider(formData.utilityProvider) }
+                  : {}),
                 id: p.id,
                 itemId: p.itemId,
                 status: 'pending',
@@ -524,6 +518,9 @@ export default function BulkPaymentPage() {
 
       const newPayment: PaymentItem = {
         ...paymentData as BulkTransactionItem,
+        ...(paymentData.mode === 'UTILITIES'
+          ? { utilityProvider: normalizeUtilityProvider(paymentData.utilityProvider) }
+          : {}),
         id: `item-${Date.now()}`,
         itemId: `ITEM-${Date.now()}`,
         status: 'pending',
@@ -603,9 +600,9 @@ export default function BulkPaymentPage() {
 
         // Include bill payment fields so backend can validate as BILL_PAYMENT
         if (p.mode === 'UTILITIES') {
-          base.utilityProvider = p.utilityProvider;
+          base.utilityProvider = normalizeUtilityProvider(p.utilityProvider);
           const utilPhone =
-            isAirtimeOrDataUtility(p.utilityProvider) && p.phoneNumber
+            isAirtimeOrDataUtility(normalizeUtilityProvider(p.utilityProvider)) && p.phoneNumber
               ? normalizePhoneToUganda(p.phoneNumber)
               : p.phoneNumber;
           base.customerRef = p.customerRef || p.utilityAccountNumber || utilPhone;
@@ -652,7 +649,7 @@ export default function BulkPaymentPage() {
           .filter(p => p.validated && p.status === 'pending' && p.amount && p.mode)
           .map(async (p) => {
             const utilPh =
-              p.mode === 'UTILITIES' && isAirtimeOrDataUtility(p.utilityProvider) && p.phoneNumber
+              p.mode === 'UTILITIES' && isAirtimeOrDataUtility(normalizeUtilityProvider(p.utilityProvider)) && p.phoneNumber
                 ? normalizePhoneToUganda(p.phoneNumber)
                 : p.phoneNumber;
             const single: SinglePaymentDto = {
@@ -670,7 +667,7 @@ export default function BulkPaymentPage() {
               accountName: p.accountName,
               recipientPhoneNumber: p.recipientPhoneNumber,
               recipientUserId: p.recipientUserId,
-              utilityProvider: p.utilityProvider,
+              utilityProvider: normalizeUtilityProvider(p.utilityProvider),
               utilityAccountNumber: p.utilityAccountNumber || p.customerRef || utilPh,
               customerRef: p.customerRef || p.utilityAccountNumber || utilPh,
               area: p.area,
@@ -937,7 +934,7 @@ export default function BulkPaymentPage() {
             transaction.recipientUserId = p.recipientUserId;
           } else if (p.mode === 'UTILITIES') {
             // Bulk bill payment fields
-            transaction.utilityProvider = p.utilityProvider;
+            transaction.utilityProvider = normalizeUtilityProvider(p.utilityProvider);
             const pnorm = p.phoneNumber ? normalizePhoneToUganda(p.phoneNumber) : p.phoneNumber;
             transaction.customerRef = p.customerRef || p.utilityAccountNumber || pnorm;
             transaction.utilityAccountNumber = p.utilityAccountNumber || p.customerRef || pnorm;
@@ -946,17 +943,6 @@ export default function BulkPaymentPage() {
               transaction.area = String(areaRaw).trim();
             }
             transaction.phoneNumber = pnorm;
-            if (p.utilityProvider === 'DATA_BUNDLES' && p.metadata) {
-              transaction.metadata = {
-                ...transaction.metadata,
-                ...p.metadata,
-                dataQuantity: Number(p.metadata.dataQuantity) || 0,
-                dataUnit: p.metadata.dataUnit || 'MB',
-                dataValidity: p.metadata.dataValidity || 'Week',
-                dataProductName:
-                  p.metadata.dataProductName || p.metadata.productName || 'Mobile Data',
-              };
-            }
           } else {
             // Other modes
             transaction.phoneNumber = p.phoneNumber ? normalizePhoneToUganda(p.phoneNumber) : p.phoneNumber;
@@ -1111,9 +1097,9 @@ export default function BulkPaymentPage() {
           const mapCsvRow = (row: any) => {
             const rawMode = row['Transaction Mode'] || row['mode'] || row['Mode'];
             const mode = normalizeMode(rawMode);
-            const utilProv = String(
-              row['Utility Provider'] || row['utilityProvider'] || row['Biller'] || '',
-            ).trim();
+            const utilProv = normalizeUtilityProvider(
+              row['Utility Provider'] || row['utilityProvider'] || row['Biller'] || ''
+            );
             return {
               mode,
               amount: row['Amount'] || row['Amount (UGX)'] || row['amount'],
@@ -1138,29 +1124,34 @@ export default function BulkPaymentPage() {
           };
 
           const mapped = data.map((row, i) => ({ ...mapCsvRow(row), _sourceIndex: i + 2 }));
-          const valid = mapped.filter(r => r.amount && Number(r.amount) > 0 && r.mode != null);
+          const unsupportedDataBundlesCount = mapped.filter(
+            (r) => r.mode === 'UTILITIES' && r.utilityProvider === 'DATA_BUNDLES'
+          ).length;
+          const valid = mapped.filter(
+            (r) =>
+              r.amount &&
+              Number(r.amount) > 0 &&
+              r.mode != null &&
+              !(r.mode === 'UTILITIES' && r.utilityProvider === 'DATA_BUNDLES')
+          );
           const skippedCount = mapped.length - valid.length;
           if (skippedCount > 0) {
             toast.warning(
               `Skipped ${skippedCount} row(s): missing amount or invalid Transaction Mode. Use exact values (e.g. WALLET_TO_MNO, WALLET_TO_BANK).`
             );
           }
+          if (unsupportedDataBundlesCount > 0) {
+            toast.warning(
+              `Skipped ${unsupportedDataBundlesCount} data bundle row(s): merchant dashboard currently supports Airtime only for utility uploads.`
+            );
+          }
 
           const newPayments: PaymentItem[] = valid.map((row, index) => {
             const mode = row.mode as any;
             const ph = row.phoneNumber ? String(row.phoneNumber).trim() : '';
-            const utilMeta =
-              mode === 'UTILITIES' && String(row.utilityProvider).toUpperCase() === 'DATA_BUNDLES'
-                ? {
-                    dataQuantity: Number(row.dataQuantity) || undefined,
-                    dataUnit: String(row.dataUnit || 'MB'),
-                    dataValidity: String(row.dataValidity || 'Week'),
-                    dataProductName: String(row.dataProductName || 'Mobile Data'),
-                  }
-                : undefined;
             const airData =
               mode === 'UTILITIES' &&
-              (row.utilityProvider === 'AIRTIME' || row.utilityProvider === 'DATA_BUNDLES');
+              row.utilityProvider === 'AIRTIME';
             const normPh = airData && ph ? normalizePhoneToUganda(ph) : ph;
             return {
               id: `upload-${Date.now()}-${index}`,
@@ -1184,7 +1175,6 @@ export default function BulkPaymentPage() {
                     customerRef: airData ? normPh : row.customerRef || undefined,
                     utilityAccountNumber: airData ? normPh : row.customerRef || undefined,
                     area: row.area || undefined,
-                    metadata: utilMeta,
                   }
                 : {}),
               status: 'pending' as const,
@@ -1235,9 +1225,9 @@ export default function BulkPaymentPage() {
           const mapRow = (row: Record<string, unknown>, _index: number) => {
             const rawMode = row['Transaction Mode'] ?? row['mode'] ?? row['Mode'];
             const mode = normalizeMode(rawMode);
-            const utilProv = String(
-              row['Utility Provider'] ?? row['utilityProvider'] ?? row['Biller'] ?? '',
-            ).trim();
+            const utilProv = normalizeUtilityProvider(
+              row['Utility Provider'] ?? row['utilityProvider'] ?? row['Biller'] ?? ''
+            );
             return {
               mode,
               amount: row['Amount'] ?? row['Amount (UGX)'] ?? row['amount'],
@@ -1262,14 +1252,27 @@ export default function BulkPaymentPage() {
           };
 
           const mapped = data.map((row, i) => ({ ...mapRow(row, i), _sourceIndex: i + 2 }));
+          const unsupportedDataBundlesCount = mapped.filter(
+            (r) => r.mode === 'UTILITIES' && r.utilityProvider === 'DATA_BUNDLES'
+          ).length;
           const valid = mapped.filter(r => {
             const amt = r.amount != null && r.amount !== '' ? Number(r.amount) : NaN;
-            return !Number.isNaN(amt) && amt > 0 && r.mode != null;
+            return (
+              !Number.isNaN(amt) &&
+              amt > 0 &&
+              r.mode != null &&
+              !(r.mode === 'UTILITIES' && r.utilityProvider === 'DATA_BUNDLES')
+            );
           });
           const skippedCount = mapped.length - valid.length;
           if (skippedCount > 0) {
             toast.warning(
               `Skipped ${skippedCount} row(s): missing amount or invalid Transaction Mode. Use exact values (e.g. WALLET_TO_MNO, WALLET_TO_BANK).`
+            );
+          }
+          if (unsupportedDataBundlesCount > 0) {
+            toast.warning(
+              `Skipped ${unsupportedDataBundlesCount} data bundle row(s): merchant dashboard currently supports Airtime only for utility uploads.`
             );
           }
 
@@ -1279,18 +1282,9 @@ export default function BulkPaymentPage() {
               : '';
             const mode = row.mode as any;
             const ph = row.phoneNumber ? String(row.phoneNumber).trim() : '';
-            const utilMeta =
-              mode === 'UTILITIES' && String(row.utilityProvider).toUpperCase() === 'DATA_BUNDLES'
-                ? {
-                    dataQuantity: Number(row.dataQuantity) || undefined,
-                    dataUnit: String(row.dataUnit || 'MB'),
-                    dataValidity: String(row.dataValidity || 'Week'),
-                    dataProductName: String(row.dataProductName || 'Mobile Data'),
-                  }
-                : undefined;
             const airData =
               mode === 'UTILITIES' &&
-              (row.utilityProvider === 'AIRTIME' || row.utilityProvider === 'DATA_BUNDLES');
+              row.utilityProvider === 'AIRTIME';
             const normPh = airData && ph ? normalizePhoneToUganda(ph) : ph;
             return {
               id: `upload-${Date.now()}-${index}`,
@@ -1314,7 +1308,6 @@ export default function BulkPaymentPage() {
                     customerRef: airData ? normPh : row.customerRef || undefined,
                     utilityAccountNumber: airData ? normPh : row.customerRef || undefined,
                     area: row.area || undefined,
-                    metadata: utilMeta,
                   }
                 : {}),
               status: 'pending' as const,
@@ -1364,6 +1357,7 @@ export default function BulkPaymentPage() {
         'Network': 'MTN',
         'Bank Name': '',
         'Bank Sort Code': '',
+        'Utility Provider': '',
         'Description': 'Mobile money payment',
         'Currency': 'UGX',
         ...billColumns,
@@ -1376,6 +1370,7 @@ export default function BulkPaymentPage() {
         'Network': '',
         'Bank Name': 'Stanbic Bank',
         'Bank Sort Code': '040102',
+        'Utility Provider': '',
         'Description': 'Bank transfer payment',
         'Currency': 'UGX',
         ...billColumns,
@@ -1388,6 +1383,7 @@ export default function BulkPaymentPage() {
         'Network': '',
         'Bank Name': '',
         'Bank Sort Code': '',
+        'Utility Provider': '',
         'Description': 'Commission payment',
         'Currency': 'UGX',
         ...billColumns,
@@ -1406,24 +1402,23 @@ export default function BulkPaymentPage() {
         'Customer Ref': 'REPLACE_WITH_VALID_PRN',
         'Area': '',
       },
+      {
+        'Transaction Mode': 'UTILITIES',
+        'Phone Number / Account Number': '256701234567',
+        'Name': 'Airtime Recipient',
+        'Amount': 15000,
+        'Network': '',
+        'Bank Name': '',
+        'Bank Sort Code': '',
+        'Utility Provider': 'AIRTIME',
+        'Description': 'Airtime top up',
+        'Currency': 'UGX',
+      },
     ];
 
     if (format === 'csv') {
       // Generate CSV content
-      const headers = [
-        'Transaction Mode',
-        'Phone Number / Account Number',
-        'Name',
-        'Amount',
-        'Network',
-        'Bank Name',
-        'Bank Sort Code',
-        'Description',
-        'Currency',
-        'Utility Provider',
-        'Customer Ref',
-        'Area',
-      ];
+      const headers = ['Transaction Mode', 'Phone Number / Account Number', 'Name', 'Amount', 'Network', 'Bank Name', 'Bank Sort Code', 'Utility Provider', 'Description', 'Currency', 'Customer Ref', 'Area'];
       const csvContent = [
         headers.join(','),
         ...templateData.map(row => 
@@ -1770,17 +1765,13 @@ export default function BulkPaymentPage() {
                         } else {
                           handleSinglePaymentChange('utilityProvider', 'AIRTIME');
                           handleSinglePaymentChange('customerRef', '');
-                          handleSinglePaymentChange('metadata', {
-                            dataUnit: 'MB',
-                            dataValidity: 'Week',
-                            dataProductName: 'Mobile Data',
-                          });
+                          handleSinglePaymentChange('metadata', undefined);
                         }
                       }}
                     >
                       <TabsList className="grid w-full max-w-md grid-cols-2">
                         <TabsTrigger value="utilities">Utilities</TabsTrigger>
-                        <TabsTrigger value="airtime_data">Airtime &amp; data</TabsTrigger>
+                        <TabsTrigger value="airtime_data">Airtime</TabsTrigger>
                       </TabsList>
                       <TabsContent value="utilities" className="space-y-4 pt-3">
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -1862,7 +1853,7 @@ export default function BulkPaymentPage() {
                       </TabsContent>
                       <TabsContent value="airtime_data" className="space-y-4 pt-3">
                         <p className="text-xs text-gray-600">
-                          Sent via Africa&apos;s Talking (airtime or mobile data bundle). Amount is the wallet debit; bundle size is set below for data.
+                          Sent via Africa&apos;s Talking (airtime). Amount is the wallet debit amount.
                         </p>
                         <div>
                           <label className="block text-sm font-semibold text-gray-700 mb-2">Type</label>
@@ -1872,7 +1863,6 @@ export default function BulkPaymentPage() {
                             className="w-full px-3 py-2 border border-gray-300 rounded-md"
                           >
                             <option value="AIRTIME">Airtime</option>
-                            <option value="DATA_BUNDLES">Mobile data bundle</option>
                           </select>
                         </div>
                         <div>
@@ -1886,7 +1876,7 @@ export default function BulkPaymentPage() {
                             className="w-full"
                           />
                         </div>
-                        {singlePayment.utilityProvider === 'DATA_BUNDLES' && (
+                        {false && (
                           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                             <div>
                               <label className="block text-sm font-semibold text-gray-700 mb-2">
@@ -2428,18 +2418,14 @@ export default function BulkPaymentPage() {
                             utilityProvider: 'AIRTIME',
                             customerRef: '',
                             utilityAccountNumber: '',
-                            metadata: {
-                              dataUnit: 'MB',
-                              dataValidity: 'Week',
-                              dataProductName: 'Mobile Data',
-                            },
+                            metadata: undefined,
                           }));
                         }
                       }}
                     >
                       <TabsList className="grid w-full max-w-md grid-cols-2">
                         <TabsTrigger value="utilities">Utilities</TabsTrigger>
-                        <TabsTrigger value="airtime_data">Airtime &amp; data</TabsTrigger>
+                        <TabsTrigger value="airtime_data">Airtime</TabsTrigger>
                       </TabsList>
                       <TabsContent value="utilities" className="space-y-4 pt-3">
                         <div>
@@ -2512,10 +2498,8 @@ export default function BulkPaymentPage() {
                       </TabsContent>
                       <TabsContent value="airtime_data" className="space-y-4 pt-3">
                         <p className="text-xs text-gray-600">
-                          Africa&apos;s Talking — same fields as single bill payment. For Excel/CSV use Transaction
-                          Mode <span className="font-mono">UTILITIES</span>, Utility Provider{' '}
-                          <span className="font-mono">AIRTIME</span> or <span className="font-mono">DATA_BUNDLES</span>
-                          , phone column, and optional Data Quantity / Unit / Validity / Product Name columns.
+                          Africa&apos;s Talking — for Excel/CSV use Transaction Mode <span className="font-mono">UTILITIES</span>,
+                          Utility Provider <span className="font-mono">AIRTIME</span>, and recipient phone.
                         </p>
                         <div>
                           <label className="block text-sm font-semibold text-gray-700 mb-2">Type</label>
@@ -2525,7 +2509,6 @@ export default function BulkPaymentPage() {
                             className="w-full px-3 py-2 border border-gray-300 rounded-lg"
                           >
                             <option value="AIRTIME">Airtime</option>
-                            <option value="DATA_BUNDLES">Mobile data bundle</option>
                           </select>
                         </div>
                         <div>
@@ -2538,7 +2521,7 @@ export default function BulkPaymentPage() {
                             placeholder="+256… or 07…"
                           />
                         </div>
-                        {formData.utilityProvider === 'DATA_BUNDLES' && (
+                        {false && (
                           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                             <div>
                               <label className="block text-sm font-semibold text-gray-700 mb-2">
