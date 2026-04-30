@@ -369,3 +369,46 @@ export async function getEventOrders(
   })
   return response.data
 }
+
+export interface EventAttendeeItem {
+  id: string
+  ticketCode: string
+  attendeeName: string
+  attendeePhone: string | null
+  attendeeEmail: string | null
+  tierName: string
+  status: string
+  checkedInAt: string | null
+  checkedInBy: string | null
+  orderReference: string
+  createdAt: string
+}
+
+export interface EventAttendeesResponse {
+  items: EventAttendeeItem[]
+  total: number
+  page: number
+  limit: number
+  totalPages: number
+}
+
+export interface GetEventAttendeesParams {
+  page?: number
+  limit?: number
+}
+
+export async function getEventAttendees(
+  eventId: string,
+  params: GetEventAttendeesParams = {}
+): Promise<EventAttendeesResponse> {
+  const response = await apiClient.get<EventAttendeesResponse>(
+    `/merchant-events/${eventId}/attendees`,
+    {
+      params: {
+        page: params.page ?? 1,
+        limit: params.limit ?? 20,
+      },
+    }
+  )
+  return response.data
+}

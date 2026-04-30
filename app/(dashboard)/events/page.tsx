@@ -52,6 +52,7 @@ import { EventDetailDialog } from "./EventDetailDialog"
 import { EventCheckoutQrDialog } from "./EventCheckoutQrDialog"
 import { ActivateEventModal } from "./ActivateEventModal"
 import { EventOrdersDrawer } from "./EventOrdersDrawer"
+import { EventAttendeesDrawer } from "./EventAttendeesDrawer"
 
 const PAGE_SIZE = 20
 const ALL = "__all__"
@@ -109,6 +110,9 @@ export default function EventsPage() {
   const [ordersDrawerOpen, setOrdersDrawerOpen] = useState(false)
   const [ordersEventId, setOrdersEventId] = useState<string | null>(null)
   const [ordersEventTitle, setOrdersEventTitle] = useState("")
+  const [attendeesDrawerOpen, setAttendeesDrawerOpen] = useState(false)
+  const [attendeesEventId, setAttendeesEventId] = useState<string | null>(null)
+  const [attendeesEventTitle, setAttendeesEventTitle] = useState("")
   const [activatingEventId, setActivatingEventId] = useState<string | null>(null)
   const [activatingEventTitle, setActivatingEventTitle] = useState("")
   const [statusUpdating, setStatusUpdating] = useState(false)
@@ -436,6 +440,19 @@ export default function EventsPage() {
             eventTitle={ordersEventTitle}
           />
 
+          <EventAttendeesDrawer
+            open={attendeesDrawerOpen}
+            onOpenChange={(o) => {
+              setAttendeesDrawerOpen(o)
+              if (!o) {
+                setAttendeesEventId(null)
+                setAttendeesEventTitle("")
+              }
+            }}
+            eventId={attendeesEventId}
+            eventTitle={attendeesEventTitle}
+          />
+
           <div className="relative rounded-md border min-h-[120px]">
             <Table>
               <TableHeader>
@@ -511,7 +528,19 @@ export default function EventsPage() {
                         )}
                       </TableCell>
                       <TableCell className="text-right tabular-nums align-top">
-                        {(ev.ticketsSold ?? 0).toLocaleString()}
+                        <button
+                          type="button"
+                          className="rounded-sm hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:no-underline"
+                          onClick={() => {
+                            setAttendeesEventId(ev.id)
+                            setAttendeesEventTitle(ev.title)
+                            setAttendeesDrawerOpen(true)
+                          }}
+                          disabled={!merchantCode || (ev.ticketsSold ?? 0) === 0}
+                          aria-label={`View attendees for ${ev.title}`}
+                        >
+                          {(ev.ticketsSold ?? 0).toLocaleString()}
+                        </button>
                       </TableCell>
                       <TableCell className="text-right tabular-nums align-top hidden sm:table-cell">
                         <button
