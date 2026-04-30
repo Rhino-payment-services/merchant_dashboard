@@ -24,6 +24,7 @@ import {
 import {
   getEventAttendees,
   getEventCheckInStats,
+  getMerchantEventUser,
   type EventAttendeeItem,
   type EventCheckInStatsResponse,
 } from "@/lib/api/merchant-events.api"
@@ -56,6 +57,11 @@ function attendeeStatusBadgeVariant(
   return "secondary"
 }
 
+function formatUserFullName(firstName?: string, lastName?: string): string {
+  const fullName = [firstName?.trim(), lastName?.trim()].filter(Boolean).join(" ")
+  return fullName || "Unknown"
+}
+
 type EventAttendeesDrawerProps = {
   open: boolean
   onOpenChange: (open: boolean) => void
@@ -78,6 +84,7 @@ export function EventAttendeesDrawer({
   const [checkInStats, setCheckInStats] = useState<EventCheckInStatsResponse | null>(null)
   const [statsLoading, setStatsLoading] = useState(false)
   const [statsError, setStatsError] = useState<string | null>(null)
+  const [userNameCache, setUserNameCache] = useState<Map<string, string>>(new Map())
 
   useEffect(() => {
     if (!open) return
@@ -92,6 +99,7 @@ export function EventAttendeesDrawer({
       setCheckInStats(null)
       setStatsLoading(false)
       setStatsError(null)
+      setUserNameCache(new Map())
       return
     }
 
@@ -138,6 +146,50 @@ export function EventAttendeesDrawer({
       cancelled = true
     }
   }, [open, eventId, page])
+
+  useEffect(() => {
+    if (!open || !items.length) return
+
+    const missingUserIds = Array.from(
+      new Set(
+        items
+          .map((att) => att.checkedInBy?.trim())
+          .filter((userId): userId is string => Boolean(userId && !userNameCache.has(userId)))
+      )
+    )
+
+    if (!missingUserIds.length) return
+
+    let cancelled = false
+
+    void Promise.allSettled(
+      missingUserIds.map(async (userId) => {
+        try {
+          const user = await getMerchantEventUser(userId)
+          return [userId, formatUserFullName(user.firstName, user.lastName)] as const
+        } catch {
+          return [userId, "Unknown"] as const
+        }
+      })
+    ).then((results) => {
+      if (cancelled) return
+
+      setUserNameCache((prev) => {
+        const next = new Map(prev)
+        for (const result of results) {
+          if (result.status === "fulfilled") {
+            const [userId, userName] = result.value
+            next.set(userId, userName)
+          }
+        }
+        return next
+      })
+    })
+
+    return () => {
+      cancelled = true
+    }
+  }, [open, items, userNameCache])
 
   const title = useMemo(() => {
     if (eventTitle?.trim()) return `Attendees for ${eventTitle}`
@@ -216,7 +268,11 @@ export function EventAttendeesDrawer({
                           </Badge>
                         </TableCell>
                         <TableCell className="text-xs">{formatOptionalDate(att.checkedInAt)}</TableCell>
-                        <TableCell className="text-xs max-w-[140px]">{att.checkedInBy ?? "—"}</TableCell>
+                        <TableCell className="text-xs max-w-[140px]">
+                          {att.checkedInBy?.trim()
+                            ? (userNameCache.get(att.checkedInBy.trim()) ?? "Unknown")
+                            : "—"}
+                        </TableCell>
                         <TableCell className="text-xs">{formatOptionalDate(att.createdAt)}</TableCell>
                       </TableRow>
                     ))}

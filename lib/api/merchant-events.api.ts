@@ -441,3 +441,16 @@ export async function getEventCheckInStats(eventId: string): Promise<EventCheckI
   )
   return response.data
 }
+
+export interface MerchantEventUser {
+  id: string
+  firstName?: string
+  lastName?: string
+  email?: string
+  phone?: string
+}
+
+export async function getMerchantEventUser(userId: string): Promise<MerchantEventUser> {
+  const response = await apiClient.get<MerchantEventUser>(`/merchant-events/users/${userId}`)
+  return response.data
+}
