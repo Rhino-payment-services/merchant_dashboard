@@ -198,7 +198,7 @@ export function EventAttendeesDrawer({
 
   return (
     <Drawer open={open} onOpenChange={onOpenChange}>
-      <DrawerContent className="h-[100dvh] max-h-[100dvh] w-full rounded-none">
+      <DrawerContent className="flex h-[100svh] min-h-[100svh] max-h-[100svh] w-full flex-col rounded-none p-0">
         <DrawerHeader className="border-b text-left relative pr-12">
           <DrawerTitle>{title}</DrawerTitle>
           <DrawerDescription>Tickets and check-in status for this event.</DrawerDescription>
