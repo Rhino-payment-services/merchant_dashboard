@@ -65,10 +65,12 @@ function formatOptionalDate(iso?: string | null) {
 
 function statusBadgeVariant(
   status: string
-): "default" | "secondary" | "outline" | "destructive" {
+): "default" | "secondary" | "outline" | "destructive" | "success" | "warning" {
   const u = status.toUpperCase()
-  if (u === "ACTIVE" || u === "PUBLISHED") return "default"
+  if (u === "ACTIVE" || u === "PUBLISHED") return "success"
   if (u === "CANCELLED" || u === "ENDED") return "destructive"
+  if (u === "DRAFT") return "warning"
+  if (u === "PENDING") return "warning"
   return "secondary"
 }
 
