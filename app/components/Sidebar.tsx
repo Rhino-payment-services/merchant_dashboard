@@ -24,6 +24,7 @@ import {
   FileCheck,
   ShieldCheck,
   Building2,
+  Calendar,
   Droplets
 } from 'lucide-react';
 import Image from 'next/image';
@@ -38,6 +39,7 @@ const navLinks = [
     { name: 'Request Payment', path: '/top-up', icon: ArrowDown },
     { name: 'QR Code', path: '/qr-code', icon: QrCode },
     { name: 'Payment', path: '/bulk-payment', icon: ArrowRightLeft },
+    { name: 'Events', path: '/events', icon: Calendar },
     { name: 'Liquidate', path: '/liquidate', icon: Droplets },
   ]},
   { section: 'TOOLS', links: [
@@ -193,7 +195,7 @@ export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
             variant="ghost"
             size="icon"
             onClick={onClose}
-            className="text-gray-600 hover:text-gray-900"
+            className="cursor-pointer text-gray-600 hover:text-gray-900"
           >
             <X className="w-6 h-6" />
           </Button>
@@ -234,7 +236,7 @@ export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
                     <li key={link.name}>
                       <button
                         onClick={() => handleNavigation(link.path)}
-                        className={`w-full flex items-center px-3 py-2 rounded-lg text-sm font-medium transition-all duration-200 whitespace-nowrap ${
+                        className={`w-full flex items-center px-3 py-2 rounded-lg text-sm font-medium transition-all duration-200 whitespace-nowrap cursor-pointer ${
                           active 
                             ? 'bg-main-50 text-main-600 border border-main-200 shadow-sm' 
                             : 'text-gray-700 hover:bg-gray-50 hover:text-gray-900'
