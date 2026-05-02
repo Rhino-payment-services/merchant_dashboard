@@ -5,6 +5,13 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { 
   Upload, Download, Plus, Trash2, Users, CheckCircle2, 
   XCircle, Clock, Send, AlertCircle, Info, Loader2,
@@ -29,8 +36,14 @@ const TRANSACTION_TYPES = [
 
 type BillPaymentSubTab = 'utilities' | 'airtime_data';
 
+/** Backend `billType` / `utilityProvider` for Uganda Revenue Authority; change if API uses a different code. */
+const URA_UTILITY_PROVIDER = 'URA';
+/** Radix Select cannot use empty string as `SelectItem` value; maps to cleared `utilityProvider`. */
+const BILLER_SELECT_NONE = '__none__';
+const URA_PRN_MIN_LENGTH = 8;
+
 const isAirtimeOrDataUtility = (provider: string | undefined) =>
-  provider === 'AIRTIME';
+  provider === 'AIRTIME' || provider === 'DATA_BUNDLES';
 
 const normalizeUtilityProvider = (raw: unknown): string => {
   const up = String(raw ?? '').trim().toUpperCase();
@@ -38,6 +51,19 @@ const normalizeUtilityProvider = (raw: unknown): string => {
   if (up === 'AIRTIME') return 'AIRTIME';
   if (up === 'DATA_BUNDLES' || up === 'MOBILE_DATA' || up === 'MOBILE DATA') return 'DATA_BUNDLES';
   return up;
+};
+
+const isUraUtility = (provider: string | undefined) =>
+  provider === URA_UTILITY_PROVIDER;
+
+/** Client-side PRN check for URA; final amount/PRN match is enforced by the backend. */
+const validateUraPrn = (raw: string | undefined): string | null => {
+  const s = (raw ?? '').trim();
+  if (!s) return 'PRN (Payment Reference Number) is required for URA';
+  if (s.length < URA_PRN_MIN_LENGTH) {
+    return `PRN must be at least ${URA_PRN_MIN_LENGTH} characters`;
+  }
+  return null;
 };
 
 const UGANDAN_BANKS = [
@@ -210,6 +236,25 @@ export default function BulkPaymentPage() {
       return;
     }
 
+    if (singlePayment.mode === 'UTILITIES') {
+      const up = singlePayment.utilityProvider;
+      if (!up) {
+        toast.error('Select a bill provider');
+        return;
+      }
+      if (!isAirtimeOrDataUtility(up) && !singlePayment.customerRef?.trim()) {
+        toast.error('Customer / account reference is required for this biller');
+        return;
+      }
+      if (isUraUtility(up)) {
+        const prnErr = validateUraPrn(singlePayment.customerRef);
+        if (prnErr) {
+          toast.error(prnErr);
+          return;
+        }
+      }
+    }
+
     setValidatingTransaction(true);
     try {
       const payload: SinglePaymentDto = {
@@ -292,6 +337,37 @@ export default function BulkPaymentPage() {
     if (!session?.user) {
       toast.error('Please log in to process payments');
       return;
+    }
+
+    if (singlePayment.mode === 'UTILITIES') {
+      const up = singlePayment.utilityProvider;
+      if (!up) {
+        toast.error('Select a bill provider');
+        return;
+      }
+      if (isAirtimeOrDataUtility(up)) {
+        if (!singlePayment.phoneNumber?.trim()) {
+          toast.error('Phone number is required for airtime and mobile data');
+          return;
+        }
+        if (up === 'DATA_BUNDLES') {
+          const q = Number(singlePayment.metadata?.dataQuantity);
+          if (!q || Number.isNaN(q)) {
+            toast.error('Bundle quantity is required for mobile data (e.g. MB/GB amount)');
+            return;
+          }
+        }
+      } else if (!singlePayment.customerRef?.trim()) {
+        toast.error('Customer / account reference is required for this biller');
+        return;
+      }
+      if (isUraUtility(up)) {
+        const prnErr = validateUraPrn(singlePayment.customerRef);
+        if (prnErr) {
+          toast.error(prnErr);
+          return;
+        }
+      }
     }
 
     setSinglePaymentLoading(true);
@@ -398,6 +474,12 @@ export default function BulkPaymentPage() {
     } else if (!formData.customerRef?.trim()) {
       toast.error('Customer / account reference is required for this biller');
       return;
+    } else if (isUraUtility(up)) {
+      const prnErr = validateUraPrn(formData.customerRef);
+      if (prnErr) {
+        toast.error(prnErr);
+        return;
+      }
     }
   }
 
@@ -1277,6 +1359,10 @@ export default function BulkPaymentPage() {
   };
 
   const downloadTemplate = async (format: 'excel' | 'csv' = 'csv') => {
+    const billColumns = {
+      'Customer Ref': '',
+      'Area': '',
+    } as const;
     const templateData = [
       {
         'Transaction Mode': 'WALLET_TO_MNO',
@@ -1289,6 +1375,7 @@ export default function BulkPaymentPage() {
         'Utility Provider': '',
         'Description': 'Mobile money payment',
         'Currency': 'UGX',
+        ...billColumns,
       },
       {
         'Transaction Mode': 'WALLET_TO_BANK',
@@ -1301,6 +1388,7 @@ export default function BulkPaymentPage() {
         'Utility Provider': '',
         'Description': 'Bank transfer payment',
         'Currency': 'UGX',
+        ...billColumns,
       },
       {
         'Transaction Mode': 'MERCHANT_TO_WALLET',
@@ -1313,6 +1401,21 @@ export default function BulkPaymentPage() {
         'Utility Provider': '',
         'Description': 'Commission payment',
         'Currency': 'UGX',
+        ...billColumns,
+      },
+      {
+        'Transaction Mode': 'UTILITIES',
+        'Phone Number / Account Number': '',
+        'Name': '',
+        'Amount': 100000,
+        'Network': '',
+        'Bank Name': '',
+        'Bank Sort Code': '',
+        'Description': 'URA bill payment (replace PRN and amount)',
+        'Currency': 'UGX',
+        'Utility Provider': URA_UTILITY_PROVIDER,
+        'Customer Ref': 'REPLACE_WITH_VALID_PRN',
+        'Area': '',
       },
       {
         'Transaction Mode': 'UTILITIES',
@@ -1330,7 +1433,7 @@ export default function BulkPaymentPage() {
 
     if (format === 'csv') {
       // Generate CSV content
-      const headers = ['Transaction Mode', 'Phone Number / Account Number', 'Name', 'Amount', 'Network', 'Bank Name', 'Bank Sort Code', 'Utility Provider', 'Description', 'Currency'];
+      const headers = ['Transaction Mode', 'Phone Number / Account Number', 'Name', 'Amount', 'Network', 'Bank Name', 'Bank Sort Code', 'Utility Provider', 'Description', 'Currency', 'Customer Ref', 'Area'];
       const csvContent = [
         headers.join(','),
         ...templateData.map(row => 
@@ -1691,30 +1794,51 @@ export default function BulkPaymentPage() {
                             <label className="block text-sm font-semibold text-gray-700 mb-2">
                               Biller / Provider
                             </label>
-                            <select
-                              value={singlePayment.utilityProvider || ''}
-                              onChange={(e) => handleSinglePaymentChange('utilityProvider', e.target.value)}
-                              className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                            <Select
+                              value={singlePayment.utilityProvider || undefined}
+                              onValueChange={(v) =>
+                                handleSinglePaymentChange(
+                                  'utilityProvider',
+                                  v === BILLER_SELECT_NONE ? '' : v
+                                )
+                              }
                             >
-                              <option value="">Select biller</option>
-                              <option value="NWSC">NWSC (Water)</option>
-                              <option value="UMEME">UMEME (Electricity)</option>
-                              <option value="DSTV">DStv</option>
-                              <option value="GOTV">GOtv</option>
-                              <option value="YAKALAST">Yaka Last</option>
-                              <option value="SCHOOL-FEES">School Fees</option>
-                            </select>
+                              <SelectTrigger className="w-full">
+                                <SelectValue placeholder="Select biller" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value={BILLER_SELECT_NONE}>Select biller</SelectItem>
+                                <SelectItem value="NWSC">NWSC (Water)</SelectItem>
+                                <SelectItem value="UMEME">UMEME (Electricity)</SelectItem>
+                                <SelectItem value="DSTV">DStv</SelectItem>
+                                <SelectItem value="GOTV">GOtv</SelectItem>
+                                <SelectItem value="YAKALAST">Yaka Last</SelectItem>
+                                <SelectItem value="SCHOOL-FEES">School Fees</SelectItem>
+                                <SelectItem value={URA_UTILITY_PROVIDER}>URA (Tax / e-services)</SelectItem>
+                              </SelectContent>
+                            </Select>
                           </div>
                           <div>
                             <label className="block text-sm font-semibold text-gray-700 mb-2">
-                              Customer / Account Reference
+                              {isUraUtility(singlePayment.utilityProvider)
+                                ? 'PRN (Payment Reference Number)'
+                                : 'Customer / Account Reference'}
                             </label>
                             <Input
                               value={singlePayment.customerRef || ''}
                               onChange={(e) => handleSinglePaymentChange('customerRef', e.target.value)}
-                              placeholder="Meter / account / student number"
+                              placeholder={
+                                isUraUtility(singlePayment.utilityProvider)
+                                  ? 'URA-issued PRN'
+                                  : 'Meter / account / student number'
+                              }
                               className="w-full"
                             />
+                            {isUraUtility(singlePayment.utilityProvider) && (
+                              <p className="text-xs text-gray-600 mt-1">
+                                Enter the PRN from URA. The payment amount should match the PRN; the backend will reject mismatches.
+                              </p>
+                            )}
                           </div>
                         </div>
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -2335,11 +2459,15 @@ export default function BulkPaymentPage() {
                             <option value="GOTV">GOtv</option>
                             <option value="YAKALAST">Yaka Last</option>
                             <option value="SCHOOL-FEES">School Fees</option>
+                            <option value={URA_UTILITY_PROVIDER}>URA (Tax / e-services)</option>
                           </select>
                         </div>
                         <div>
                           <label className="block text-sm font-semibold text-gray-700 mb-2">
-                            Customer / Account Reference <span className="text-red-500">*</span>
+                            {isUraUtility(formData.utilityProvider)
+                              ? 'PRN (Payment Reference Number)'
+                              : 'Customer / Account Reference'}{' '}
+                            <span className="text-red-500">*</span>
                           </label>
                           <Input
                             value={formData.customerRef || formData.utilityAccountNumber || ''}
@@ -2350,8 +2478,17 @@ export default function BulkPaymentPage() {
                                 utilityAccountNumber: e.target.value,
                               }))
                             }
-                            placeholder="Meter / account / student number"
+                            placeholder={
+                              isUraUtility(formData.utilityProvider)
+                                ? 'URA-issued PRN'
+                                : 'Meter / account / student number'
+                            }
                           />
+                          {isUraUtility(formData.utilityProvider) && (
+                            <p className="text-xs text-gray-600 mt-1">
+                              Amount should match the PRN; the backend will reject mismatches.
+                            </p>
+                          )}
                         </div>
                         <div>
                           <label className="block text-sm font-semibold text-gray-700 mb-2">
