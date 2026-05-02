@@ -38,6 +38,8 @@ export default function LiquidatePage() {
   const { data: session } = useSession();
   const [collectionBalance, setCollectionBalance] = useState<number | null>(null);
   const [disbursementBalance, setDisbursementBalance] = useState<number | null>(null);
+  // Internal wallet UUID for BUSINESS_COLLECTION (resolved from /wallet/me/business primary wallet).
+  const [collectionWalletId, setCollectionWalletId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [sweepAmount, setSweepAmount] = useState("");
   const [sweepLoading, setSweepLoading] = useState(false);
@@ -92,14 +94,16 @@ export default function LiquidatePage() {
   const fetchBalances = async () => {
     try {
       setLoading(true);
-      const data = await getWalletBalance();
+      const data = (await getWalletBalance()) as any;
       setCollectionBalance(data.collectionBalance ?? null);
       setDisbursementBalance(data.disbursementBalance ?? null);
+      setCollectionWalletId(typeof data?.id === "string" && data.id.trim() ? data.id : null);
     } catch (err) {
       console.error("Error fetching wallet:", err);
       toast.error("Failed to load wallet balances");
       setCollectionBalance(null);
       setDisbursementBalance(null);
+      setCollectionWalletId(null);
     } finally {
       setLoading(false);
     }
@@ -152,7 +156,8 @@ export default function LiquidatePage() {
 
   const canPayout = useMemo(() => {
     if (!hasSplitWallets) return false;
-    // Liquidation payouts debit the BUSINESS_COLLECTION wallet (not disbursement)
+    // Self payout must explicitly debit BUSINESS_COLLECTION.
+    if (!collectionWalletId) return false;
     if (collectionBalance === null || collectionBalance <= 0) return false;
     if (payoutAmountNum <= 0) return false;
     if (payoutAmountNum > collectionBalance) return false;
@@ -185,10 +190,12 @@ export default function LiquidatePage() {
     payoutAccountName,
     payoutBankName,
     payoutPhone,
+    collectionWalletId,
   ]);
 
   const payoutDisabledReason = useMemo(() => {
     if (!hasSplitWallets) return "Disbursement wallet is not available for this business.";
+    if (!collectionWalletId) return "Collection wallet is not available. Refresh and try again.";
     if (collectionBalance === null) return "Loading your collection balance…";
     if (collectionBalance <= 0) return "Your collection balance is 0.";
     if (payoutAmountNum <= 0) return "Enter an amount.";
@@ -221,6 +228,7 @@ export default function LiquidatePage() {
     payoutAccount,
     payoutAccountName,
     payoutPhone,
+    collectionWalletId,
   ]);
 
   // Reset bank validation when any key input changes
@@ -348,6 +356,9 @@ export default function LiquidatePage() {
           channel: "MERCHANT_PORTAL",
           merchantCode,
           payoutType: "BANK",
+          walletId: collectionWalletId,
+          walletType: "BUSINESS_COLLECTION",
+          isExplicitWalletSelection: true,
           validatedBankAccount: true,
           validatedAccountName: bankValidation.accountName,
           validatedAt: bankValidation.validatedAt,
@@ -411,6 +422,9 @@ export default function LiquidatePage() {
           channel: "MERCHANT_PORTAL",
           merchantCode,
           payoutType: "MOMO",
+          walletId: collectionWalletId,
+          walletType: "BUSINESS_COLLECTION",
+          isExplicitWalletSelection: true,
           validatedRecipient: true,
           validatedAt: momoValidation.validatedAt,
           validatedNetwork: momoValidation.network,
@@ -472,6 +486,9 @@ export default function LiquidatePage() {
           channel: "MERCHANT_PORTAL",
           merchantCode,
           payoutType: "RUKAPAY",
+          walletId: collectionWalletId,
+          walletType: "BUSINESS_COLLECTION",
+          isExplicitWalletSelection: true,
           validatedRecipient: true,
           validatedAt: walletValidation.validatedAt,
           validatedRecipientName: walletValidation.recipientName,
@@ -609,7 +626,7 @@ export default function LiquidatePage() {
             Self liquidate (payout)
           </CardTitle>
           <CardDescription>
-            Send money from your disbursement balance to Bank, Mobile Money, or a RukaPay wallet. Fees and minimums apply.
+            Liquidate funds from your collection balance to any destination: Bank, Mobile Money, or a RukaPay wallet. Fees and minimums apply.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
