@@ -27,6 +27,19 @@ const TRANSACTION_TYPES = [
   { value: 'UTILITIES', label: 'Bill Payment', icon: Zap, color: 'text-orange-600', bg: 'bg-orange-50' },
 ];
 
+type BillPaymentSubTab = 'utilities' | 'airtime_data';
+
+const isAirtimeOrDataUtility = (provider: string | undefined) =>
+  provider === 'AIRTIME';
+
+const normalizeUtilityProvider = (raw: unknown): string => {
+  const up = String(raw ?? '').trim().toUpperCase();
+  if (!up) return '';
+  if (up === 'AIRTIME') return 'AIRTIME';
+  if (up === 'DATA_BUNDLES' || up === 'MOBILE_DATA' || up === 'MOBILE DATA') return 'DATA_BUNDLES';
+  return up;
+};
+
 const UGANDAN_BANKS = [
   { bankName: "Barclays (now Absa)", bankSortCode: "013847" },
   { bankName: "Bank of Baroda", bankSortCode: "020147" },
@@ -124,6 +137,12 @@ export default function BulkPaymentPage() {
     partnerName?: string;
     isValid?: boolean;
   } | null>(null);
+  const [singleBillSubTab, setSingleBillSubTab] = useState<BillPaymentSubTab>('utilities');
+  const [bulkBillSubTab, setBulkBillSubTab] = useState<BillPaymentSubTab>('utilities');
+
+  useEffect(() => {
+    if (singlePayment.mode !== 'UTILITIES') setSingleBillSubTab('utilities');
+  }, [singlePayment.mode]);
 
   // Bulk payment state (must be before any early return to satisfy Rules of Hooks)
   const [bulkTransactionId, setBulkTransactionId] = useState<string | null>(null);
@@ -144,6 +163,10 @@ export default function BulkPaymentPage() {
     walletType: 'BUSINESS', // ✅ Hardcoded to BUSINESS wallet for merchant dashboard
     mnoProvider: 'MTN', // default network so user doesn't have to touch the select
   });
+
+  useEffect(() => {
+    if (formData.mode !== 'UTILITIES') setBulkBillSubTab('utilities');
+  }, [formData.mode]);
 
   // Session loading: show neutral loading so we don't run logic that assumes session
   if (sessionStatus === 'loading' || session === undefined) {
@@ -191,9 +214,15 @@ export default function BulkPaymentPage() {
     try {
       const payload: SinglePaymentDto = {
         ...singlePayment,
-        phoneNumber: singlePayment.mode === 'WALLET_TO_MNO' && singlePayment.phoneNumber
-          ? normalizePhoneToUganda(singlePayment.phoneNumber)
-          : singlePayment.phoneNumber,
+        userId: (session?.user as any)?.id,
+        phoneNumber:
+          singlePayment.mode === 'WALLET_TO_MNO' && singlePayment.phoneNumber
+            ? normalizePhoneToUganda(singlePayment.phoneNumber)
+            : singlePayment.mode === 'UTILITIES' &&
+                isAirtimeOrDataUtility(singlePayment.utilityProvider) &&
+                singlePayment.phoneNumber
+              ? normalizePhoneToUganda(singlePayment.phoneNumber)
+              : singlePayment.phoneNumber,
         recipientPhoneNumber: singlePayment.mode === 'MERCHANT_TO_WALLET' && singlePayment.recipientPhoneNumber
           ? normalizePhoneToUganda(singlePayment.recipientPhoneNumber)
           : singlePayment.recipientPhoneNumber,
@@ -259,11 +288,30 @@ export default function BulkPaymentPage() {
 
     setSinglePaymentLoading(true);
     try {
+      const normalizedUtilPhone =
+        singlePayment.mode === 'UTILITIES' &&
+        isAirtimeOrDataUtility(singlePayment.utilityProvider) &&
+        singlePayment.phoneNumber
+          ? normalizePhoneToUganda(singlePayment.phoneNumber)
+          : singlePayment.phoneNumber;
+
       const payload: SinglePaymentDto = {
         ...singlePayment,
-        phoneNumber: singlePayment.mode === 'WALLET_TO_MNO' && singlePayment.phoneNumber
-          ? normalizePhoneToUganda(singlePayment.phoneNumber)
-          : singlePayment.phoneNumber,
+        phoneNumber:
+          singlePayment.mode === 'WALLET_TO_MNO' && singlePayment.phoneNumber
+            ? normalizePhoneToUganda(singlePayment.phoneNumber)
+            : singlePayment.mode === 'UTILITIES' && normalizedUtilPhone
+              ? normalizedUtilPhone
+              : singlePayment.phoneNumber,
+        customerRef:
+          singlePayment.mode === 'UTILITIES' && isAirtimeOrDataUtility(singlePayment.utilityProvider) && normalizedUtilPhone
+            ? normalizedUtilPhone
+            : singlePayment.customerRef,
+        utilityAccountNumber:
+          singlePayment.mode === 'UTILITIES' && isAirtimeOrDataUtility(singlePayment.utilityProvider) && normalizedUtilPhone
+            ? normalizedUtilPhone
+            : singlePayment.utilityAccountNumber,
+        metadata: singlePayment.metadata,
         recipientPhoneNumber: singlePayment.mode === 'MERCHANT_TO_WALLET' && singlePayment.recipientPhoneNumber
           ? normalizePhoneToUganda(singlePayment.recipientPhoneNumber)
           : singlePayment.recipientPhoneNumber,
@@ -282,6 +330,7 @@ export default function BulkPaymentPage() {
         currency: 'UGX',
         walletType: 'BUSINESS'
       });
+      setSingleBillSubTab('utilities');
       setFeePreview(null);
       setValidationInfo(null);
     } catch (error: any) {
@@ -315,18 +364,58 @@ export default function BulkPaymentPage() {
     return;
   }
 
-  if (formData.mode === 'UTILITIES' && (!formData.utilityProvider || !formData.customerRef)) {
-    toast.error('Bill provider and customer reference are required for bill payments');
-    return;
+  if (formData.mode === 'UTILITIES') {
+    const up = normalizeUtilityProvider(formData.utilityProvider);
+    if (!up) {
+      toast.error('Select a bill provider');
+      return;
+    }
+    if (up === 'DATA_BUNDLES') {
+      toast.error('Mobile data bundles are currently hidden on merchant dashboard. Use Airtime.');
+      return;
+    }
+    if (isAirtimeOrDataUtility(up)) {
+      if (!formData.phoneNumber?.trim()) {
+        toast.error('Phone number is required for airtime');
+        return;
+      }
+    } else if (!formData.customerRef?.trim()) {
+      toast.error('Customer / account reference is required for this biller');
+      return;
+    }
   }
 
     if (editingId) {
-      // Update existing payment (always use BUSINESS wallet)
-      setPayments(prev => prev.map(p => 
-        p.id === editingId 
-          ? { ...formData as PaymentItem, id: p.id, itemId: p.itemId, status: 'pending', validated: false, walletType: 'BUSINESS' }
-          : p
-      ));
+      const utilPhoneEdit =
+        formData.mode === 'UTILITIES' &&
+        isAirtimeOrDataUtility(formData.utilityProvider) &&
+        formData.phoneNumber
+          ? normalizePhoneToUganda(formData.phoneNumber)
+          : undefined;
+      setPayments(prev =>
+        prev.map((p) =>
+          p.id === editingId
+            ? {
+                ...(formData as PaymentItem),
+                ...(formData.mode === 'UTILITIES'
+                  ? { utilityProvider: normalizeUtilityProvider(formData.utilityProvider) }
+                  : {}),
+                id: p.id,
+                itemId: p.itemId,
+                status: 'pending',
+                validated: false,
+                walletType: 'BUSINESS',
+                ...(utilPhoneEdit
+                  ? {
+                      phoneNumber: utilPhoneEdit,
+                      customerRef: utilPhoneEdit,
+                      utilityAccountNumber: utilPhoneEdit,
+                    }
+                  : {}),
+              }
+            : p,
+        ),
+      );
       setEditingId(null);
       toast.success('Payment updated');
     } else {
@@ -338,12 +427,29 @@ export default function BulkPaymentPage() {
         (paymentData as any).recipientPhone = paymentData.recipientPhoneNumber;
       }
       
+      const utilPhone =
+        paymentData.mode === 'UTILITIES' &&
+        isAirtimeOrDataUtility(paymentData.utilityProvider) &&
+        paymentData.phoneNumber
+          ? normalizePhoneToUganda(paymentData.phoneNumber)
+          : undefined;
+
       const newPayment: PaymentItem = {
         ...paymentData as BulkTransactionItem,
+        ...(paymentData.mode === 'UTILITIES'
+          ? { utilityProvider: normalizeUtilityProvider(paymentData.utilityProvider) }
+          : {}),
         id: `item-${Date.now()}`,
         itemId: `ITEM-${Date.now()}`,
         status: 'pending',
         walletType: 'BUSINESS', // ✅ Hardcoded to BUSINESS wallet
+        ...(utilPhone
+          ? {
+              phoneNumber: utilPhone,
+              customerRef: utilPhone,
+              utilityAccountNumber: utilPhone,
+            }
+          : {}),
       };
       setPayments(prev => [...prev, newPayment]);
       toast.success('Payment added to list');
@@ -356,6 +462,11 @@ export default function BulkPaymentPage() {
   const handleEditPayment = (payment: PaymentItem) => {
     setFormData(payment);
     setEditingId(payment.id);
+    if (payment.mode === 'UTILITIES' && isAirtimeOrDataUtility(payment.utilityProvider)) {
+      setBulkBillSubTab('airtime_data');
+    } else if (payment.mode === 'UTILITIES') {
+      setBulkBillSubTab('utilities');
+    }
     setShowAddForm(true);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
@@ -407,10 +518,16 @@ export default function BulkPaymentPage() {
 
         // Include bill payment fields so backend can validate as BILL_PAYMENT
         if (p.mode === 'UTILITIES') {
-          base.utilityProvider = p.utilityProvider;
-          base.customerRef = p.customerRef || p.utilityAccountNumber;
-          base.utilityAccountNumber = p.utilityAccountNumber || p.customerRef;
+          base.utilityProvider = normalizeUtilityProvider(p.utilityProvider);
+          const utilPhone =
+            isAirtimeOrDataUtility(normalizeUtilityProvider(p.utilityProvider)) && p.phoneNumber
+              ? normalizePhoneToUganda(p.phoneNumber)
+              : p.phoneNumber;
+          base.customerRef = p.customerRef || p.utilityAccountNumber || utilPhone;
+          base.utilityAccountNumber = p.utilityAccountNumber || p.customerRef || utilPhone;
           base.area = p.area;
+          base.phoneNumber = utilPhone;
+          base.metadata = p.metadata;
         }
 
         return base;
@@ -449,12 +566,17 @@ export default function BulkPaymentPage() {
         updatedPayments
           .filter(p => p.validated && p.status === 'pending' && p.amount && p.mode)
           .map(async (p) => {
+            const utilPh =
+              p.mode === 'UTILITIES' && isAirtimeOrDataUtility(normalizeUtilityProvider(p.utilityProvider)) && p.phoneNumber
+                ? normalizePhoneToUganda(p.phoneNumber)
+                : p.phoneNumber;
             const single: SinglePaymentDto = {
               mode: p.mode as SinglePaymentDto['mode'],
               amount: p.amount as number,
               currency: p.currency || 'UGX',
               walletType: 'BUSINESS',
-              phoneNumber: p.phoneNumber,
+              userId: (session?.user as any)?.id,
+              phoneNumber: utilPh,
               mnoProvider: p.mnoProvider,
               recipientName: p.recipientName,
               accountNumber: p.accountNumber,
@@ -463,9 +585,9 @@ export default function BulkPaymentPage() {
               accountName: p.accountName,
               recipientPhoneNumber: p.recipientPhoneNumber,
               recipientUserId: p.recipientUserId,
-              utilityProvider: p.utilityProvider,
-              utilityAccountNumber: p.utilityAccountNumber,
-              customerRef: p.customerRef,
+              utilityProvider: normalizeUtilityProvider(p.utilityProvider),
+              utilityAccountNumber: p.utilityAccountNumber || p.customerRef || utilPh,
+              customerRef: p.customerRef || p.utilityAccountNumber || utilPh,
               area: p.area,
               metadata: p.metadata,
             };
@@ -730,13 +852,15 @@ export default function BulkPaymentPage() {
             transaction.recipientUserId = p.recipientUserId;
           } else if (p.mode === 'UTILITIES') {
             // Bulk bill payment fields
-            transaction.utilityProvider = p.utilityProvider;
-            // Use either explicit utilityAccountNumber or customerRef
-            transaction.customerRef = p.customerRef || p.utilityAccountNumber;
-            transaction.area = p.area;
-            transaction.phoneNumber = p.phoneNumber
-              ? normalizePhoneToUganda(p.phoneNumber)
-              : p.phoneNumber;
+            transaction.utilityProvider = normalizeUtilityProvider(p.utilityProvider);
+            const pnorm = p.phoneNumber ? normalizePhoneToUganda(p.phoneNumber) : p.phoneNumber;
+            transaction.customerRef = p.customerRef || p.utilityAccountNumber || pnorm;
+            transaction.utilityAccountNumber = p.utilityAccountNumber || p.customerRef || pnorm;
+            const areaRaw = p.area;
+            if (areaRaw !== undefined && areaRaw !== null && String(areaRaw).trim() !== '') {
+              transaction.area = String(areaRaw).trim();
+            }
+            transaction.phoneNumber = pnorm;
           } else {
             // Other modes
             transaction.phoneNumber = p.phoneNumber ? normalizePhoneToUganda(p.phoneNumber) : p.phoneNumber;
@@ -891,6 +1015,9 @@ export default function BulkPaymentPage() {
           const mapCsvRow = (row: any) => {
             const rawMode = row['Transaction Mode'] || row['mode'] || row['Mode'];
             const mode = normalizeMode(rawMode);
+            const utilProv = normalizeUtilityProvider(
+              row['Utility Provider'] || row['utilityProvider'] || row['Biller'] || ''
+            );
             return {
               mode,
               amount: row['Amount'] || row['Amount (UGX)'] || row['amount'],
@@ -904,36 +1031,73 @@ export default function BulkPaymentPage() {
               accountName: row['Account Name'] || row['accountName'] || row['Name'] || row['name'] || '',
               currency: row['Currency'] || row['currency'] || 'UGX',
               recipientPhone: row['Recipient Phone'] || row['recipientPhone'] || row['recipientPhoneNumber'] || '',
+              utilityProvider: utilProv || undefined,
+              customerRef: String(row['Customer Ref'] || row['customerRef'] || row['Account Ref'] || '').trim(),
+              area: String(row['Area'] || row['area'] || '').trim(),
+              dataQuantity: row['Data Quantity'] || row['dataQuantity'],
+              dataUnit: row['Data Unit'] || row['dataUnit'],
+              dataValidity: row['Data Validity'] || row['dataValidity'],
+              dataProductName: row['Product Name'] || row['dataProductName'] || '',
             };
           };
 
           const mapped = data.map((row, i) => ({ ...mapCsvRow(row), _sourceIndex: i + 2 }));
-          const valid = mapped.filter(r => r.amount && Number(r.amount) > 0 && r.mode != null);
+          const unsupportedDataBundlesCount = mapped.filter(
+            (r) => r.mode === 'UTILITIES' && r.utilityProvider === 'DATA_BUNDLES'
+          ).length;
+          const valid = mapped.filter(
+            (r) =>
+              r.amount &&
+              Number(r.amount) > 0 &&
+              r.mode != null &&
+              !(r.mode === 'UTILITIES' && r.utilityProvider === 'DATA_BUNDLES')
+          );
           const skippedCount = mapped.length - valid.length;
           if (skippedCount > 0) {
             toast.warning(
               `Skipped ${skippedCount} row(s): missing amount or invalid Transaction Mode. Use exact values (e.g. WALLET_TO_MNO, WALLET_TO_BANK).`
             );
           }
+          if (unsupportedDataBundlesCount > 0) {
+            toast.warning(
+              `Skipped ${unsupportedDataBundlesCount} data bundle row(s): merchant dashboard currently supports Airtime only for utility uploads.`
+            );
+          }
 
-          const newPayments: PaymentItem[] = valid.map((row, index) => ({
-            id: `upload-${Date.now()}-${index}`,
-            itemId: `ITEM-${Date.now()}-${index}`,
-            mode: row.mode as any,
-            amount: Number(row.amount),
-            currency: row.currency || 'UGX',
-            description: row.description || `Payment ${index + 1}`,
-            phoneNumber: row.phoneNumber || '',
-            mnoProvider: getValidMnoProvider(row.mnoProvider),
-            recipientName: row.recipientName || '',
-            accountNumber: row.accountNumber || '',
-            bankSortCode: row.bankSortCode || '',
-            bankName: row.bankName || '',
-            accountName: row.accountName || '',
-            recipientPhone: row.recipientPhone || '',
-            recipientPhoneNumber: row.recipientPhone || row.phoneNumber || '',
-            status: 'pending' as const,
-          }));
+          const newPayments: PaymentItem[] = valid.map((row, index) => {
+            const mode = row.mode as any;
+            const ph = row.phoneNumber ? String(row.phoneNumber).trim() : '';
+            const airData =
+              mode === 'UTILITIES' &&
+              row.utilityProvider === 'AIRTIME';
+            const normPh = airData && ph ? normalizePhoneToUganda(ph) : ph;
+            return {
+              id: `upload-${Date.now()}-${index}`,
+              itemId: `ITEM-${Date.now()}-${index}`,
+              mode,
+              amount: Number(row.amount),
+              currency: row.currency || 'UGX',
+              description: row.description || `Payment ${index + 1}`,
+              phoneNumber: normPh || ph,
+              mnoProvider: getValidMnoProvider(row.mnoProvider),
+              recipientName: row.recipientName || '',
+              accountNumber: row.accountNumber || '',
+              bankSortCode: row.bankSortCode || '',
+              bankName: row.bankName || '',
+              accountName: row.accountName || '',
+              recipientPhone: row.recipientPhone || '',
+              recipientPhoneNumber: row.recipientPhone || row.phoneNumber || '',
+              ...(mode === 'UTILITIES'
+                ? {
+                    utilityProvider: row.utilityProvider,
+                    customerRef: airData ? normPh : row.customerRef || undefined,
+                    utilityAccountNumber: airData ? normPh : row.customerRef || undefined,
+                    area: row.area || undefined,
+                  }
+                : {}),
+              status: 'pending' as const,
+            };
+          });
 
           console.log('✅ Parsed CSV payments:', newPayments);
 
@@ -979,6 +1143,9 @@ export default function BulkPaymentPage() {
           const mapRow = (row: Record<string, unknown>, _index: number) => {
             const rawMode = row['Transaction Mode'] ?? row['mode'] ?? row['Mode'];
             const mode = normalizeMode(rawMode);
+            const utilProv = normalizeUtilityProvider(
+              row['Utility Provider'] ?? row['utilityProvider'] ?? row['Biller'] ?? ''
+            );
             return {
               mode,
               amount: row['Amount'] ?? row['Amount (UGX)'] ?? row['amount'],
@@ -992,13 +1159,28 @@ export default function BulkPaymentPage() {
               accountName: String(row['Account Name'] ?? row['accountName'] ?? row['Name'] ?? row['name'] ?? '').trim(),
               currency: String(row['Currency'] ?? row['currency'] ?? 'UGX').trim(),
               recipientPhone: String(row['Recipient Phone'] ?? row['recipientPhone'] ?? row['recipientPhoneNumber'] ?? '').trim(),
+              utilityProvider: utilProv || undefined,
+              customerRef: String(row['Customer Ref'] ?? row['customerRef'] ?? row['Account Ref'] ?? '').trim(),
+              area: String(row['Area'] ?? row['area'] ?? '').trim(),
+              dataQuantity: row['Data Quantity'] ?? row['dataQuantity'],
+              dataUnit: row['Data Unit'] ?? row['dataUnit'],
+              dataValidity: row['Data Validity'] ?? row['dataValidity'],
+              dataProductName: row['Product Name'] ?? row['dataProductName'] ?? '',
             };
           };
 
           const mapped = data.map((row, i) => ({ ...mapRow(row, i), _sourceIndex: i + 2 }));
+          const unsupportedDataBundlesCount = mapped.filter(
+            (r) => r.mode === 'UTILITIES' && r.utilityProvider === 'DATA_BUNDLES'
+          ).length;
           const valid = mapped.filter(r => {
             const amt = r.amount != null && r.amount !== '' ? Number(r.amount) : NaN;
-            return !Number.isNaN(amt) && amt > 0 && r.mode != null;
+            return (
+              !Number.isNaN(amt) &&
+              amt > 0 &&
+              r.mode != null &&
+              !(r.mode === 'UTILITIES' && r.utilityProvider === 'DATA_BUNDLES')
+            );
           });
           const skippedCount = mapped.length - valid.length;
           if (skippedCount > 0) {
@@ -1006,19 +1188,30 @@ export default function BulkPaymentPage() {
               `Skipped ${skippedCount} row(s): missing amount or invalid Transaction Mode. Use exact values (e.g. WALLET_TO_MNO, WALLET_TO_BANK).`
             );
           }
+          if (unsupportedDataBundlesCount > 0) {
+            toast.warning(
+              `Skipped ${unsupportedDataBundlesCount} data bundle row(s): merchant dashboard currently supports Airtime only for utility uploads.`
+            );
+          }
 
           const newPayments: PaymentItem[] = valid.map((row, index) => {
             const desc = (row.description != null && row.description !== '')
               ? String(row.description).trim()
               : '';
+            const mode = row.mode as any;
+            const ph = row.phoneNumber ? String(row.phoneNumber).trim() : '';
+            const airData =
+              mode === 'UTILITIES' &&
+              row.utilityProvider === 'AIRTIME';
+            const normPh = airData && ph ? normalizePhoneToUganda(ph) : ph;
             return {
               id: `upload-${Date.now()}-${index}`,
               itemId: `ITEM-${Date.now()}-${index}`,
-              mode: row.mode as any,
+              mode,
               amount: Number(row.amount),
               currency: row.currency || 'UGX',
               description: desc || `Payment ${index + 1}`,
-              phoneNumber: row.phoneNumber || '',
+              phoneNumber: normPh || ph,
               mnoProvider: getValidMnoProvider(row.mnoProvider),
               recipientName: row.recipientName || '',
               accountNumber: row.accountNumber || '',
@@ -1027,6 +1220,14 @@ export default function BulkPaymentPage() {
               accountName: row.accountName || '',
               recipientPhone: row.recipientPhone || '',
               recipientPhoneNumber: row.recipientPhone || row.phoneNumber || '',
+              ...(mode === 'UTILITIES'
+                ? {
+                    utilityProvider: row.utilityProvider,
+                    customerRef: airData ? normPh : row.customerRef || undefined,
+                    utilityAccountNumber: airData ? normPh : row.customerRef || undefined,
+                    area: row.area || undefined,
+                  }
+                : {}),
               status: 'pending' as const,
             };
           });
@@ -1069,6 +1270,7 @@ export default function BulkPaymentPage() {
         'Network': 'MTN',
         'Bank Name': '',
         'Bank Sort Code': '',
+        'Utility Provider': '',
         'Description': 'Mobile money payment',
         'Currency': 'UGX',
       },
@@ -1080,6 +1282,7 @@ export default function BulkPaymentPage() {
         'Network': '',
         'Bank Name': 'Stanbic Bank',
         'Bank Sort Code': '040102',
+        'Utility Provider': '',
         'Description': 'Bank transfer payment',
         'Currency': 'UGX',
       },
@@ -1091,14 +1294,27 @@ export default function BulkPaymentPage() {
         'Network': '',
         'Bank Name': '',
         'Bank Sort Code': '',
+        'Utility Provider': '',
         'Description': 'Commission payment',
+        'Currency': 'UGX',
+      },
+      {
+        'Transaction Mode': 'UTILITIES',
+        'Phone Number / Account Number': '256701234567',
+        'Name': 'Airtime Recipient',
+        'Amount': 15000,
+        'Network': '',
+        'Bank Name': '',
+        'Bank Sort Code': '',
+        'Utility Provider': 'AIRTIME',
+        'Description': 'Airtime top up',
         'Currency': 'UGX',
       },
     ];
 
     if (format === 'csv') {
       // Generate CSV content
-      const headers = ['Transaction Mode', 'Phone Number / Account Number', 'Name', 'Amount', 'Network', 'Bank Name', 'Bank Sort Code', 'Description', 'Currency'];
+      const headers = ['Transaction Mode', 'Phone Number / Account Number', 'Name', 'Amount', 'Network', 'Bank Name', 'Bank Sort Code', 'Utility Provider', 'Description', 'Currency'];
       const csvContent = [
         headers.join(','),
         ...templateData.map(row => 
@@ -1137,33 +1353,22 @@ export default function BulkPaymentPage() {
   const failedCount = payments.filter(p => p.status === 'failed').length;
   const pendingCount = payments.filter(p => p.status === 'pending').length;
 
-  // Feature-flag gating: merchant must have bulk payments or disbursement enabled (via admin Dashboard Features)
-  if (session && currentMerchant && !canLiquidate) {
-    return (
-      <div className="flex items-center justify-center min-h-[60vh] px-4">
-        <Card className="max-w-md w-full">
-          <CardHeader>
-            <div className="flex items-center gap-3 mb-2">
-              <AlertTriangle className="h-8 w-8 text-amber-500" />
-              <CardTitle>Access Denied</CardTitle>
-            </div>
-            <CardDescription>
-              Bulk payments are not enabled for this merchant. Contact your administrator.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <Button onClick={() => router.push('/')} className="w-full">
-              Return to Dashboard
-            </Button>
-          </CardContent>
-        </Card>
-      </div>
-    );
-  }
-
   return (
     <div key={currentMerchantCode ?? 'default'} className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 p-6">
       <div className="max-w-7xl mx-auto space-y-6">
+        {session && currentMerchant && !canLiquidate ? (
+          <div
+            className="flex gap-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950"
+            role="status"
+          >
+            <AlertTriangle className="h-5 w-5 shrink-0 text-amber-600" aria-hidden />
+            <p>
+              Bulk disbursement features are not enabled for this merchant. You can still use this page for
+              single payments and bill payment; queued bulk runs may be blocked until an administrator enables
+              <span className="font-medium"> Bulk payments</span> or <span className="font-medium">Liquidation</span> in dashboard features.
+            </p>
+          </div>
+        ) : null}
         {/* Page Header */}
         <div className="mb-8">
           <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
@@ -1441,64 +1646,190 @@ export default function BulkPaymentPage() {
                   </div>
                 )}
 
-                {/* Single Bill Payment Fields */}
+                {/* Single Bill Payment — utilities vs airtime / mobile data (Africa&apos;s Talking) */}
                 {singlePayment.mode === 'UTILITIES' && (
                   <div className="space-y-4">
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <div>
-                        <label className="block text-sm font-semibold text-gray-700 mb-2">
-                          Biller / Provider
-                        </label>
-                        <select
-                          value={singlePayment.utilityProvider || ''}
-                          onChange={(e) => handleSinglePaymentChange('utilityProvider', e.target.value)}
-                          className="w-full px-3 py-2 border border-gray-300 rounded-md"
-                        >
-                          <option value="">Select biller</option>
-                          <option value="NWSC">NWSC (Water)</option>
-                          <option value="UMEME">UMEME (Electricity)</option>
-                          <option value="DSTV">DStv</option>
-                          <option value="GOTV">GOtv</option>
-                          <option value="YAKALAST">Yaka Last</option>
-                          <option value="SCHOOL-FEES">School Fees</option>
-                        </select>
-                      </div>
-                      <div>
-                        <label className="block text-sm font-semibold text-gray-700 mb-2">
-                          Customer / Account Reference
-                        </label>
-                        <Input
-                          value={singlePayment.customerRef || ''}
-                          onChange={(e) => handleSinglePaymentChange('customerRef', e.target.value)}
-                          placeholder="Meter / account / student number"
-                          className="w-full"
-                        />
-                      </div>
-                    </div>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <div>
-                        <label className="block text-sm font-semibold text-gray-700 mb-2">
-                          Area / Region (Optional)
-                        </label>
-                        <Input
-                          value={singlePayment.area || ''}
-                          onChange={(e) => handleSinglePaymentChange('area', e.target.value)}
-                          placeholder="e.g., Kampala"
-                          className="w-full"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-sm font-semibold text-gray-700 mb-2">
-                          Customer Phone Number
-                        </label>
-                        <Input
-                          value={singlePayment.phoneNumber || ''}
-                          onChange={(e) => handleSinglePaymentChange('phoneNumber', e.target.value)}
-                          placeholder="e.g., 0700123456"
-                          className="w-full"
-                        />
-                      </div>
-                    </div>
+                    <Tabs
+                      value={singleBillSubTab}
+                      onValueChange={(v) => {
+                        const t = v as BillPaymentSubTab;
+                        setSingleBillSubTab(t);
+                        if (t === 'utilities') {
+                          handleSinglePaymentChange('utilityProvider', '');
+                          handleSinglePaymentChange('phoneNumber', '');
+                          handleSinglePaymentChange('metadata', undefined);
+                        } else {
+                          handleSinglePaymentChange('utilityProvider', 'AIRTIME');
+                          handleSinglePaymentChange('customerRef', '');
+                          handleSinglePaymentChange('metadata', undefined);
+                        }
+                      }}
+                    >
+                      <TabsList className="grid w-full max-w-md grid-cols-2">
+                        <TabsTrigger value="utilities">Utilities</TabsTrigger>
+                        <TabsTrigger value="airtime_data">Airtime</TabsTrigger>
+                      </TabsList>
+                      <TabsContent value="utilities" className="space-y-4 pt-3">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          <div>
+                            <label className="block text-sm font-semibold text-gray-700 mb-2">
+                              Biller / Provider
+                            </label>
+                            <select
+                              value={singlePayment.utilityProvider || ''}
+                              onChange={(e) => handleSinglePaymentChange('utilityProvider', e.target.value)}
+                              className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                            >
+                              <option value="">Select biller</option>
+                              <option value="NWSC">NWSC (Water)</option>
+                              <option value="UMEME">UMEME (Electricity)</option>
+                              <option value="DSTV">DStv</option>
+                              <option value="GOTV">GOtv</option>
+                              <option value="YAKALAST">Yaka Last</option>
+                              <option value="SCHOOL-FEES">School Fees</option>
+                            </select>
+                          </div>
+                          <div>
+                            <label className="block text-sm font-semibold text-gray-700 mb-2">
+                              Customer / Account Reference
+                            </label>
+                            <Input
+                              value={singlePayment.customerRef || ''}
+                              onChange={(e) => handleSinglePaymentChange('customerRef', e.target.value)}
+                              placeholder="Meter / account / student number"
+                              className="w-full"
+                            />
+                          </div>
+                        </div>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          <div>
+                            <label className="block text-sm font-semibold text-gray-700 mb-2">
+                              Area / Region (Optional)
+                            </label>
+                            <Input
+                              value={singlePayment.area || ''}
+                              onChange={(e) => handleSinglePaymentChange('area', e.target.value)}
+                              placeholder="e.g., Kampala"
+                              className="w-full"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-sm font-semibold text-gray-700 mb-2">
+                              Customer Phone (Optional)
+                            </label>
+                            <Input
+                              value={singlePayment.phoneNumber || ''}
+                              onChange={(e) => handleSinglePaymentChange('phoneNumber', e.target.value)}
+                              placeholder="e.g., 0700123456"
+                              className="w-full"
+                            />
+                          </div>
+                        </div>
+                      </TabsContent>
+                      <TabsContent value="airtime_data" className="space-y-4 pt-3">
+                        <p className="text-xs text-gray-600">
+                          Sent via Africa&apos;s Talking (airtime). Amount is the wallet debit amount.
+                        </p>
+                        <div>
+                          <label className="block text-sm font-semibold text-gray-700 mb-2">Type</label>
+                          <select
+                            value={singlePayment.utilityProvider || 'AIRTIME'}
+                            onChange={(e) => handleSinglePaymentChange('utilityProvider', e.target.value)}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                          >
+                            <option value="AIRTIME">Airtime</option>
+                          </select>
+                        </div>
+                        <div>
+                          <label className="block text-sm font-semibold text-gray-700 mb-2">
+                            Recipient phone <span className="text-red-500">*</span>
+                          </label>
+                          <Input
+                            value={singlePayment.phoneNumber || ''}
+                            onChange={(e) => handleSinglePaymentChange('phoneNumber', e.target.value)}
+                            placeholder="+256… or 07…"
+                            className="w-full"
+                          />
+                        </div>
+                        {false && (
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div>
+                              <label className="block text-sm font-semibold text-gray-700 mb-2">
+                                Bundle quantity <span className="text-red-500">*</span>
+                              </label>
+                              <Input
+                                type="number"
+                                min={1}
+                                value={singlePayment.metadata?.dataQuantity ?? ''}
+                                onChange={(e) =>
+                                  setSinglePayment((prev) => ({
+                                    ...prev,
+                                    metadata: {
+                                      ...prev.metadata,
+                                      dataQuantity: e.target.value === '' ? undefined : Number(e.target.value),
+                                    },
+                                  }))
+                                }
+                                placeholder="e.g. 50"
+                                className="w-full"
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-sm font-semibold text-gray-700 mb-2">Unit</label>
+                              <select
+                                value={singlePayment.metadata?.dataUnit || 'MB'}
+                                onChange={(e) =>
+                                  setSinglePayment((prev) => ({
+                                    ...prev,
+                                    metadata: { ...prev.metadata, dataUnit: e.target.value },
+                                  }))
+                                }
+                                className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                              >
+                                <option value="MB">MB</option>
+                                <option value="GB">GB</option>
+                              </select>
+                            </div>
+                            <div>
+                              <label className="block text-sm font-semibold text-gray-700 mb-2">Validity</label>
+                              <select
+                                value={singlePayment.metadata?.dataValidity || 'Week'}
+                                onChange={(e) =>
+                                  setSinglePayment((prev) => ({
+                                    ...prev,
+                                    metadata: { ...prev.metadata, dataValidity: e.target.value },
+                                  }))
+                                }
+                                className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                              >
+                                <option value="Day">Day</option>
+                                <option value="Week">Week</option>
+                                <option value="BiWeek">BiWeek</option>
+                                <option value="Month">Month</option>
+                                <option value="Monthly">Monthly</option>
+                                <option value="Quarterly">Quarterly</option>
+                              </select>
+                            </div>
+                            <div>
+                              <label className="block text-sm font-semibold text-gray-700 mb-2">
+                                Product name (AT)
+                              </label>
+                              <Input
+                                value={singlePayment.metadata?.dataProductName || ''}
+                                onChange={(e) =>
+                                  setSinglePayment((prev) => ({
+                                    ...prev,
+                                    metadata: { ...prev.metadata, dataProductName: e.target.value },
+                                  }))
+                                }
+                                placeholder="Mobile Data"
+                                className="w-full"
+                              />
+                            </div>
+                          </div>
+                        )}
+                      </TabsContent>
+                    </Tabs>
                   </div>
                 )}
 
@@ -1941,64 +2272,196 @@ export default function BulkPaymentPage() {
                   </>
                 )}
 
-                {/* Bill Payment Fields */}
+                {/* Bill Payment Fields — queue / bulk form */}
                 {formData.mode === 'UTILITIES' && (
-                  <>
-                    <div>
-                      <label className="block text-sm font-semibold text-gray-700 mb-2">
-                        Biller / Provider <span className="text-red-500">*</span>
-                      </label>
-                      <select
-                        value={formData.utilityProvider || ''}
-                        onChange={(e) => setFormData(prev => ({ ...prev, utilityProvider: e.target.value }))}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg"
-                      >
-                        <option value="">Select biller</option>
-                        <option value="NWSC">NWSC (Water)</option>
-                        <option value="UMEME">UMEME (Electricity)</option>
-                        <option value="DSTV">DStv</option>
-                        <option value="GOTV">GOtv</option>
-                        <option value="YAKALAST">Yaka Last</option>
-                        <option value="SCHOOL-FEES">School Fees</option>
-                      </select>
-                    </div>
-                    <div>
-                      <label className="block text-sm font-semibold text-gray-700 mb-2">
-                        Customer / Account Reference <span className="text-red-500">*</span>
-                      </label>
-                      <Input
-                        value={formData.customerRef || formData.utilityAccountNumber || ''}
-                        onChange={(e) =>
-                          setFormData(prev => ({
+                  <div className="col-span-full space-y-4">
+                    <Tabs
+                      value={bulkBillSubTab}
+                      onValueChange={(v) => {
+                        const t = v as BillPaymentSubTab;
+                        setBulkBillSubTab(t);
+                        if (t === 'utilities') {
+                          setFormData((prev) => ({
                             ...prev,
-                            customerRef: e.target.value,
-                            utilityAccountNumber: e.target.value,
-                          }))
+                            utilityProvider: '',
+                            phoneNumber: '',
+                            metadata: undefined,
+                          }));
+                        } else {
+                          setFormData((prev) => ({
+                            ...prev,
+                            utilityProvider: 'AIRTIME',
+                            customerRef: '',
+                            utilityAccountNumber: '',
+                            metadata: undefined,
+                          }));
                         }
-                        placeholder="Meter / account / student number"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-semibold text-gray-700 mb-2">
-                        Area / Region (Optional)
-                      </label>
-                      <Input
-                        value={formData.area || ''}
-                        onChange={(e) => setFormData(prev => ({ ...prev, area: e.target.value }))}
-                        placeholder="e.g., Kampala"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-semibold text-gray-700 mb-2">
-                        Customer Phone Number
-                      </label>
-                      <Input
-                        value={formData.phoneNumber || ''}
-                        onChange={(e) => setFormData(prev => ({ ...prev, phoneNumber: e.target.value }))}
-                        placeholder="e.g., 0700123456"
-                      />
-                    </div>
-                  </>
+                      }}
+                    >
+                      <TabsList className="grid w-full max-w-md grid-cols-2">
+                        <TabsTrigger value="utilities">Utilities</TabsTrigger>
+                        <TabsTrigger value="airtime_data">Airtime</TabsTrigger>
+                      </TabsList>
+                      <TabsContent value="utilities" className="space-y-4 pt-3">
+                        <div>
+                          <label className="block text-sm font-semibold text-gray-700 mb-2">
+                            Biller / Provider <span className="text-red-500">*</span>
+                          </label>
+                          <select
+                            value={formData.utilityProvider || ''}
+                            onChange={(e) => setFormData((prev) => ({ ...prev, utilityProvider: e.target.value }))}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                          >
+                            <option value="">Select biller</option>
+                            <option value="NWSC">NWSC (Water)</option>
+                            <option value="UMEME">UMEME (Electricity)</option>
+                            <option value="DSTV">DStv</option>
+                            <option value="GOTV">GOtv</option>
+                            <option value="YAKALAST">Yaka Last</option>
+                            <option value="SCHOOL-FEES">School Fees</option>
+                          </select>
+                        </div>
+                        <div>
+                          <label className="block text-sm font-semibold text-gray-700 mb-2">
+                            Customer / Account Reference <span className="text-red-500">*</span>
+                          </label>
+                          <Input
+                            value={formData.customerRef || formData.utilityAccountNumber || ''}
+                            onChange={(e) =>
+                              setFormData((prev) => ({
+                                ...prev,
+                                customerRef: e.target.value,
+                                utilityAccountNumber: e.target.value,
+                              }))
+                            }
+                            placeholder="Meter / account / student number"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-semibold text-gray-700 mb-2">
+                            Area / Region (Optional)
+                          </label>
+                          <Input
+                            value={formData.area || ''}
+                            onChange={(e) => setFormData((prev) => ({ ...prev, area: e.target.value }))}
+                            placeholder="e.g., Kampala"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-semibold text-gray-700 mb-2">
+                            Customer Phone (Optional)
+                          </label>
+                          <Input
+                            value={formData.phoneNumber || ''}
+                            onChange={(e) => setFormData((prev) => ({ ...prev, phoneNumber: e.target.value }))}
+                            placeholder="e.g., 0700123456"
+                          />
+                        </div>
+                      </TabsContent>
+                      <TabsContent value="airtime_data" className="space-y-4 pt-3">
+                        <p className="text-xs text-gray-600">
+                          Africa&apos;s Talking — for Excel/CSV use Transaction Mode <span className="font-mono">UTILITIES</span>,
+                          Utility Provider <span className="font-mono">AIRTIME</span>, and recipient phone.
+                        </p>
+                        <div>
+                          <label className="block text-sm font-semibold text-gray-700 mb-2">Type</label>
+                          <select
+                            value={formData.utilityProvider || 'AIRTIME'}
+                            onChange={(e) => setFormData((prev) => ({ ...prev, utilityProvider: e.target.value }))}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                          >
+                            <option value="AIRTIME">Airtime</option>
+                          </select>
+                        </div>
+                        <div>
+                          <label className="block text-sm font-semibold text-gray-700 mb-2">
+                            Recipient phone <span className="text-red-500">*</span>
+                          </label>
+                          <Input
+                            value={formData.phoneNumber || ''}
+                            onChange={(e) => setFormData((prev) => ({ ...prev, phoneNumber: e.target.value }))}
+                            placeholder="+256… or 07…"
+                          />
+                        </div>
+                        {false && (
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div>
+                              <label className="block text-sm font-semibold text-gray-700 mb-2">
+                                Bundle quantity <span className="text-red-500">*</span>
+                              </label>
+                              <Input
+                                type="number"
+                                min={1}
+                                value={formData.metadata?.dataQuantity ?? ''}
+                                onChange={(e) =>
+                                  setFormData((prev) => ({
+                                    ...prev,
+                                    metadata: {
+                                      ...prev.metadata,
+                                      dataQuantity:
+                                        e.target.value === '' ? undefined : Number(e.target.value),
+                                    },
+                                  }))
+                                }
+                                placeholder="e.g. 50"
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-sm font-semibold text-gray-700 mb-2">Unit</label>
+                              <select
+                                value={formData.metadata?.dataUnit || 'MB'}
+                                onChange={(e) =>
+                                  setFormData((prev) => ({
+                                    ...prev,
+                                    metadata: { ...prev.metadata, dataUnit: e.target.value },
+                                  }))
+                                }
+                                className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                              >
+                                <option value="MB">MB</option>
+                                <option value="GB">GB</option>
+                              </select>
+                            </div>
+                            <div>
+                              <label className="block text-sm font-semibold text-gray-700 mb-2">Validity</label>
+                              <select
+                                value={formData.metadata?.dataValidity || 'Week'}
+                                onChange={(e) =>
+                                  setFormData((prev) => ({
+                                    ...prev,
+                                    metadata: { ...prev.metadata, dataValidity: e.target.value },
+                                  }))
+                                }
+                                className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                              >
+                                <option value="Day">Day</option>
+                                <option value="Week">Week</option>
+                                <option value="BiWeek">BiWeek</option>
+                                <option value="Month">Month</option>
+                                <option value="Monthly">Monthly</option>
+                                <option value="Quarterly">Quarterly</option>
+                              </select>
+                            </div>
+                            <div>
+                              <label className="block text-sm font-semibold text-gray-700 mb-2">
+                                Product name (AT)
+                              </label>
+                              <Input
+                                value={formData.metadata?.dataProductName || ''}
+                                onChange={(e) =>
+                                  setFormData((prev) => ({
+                                    ...prev,
+                                    metadata: { ...prev.metadata, dataProductName: e.target.value },
+                                  }))
+                                }
+                                placeholder="Mobile Data"
+                              />
+                            </div>
+                          </div>
+                        )}
+                      </TabsContent>
+                    </Tabs>
+                  </div>
                 )}
 
 
@@ -2150,12 +2613,15 @@ export default function BulkPaymentPage() {
                             {payment.mode === 'WALLET_TO_MNO' && payment.phoneNumber}
                             {payment.mode === 'WALLET_TO_BANK' && payment.accountNumber}
                             {payment.mode === 'MERCHANT_TO_WALLET' && (payment.recipientPhoneNumber || payment.recipientPhone)}
-                            {payment.mode === 'UTILITIES' && payment.customerRef}
+                            {payment.mode === 'UTILITIES' &&
+                              (isAirtimeOrDataUtility(payment.utilityProvider)
+                                ? payment.phoneNumber || payment.customerRef
+                                : payment.customerRef)}
                           </p>
                           <div className="flex items-center gap-2">
                             <p className="text-xs text-gray-500">
                               {payment.mode === 'UTILITIES'
-                                ? `${payment.utilityProvider || ''}${payment.recipientName || payment.accountName ? ' • ' : ''}${payment.recipientName || payment.accountName || ''}`
+                                ? `${payment.utilityProvider || ''}${payment.recipientName || payment.accountName || (isAirtimeOrDataUtility(payment.utilityProvider) && payment.phoneNumber) ? ' • ' : ''}${payment.recipientName || payment.accountName || (isAirtimeOrDataUtility(payment.utilityProvider) ? payment.phoneNumber : '') || ''}`
                                 : (payment.recipientName || payment.accountName)}
                             </p>
                             {payment.validated && payment.status === 'pending' && (

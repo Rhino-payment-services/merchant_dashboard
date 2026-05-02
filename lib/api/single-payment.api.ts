@@ -55,6 +55,9 @@ export interface SinglePaymentDto {
   invoiceNumber?: string
   
   metadata?: Record<string, any>
+
+  /** Optional: for /transactions/validate fee preview */
+  userId?: string
 }
 
 // Validation DTO that matches the backend ValidateTransactionDto
@@ -141,10 +144,20 @@ export const processSinglePayment = async (paymentData: SinglePaymentDto, userId
       recipientPhoneNumber: paymentData.recipientPhoneNumber,
       recipientUserId: paymentData.recipientUserId,
       
-      // Utility fields
+      // Utility fields (airtime / data: account ref is the MSISDN)
       utilityProvider: paymentData.utilityProvider,
-      utilityAccountNumber: paymentData.utilityAccountNumber,
-      customerRef: paymentData.customerRef,
+      utilityAccountNumber:
+        paymentData.mode === 'UTILITIES'
+          ? paymentData.utilityAccountNumber ||
+            paymentData.customerRef ||
+            paymentData.phoneNumber
+          : paymentData.utilityAccountNumber,
+      customerRef:
+        paymentData.mode === 'UTILITIES'
+          ? paymentData.customerRef ||
+            paymentData.utilityAccountNumber ||
+            paymentData.phoneNumber
+          : paymentData.customerRef,
       area: paymentData.area,
       
       // Merchant fields
@@ -153,7 +166,18 @@ export const processSinglePayment = async (paymentData: SinglePaymentDto, userId
       orderId: paymentData.orderId,
       invoiceNumber: paymentData.invoiceNumber,
       
-      metadata: paymentData.metadata
+      metadata: (() => {
+        const m = paymentData.metadata ? { ...paymentData.metadata } : undefined;
+        if (
+          paymentData.mode === 'UTILITIES' &&
+          paymentData.utilityProvider === 'DATA_BUNDLES' &&
+          m
+        ) {
+          const q = Number(m.dataQuantity);
+          if (!Number.isNaN(q)) m.dataQuantity = q;
+        }
+        return m;
+      })(),
     };
 
     console.log('API: Processing single payment:', processData);
@@ -196,7 +220,7 @@ export const validateTransaction = async (paymentData: SinglePaymentDto): Promis
       amount: paymentData.amount,
       currency: paymentData.currency || 'UGX',
       geographicRegion: 'UG',
-      userId: undefined, // Will be set by backend from JWT
+      userId: paymentData.userId,
     };
 
   // Map transaction-specific fields
@@ -216,7 +240,10 @@ export const validateTransaction = async (paymentData: SinglePaymentDto): Promis
     console.log('  accountName:', paymentData.accountName);
     console.log('  Sending bankCode:', validationData.bankCode);
   } else if (paymentData.mode === 'UTILITIES') {
-    validationData.customerRef = paymentData.customerRef;
+    validationData.customerRef =
+      paymentData.customerRef ||
+      paymentData.utilityAccountNumber ||
+      paymentData.phoneNumber;
     validationData.billType = paymentData.utilityProvider;
     validationData.area = paymentData.area;
     validationData.customerPhoneNumber = paymentData.phoneNumber;

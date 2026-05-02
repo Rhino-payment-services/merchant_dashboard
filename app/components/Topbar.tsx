@@ -192,15 +192,6 @@ export default function Topbar({ onMenuToggle, isMenuOpen }: TopbarProps) {
         </DropdownMenuContent>
       </DropdownMenu>
 
-      {/* Search Bar */}
-      <div className={`flex-1 flex items-center gap-4 ${isMenuOpen ? 'hidden md:flex' : 'flex'} min-w-0`}>
-        <input
-          type="text"
-          placeholder="Search anything ..."
-          className="w-full max-w-xs px-4 py-2 rounded-lg border bg-gray-50 focus:outline-none focus:ring-2 focus:ring-main-200"
-        />
-      </div>
-
       <div className="flex items-center gap-4">
         {/* Notification icon */}
         <Link href="/notification">
