@@ -626,7 +626,7 @@ export default function LiquidatePage() {
             Self liquidate (payout)
           </CardTitle>
           <CardDescription>
-            Send money from your disbursement balance to Bank, Mobile Money, or a RukaPay wallet. Fees and minimums apply.
+            Liquidate funds from your collection balance to any destination: Bank, Mobile Money, or a RukaPay wallet. Fees and minimums apply.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
