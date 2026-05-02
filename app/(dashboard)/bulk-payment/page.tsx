@@ -247,6 +247,14 @@ export default function BulkPaymentPage() {
           accountName: recipientName
         }));
       }
+      // Same for mobile money: validated KYC name must live on singlePayment so the process
+      // payload includes recipientName (bulk rows always carry it; single-pay only had it in validationInfo).
+      if (recipientName && singlePayment.mode === 'WALLET_TO_MNO') {
+        setSinglePayment(prev => ({
+          ...prev,
+          recipientName: recipientName,
+        }));
+      }
       
       if (validation.feePreview) {
         setFeePreview(validation.feePreview);
@@ -295,6 +303,11 @@ export default function BulkPaymentPage() {
           ? normalizePhoneToUganda(singlePayment.phoneNumber)
           : singlePayment.phoneNumber;
 
+      const resolvedMnoRecipientName =
+        singlePayment.mode === 'WALLET_TO_MNO'
+          ? validationInfo?.recipientName || singlePayment.recipientName
+          : singlePayment.recipientName;
+
       const payload: SinglePaymentDto = {
         ...singlePayment,
         phoneNumber:
@@ -315,6 +328,9 @@ export default function BulkPaymentPage() {
         recipientPhoneNumber: singlePayment.mode === 'MERCHANT_TO_WALLET' && singlePayment.recipientPhoneNumber
           ? normalizePhoneToUganda(singlePayment.recipientPhoneNumber)
           : singlePayment.recipientPhoneNumber,
+        ...(singlePayment.mode === 'WALLET_TO_MNO' && resolvedMnoRecipientName
+          ? { recipientName: resolvedMnoRecipientName }
+          : {}),
       };
       const result = await processSinglePayment(payload, (session?.user as any)?.id);
       toast.success('Payment processed successfully!');

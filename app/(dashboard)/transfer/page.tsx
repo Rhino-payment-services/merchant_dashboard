@@ -311,7 +311,10 @@ export default function TransferPage() {
           amount: validationSuccess.formData.amount,
           narration: validationSuccess.formData.reason || "Payment",
           merchantId: merchantId,
-          merchantName: profile?.merchant_names || profile?.merchantBusinessTradeName || profile?.businessTradeName
+          merchantName: profile?.merchant_names || profile?.merchantBusinessTradeName || profile?.businessTradeName,
+          // Name from validate-phone step — was never sent before, so downstream showed a generic label
+          customerName: validationSuccess.accountName,
+          recipientName: validationSuccess.accountName,
         };
         
         console.log("Mobile Money Payment Data:", mobileMoneyPaymentData);
