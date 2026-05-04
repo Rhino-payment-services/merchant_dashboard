@@ -82,7 +82,7 @@ function newTierRow(): TierRow {
     price: "",
     currency: "",
     quantity: "1",
-    minPerOrder: "1",
+    minPerOrder: "",
     maxPerOrder: "",
     salesStartAt: "",
     salesEndAt: "",
@@ -830,6 +830,7 @@ export function CreateEventDialog({
                           step={1}
                           value={t.minPerOrder}
                           onChange={(e) => updateTier(t.key, { minPerOrder: e.target.value })}
+                          placeholder="1"
                           disabled={disabled}
                         />
                       </div>
