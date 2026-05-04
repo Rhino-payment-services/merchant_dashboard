@@ -51,6 +51,7 @@ export default function LiquidatePage() {
   const [payoutType, setPayoutType] = useState<"BANK" | "MOMO" | "RUKAPAY">("BANK");
   const [payoutAmount, setPayoutAmount] = useState("");
   const [payoutPhone, setPayoutPhone] = useState("");
+  const [payoutNetwork, setPayoutNetwork] = useState<string>("MTN");
   const [payoutAccount, setPayoutAccount] = useState("");
   const [payoutAccountName, setPayoutAccountName] = useState("");
   const [payoutBankName, setPayoutBankName] = useState("");
@@ -176,7 +177,7 @@ export default function LiquidatePage() {
     if (payoutType === "MOMO") {
       const phone = payoutPhone.trim();
       const isValidPhone = /^\+?\d{9,15}$/.test(phone);
-      return payoutAmountNum >= MIN_MOMO && isValidPhone;
+      return payoutAmountNum >= MIN_MOMO && isValidPhone && Boolean(payoutNetwork);
     }
     const phone = payoutPhone.trim();
     const isValidPhone = /^\+?\d{9,15}$/.test(phone);
@@ -212,7 +213,8 @@ export default function LiquidatePage() {
 
     if (payoutType === "MOMO") {
       if (payoutAmountNum < MIN_MOMO) return `Minimum mobile money payout is ${fmt(MIN_MOMO)}.`;
-      if (!/^\+?\d{9,15}$/.test(payoutPhone.trim())) return "Enter a valid mobile number.";
+      if (!/^[+]?\d{9,15}$/.test(payoutPhone.trim())) return "Enter a valid mobile number.";
+      if (!payoutNetwork) return "Choose a mobile money network.";
       return null;
     }
 
@@ -241,7 +243,7 @@ export default function LiquidatePage() {
   useEffect(() => {
     if (momoValidation.status === "idle") return;
     setMomoValidation({ status: "idle" });
-  }, [payoutType, payoutAmountNum, payoutPhone]);
+  }, [payoutType, payoutAmountNum, payoutPhone, payoutNetwork]);
 
   // Reset wallet recipient validation on changes
   useEffect(() => {
@@ -256,6 +258,7 @@ export default function LiquidatePage() {
     setPayoutAccountName("");
     setPayoutBankName("");
     setPayoutReason("");
+    setPayoutNetwork("MTN");
     setBankValidation({ status: "idle" });
     setMomoValidation({ status: "idle" });
     setWalletValidation({ status: "idle" });
@@ -381,6 +384,7 @@ export default function LiquidatePage() {
         phoneNumber: payoutPhone.trim(),
         amount: payoutAmountNum,
         userId: (session?.user as any)?.id,
+        mnoProvider: payoutNetwork,
       });
 
       // Some responses include inferred network in validationResult/network fields
@@ -417,6 +421,7 @@ export default function LiquidatePage() {
         channel: "MERCHANT_PORTAL",
         walletType: "BUSINESS",
         phoneNumber: payoutPhone.trim(),
+        mnoProvider: payoutNetwork,
         description: payoutReason || "Merchant liquidation payout (mobile money)",
         metadata: {
           channel: "MERCHANT_PORTAL",
@@ -427,7 +432,7 @@ export default function LiquidatePage() {
           isExplicitWalletSelection: true,
           validatedRecipient: true,
           validatedAt: momoValidation.validatedAt,
-          validatedNetwork: momoValidation.network,
+          validatedNetwork: momoValidation.network || payoutNetwork,
         },
       });
       toast.success(res?.message || "Mobile money payout initiated");
@@ -715,14 +720,29 @@ export default function LiquidatePage() {
                     </div>
                   </>
                 ) : (
-                  <div>
-                    <Label>{payoutType === "MOMO" ? "Mobile number" : "Recipient phone (RukaPay)"}</Label>
-                    <Input
-                      value={payoutPhone}
-                      onChange={(e) => setPayoutPhone(e.target.value)}
-                      placeholder="e.g. 2567XXXXXXXX or 07XXXXXXXX"
-                    />
-                  </div>
+                  <>
+                    <div>
+                      <Label>{payoutType === "MOMO" ? "Mobile number" : "Recipient phone (RukaPay)"}</Label>
+                      <Input
+                        value={payoutPhone}
+                        onChange={(e) => setPayoutPhone(e.target.value)}
+                        placeholder="e.g. 2567XXXXXXXX or 07XXXXXXXX"
+                      />
+                    </div>
+                    {payoutType === "MOMO" ? (
+                      <div>
+                        <Label>Network</Label>
+                        <select
+                          value={payoutNetwork}
+                          onChange={(e) => setPayoutNetwork(e.target.value)}
+                          className="w-full mt-1.5 px-3 py-2 border rounded-md"
+                        >
+                          <option value="MTN">MTN</option>
+                          <option value="Airtel">Airtel</option>
+                        </select>
+                      </div>
+                    ) : null}
+                  </>
                 )}
 
                 <div className="md:col-span-2">

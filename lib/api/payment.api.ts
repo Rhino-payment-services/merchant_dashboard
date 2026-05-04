@@ -8,6 +8,8 @@ const validatePhoneNumber = async(data: any)=>{
         const validationData = {
             transactionType: 'WALLET_TO_MNO', // Specify this is for withdrawal/disbursement
             phoneNumber: data.phoneNumber,
+            network: data.mnoProvider || data.network,
+            mnoProvider: data.mnoProvider || data.network,
             // optional for partner fee preview
             userId: data.userId,
             amount: data.amount
