@@ -73,6 +73,7 @@ export default function LiquidatePage() {
     validatedAt?: string;
     phoneNumber?: string;
     network?: string;
+    recipientName?: string;
   }>({ status: "idle" });
 
   const [walletValidation, setWalletValidation] = useState<{
@@ -393,12 +394,17 @@ export default function LiquidatePage() {
         res?.validationResult?.data?.network ||
         res?.network ||
         null;
+      const name =
+        res?.validationResult?.data?.name ||
+        res?.validationResult?.data?.accountName ||
+        null;
 
       setMomoValidation({
         status: "validated",
         validatedAt: new Date().toISOString(),
         phoneNumber: payoutPhone.trim(),
         network: typeof network === "string" ? network : undefined,
+        recipientName: typeof name === "string" && name.trim().length > 0 ? name.trim() : undefined,
       });
       toast.success("Mobile money recipient validated");
     } catch (e: any) {
@@ -433,6 +439,7 @@ export default function LiquidatePage() {
           validatedRecipient: true,
           validatedAt: momoValidation.validatedAt,
           validatedNetwork: momoValidation.network || payoutNetwork,
+          validatedRecipientName: momoValidation.recipientName,
         },
       });
       toast.success(res?.message || "Mobile money payout initiated");
@@ -820,6 +827,12 @@ export default function LiquidatePage() {
                       <div className="flex justify-between md:block">
                         <span className="text-emerald-700">Network</span>
                         <div className="font-medium">{momoValidation.network}</div>
+                      </div>
+                    ) : null}
+                    {momoValidation.recipientName ? (
+                      <div className="flex justify-between md:block">
+                        <span className="text-emerald-700">Name</span>
+                        <div className="font-medium">{momoValidation.recipientName}</div>
                       </div>
                     ) : null}
                   </div>
