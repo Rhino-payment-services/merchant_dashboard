@@ -36,10 +36,12 @@ import {
   Eye,
   Pencil,
   QrCode,
+  Trash2,
 } from "lucide-react"
 import { toast } from "sonner"
 import { useUserProfile } from "../UserProfileProvider"
 import {
+  deleteMerchantEvent,
   getMerchantEventsStatistics,
   listMerchantEvents,
   updateMerchantEventStatus,
@@ -51,6 +53,7 @@ import { EditEventDialog } from "./EditEventDialog"
 import { EventDetailDialog } from "./EventDetailDialog"
 import { EventCheckoutQrDialog } from "./EventCheckoutQrDialog"
 import { ActivateEventModal } from "./ActivateEventModal"
+import { DeleteEventModal } from "./DeleteEventModal"
 import { EventOrdersDrawer } from "./EventOrdersDrawer"
 import { EventAttendeesDrawer } from "./EventAttendeesDrawer"
 
@@ -118,6 +121,9 @@ export default function EventsPage() {
   const [activatingEventId, setActivatingEventId] = useState<string | null>(null)
   const [activatingEventTitle, setActivatingEventTitle] = useState("")
   const [statusUpdating, setStatusUpdating] = useState(false)
+  const [deletingEventId, setDeletingEventId] = useState<string | null>(null)
+  const [deletingEventTitle, setDeletingEventTitle] = useState("")
+  const [deleteLoading, setDeleteLoading] = useState(false)
 
   useEffect(() => {
     const t = window.setTimeout(() => {
@@ -228,6 +234,40 @@ export default function EventsPage() {
       setStatusUpdating(false)
     }
   }, [activatingEventId, refreshAll])
+
+  const handleDeleteEvent = useCallback(async () => {
+    if (!deletingEventId) return
+    try {
+      setDeleteLoading(true)
+      await deleteMerchantEvent(deletingEventId)
+      toast.success("Event deleted successfully.")
+      setDeletingEventId(null)
+      setDeletingEventTitle("")
+      await refreshAll()
+    } catch (e) {
+      console.error("Failed to delete event", e)
+      const err = e as {
+        response?: {
+          status?: number
+          data?: { message?: string | string[] }
+        }
+      }
+      const message = err.response?.data?.message
+      const apiMessage =
+        typeof message === "string"
+          ? message
+          : Array.isArray(message) && message.length
+            ? message.join(", ")
+            : ""
+      if (err.response?.status === 400 && apiMessage) {
+        toast.error(apiMessage)
+      } else {
+        toast.error(apiMessage || "Failed to delete event. Please try again.")
+      }
+    } finally {
+      setDeleteLoading(false)
+    }
+  }, [deletingEventId, refreshAll])
 
   const s = stats
 
@@ -348,7 +388,7 @@ export default function EventsPage() {
                   onValueChange={(v) => setStatusFilter(v === ALL ? "" : v)}
                   disabled={!merchantCode}
                 >
-                  <SelectTrigger className="h-10 w-full xl:w-[200px]">
+                  <SelectTrigger className="h-10 cursor-pointer w-full xl:w-[200px]">
                     <SelectValue placeholder="All statuses" />
                   </SelectTrigger>
                   <SelectContent>
@@ -363,7 +403,7 @@ export default function EventsPage() {
             <div className="shrink-0 xl:ml-auto">
               <Button
                 type="button"
-                className="h-10 w-full gap-2 xl:w-auto"
+                className="h-10 cursor-pointer w-full gap-2 xl:w-auto"
                 onClick={() => setCreateEventOpen(true)}
                 disabled={!merchantCode}
               >
@@ -429,6 +469,21 @@ export default function EventsPage() {
             }}
           />
 
+          <DeleteEventModal
+            open={deletingEventId != null}
+            eventTitle={deletingEventTitle}
+            loading={deleteLoading}
+            onOpenChange={(open) => {
+              if (!open) {
+                setDeletingEventId(null)
+                setDeletingEventTitle("")
+              }
+            }}
+            onConfirm={() => {
+              void handleDeleteEvent()
+            }}
+          />
+
           <EventOrdersDrawer
             open={ordersDrawerOpen}
             onOpenChange={(o) => {
@@ -472,7 +527,7 @@ export default function EventsPage() {
                   </TableHead>
                   <TableHead className="hidden sm:table-cell">Currency</TableHead>
                   <TableHead className="text-center w-[56px]">QR code</TableHead>
-                  <TableHead className="text-right w-[120px]">Actions</TableHead>
+                  <TableHead className="text-right w-[160px]">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -590,6 +645,20 @@ export default function EventsPage() {
                             aria-label={`Edit ${ev.title}`}
                           >
                             <Pencil className="h-4 w-4" aria-hidden />
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8 shrink-0 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
+                            onClick={() => {
+                              setDeletingEventId(ev.id)
+                              setDeletingEventTitle(ev.title)
+                            }}
+                            disabled={!merchantCode || deleteLoading}
+                            aria-label={`Delete ${ev.title}`}
+                          >
+                            <Trash2 className="h-4 w-4" aria-hidden />
                           </Button>
                           <Button
                             type="button"

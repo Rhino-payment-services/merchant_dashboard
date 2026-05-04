@@ -454,3 +454,39 @@ export async function getMerchantEventUser(userId: string): Promise<MerchantEven
   const response = await apiClient.get<MerchantEventUser>(`/merchant-events/users/${userId}`)
   return response.data
 }
+
+export interface CheckInTicketPayload {
+  ticketCode: string
+}
+
+export interface CheckInTicketResponse {
+  id: string
+  eventId: string
+  orderReference: string
+  ticketCode: string
+  attendeeName: string
+  attendeePhone?: string | null
+  attendeeEmail?: string | null
+  tierName: string
+  status: string
+  checkedInAt: string | null
+  checkedInBy: string | null
+  createdAt: string
+}
+
+export async function checkInTicket(
+  eventId: string,
+  payload: CheckInTicketPayload
+): Promise<CheckInTicketResponse> {
+  const response = await apiClient.post<CheckInTicketResponse>(
+    `/merchant-events/${eventId}/check-in`,
+    {
+      ticketCode: payload.ticketCode.trim().toUpperCase(),
+    }
+  )
+  return response.data
+}
+
+export async function deleteMerchantEvent(eventId: string): Promise<void> {
+  await apiClient.delete(`/merchant-events/${eventId}`)
+}
