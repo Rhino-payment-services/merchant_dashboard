@@ -542,7 +542,7 @@ function PublicEventCheckoutPage({ params }: PageProps) {
                       return (
                         <SelectItem key={t.id} value={t.id} disabled={avail <= 0}>
                           {t.name} — {formatMoney(t.price, cur)}
-                          {avail <= 0 ? " (sold out)" : ` (${avail} left)`}
+                          {/* {avail <= 0 ? " (sold out)" : ` (${avail} left)`} */}
                         </SelectItem>
                       )
                     })}

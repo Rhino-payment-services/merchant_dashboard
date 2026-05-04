@@ -1,7 +1,7 @@
 "use client"
 
 import React, { useEffect, useMemo, useState } from "react"
-import { RefreshCw, X } from "lucide-react"
+import { QrCode, RefreshCw, X } from "lucide-react"
 import { toast } from "sonner"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -29,6 +29,7 @@ import {
   type EventCheckInStatsResponse,
 } from "@/lib/api/merchant-events.api"
 import { EventCheckInStatsCard } from "./EventCheckInStatsCard"
+import { EventCheckInDialog } from "./EventCheckInDialog"
 
 const PAGE_SIZE = 20
 
@@ -86,6 +87,8 @@ export function EventAttendeesDrawer({
   const [statsLoading, setStatsLoading] = useState(false)
   const [statsError, setStatsError] = useState<string | null>(null)
   const [userNameCache, setUserNameCache] = useState<Map<string, string>>(new Map())
+  const [checkInDialogOpen, setCheckInDialogOpen] = useState(false)
+  const [reloadNonce, setReloadNonce] = useState(0)
 
   useEffect(() => {
     if (!open) return
@@ -146,7 +149,7 @@ export function EventAttendeesDrawer({
     return () => {
       cancelled = true
     }
-  }, [open, eventId, page])
+  }, [open, eventId, page, reloadNonce])
 
   useEffect(() => {
     if (!open || !items.length) return
@@ -198,30 +201,42 @@ export function EventAttendeesDrawer({
   }, [eventTitle])
 
   return (
-    <Drawer open={open} onOpenChange={onOpenChange}>
-      <DrawerContent className="flex h-[100svh] min-h-[100svh] max-h-[100svh] w-full flex-col rounded-none p-0">
-        <DrawerHeader className="border-b text-left relative pr-12">
-          <DrawerTitle>{title}</DrawerTitle>
-          <DrawerDescription>Tickets and check-in status for this event.</DrawerDescription>
-          <DrawerClose asChild>
+    <>
+      <Drawer open={open} onOpenChange={onOpenChange}>
+        <DrawerContent className="flex h-[100svh] min-h-[100svh] max-h-[100svh] w-full flex-col rounded-none p-0">
+          <DrawerHeader className="border-b text-left relative pr-12">
+            <DrawerTitle>{title}</DrawerTitle>
+            <DrawerDescription>Tickets and check-in status for this event.</DrawerDescription>
             <Button
               type="button"
-              variant="ghost"
-              size="icon"
-              className="absolute right-3 top-3 h-8 w-8"
-              aria-label="Close attendees drawer"
+              variant="outline"
+              size="sm"
+              className="absolute right-14 top-3 h-8 gap-1.5"
+              onClick={() => setCheckInDialogOpen(true)}
+              disabled={!eventId}
             >
-              <X className="h-4 w-4" />
+              <QrCode className="h-3.5 w-3.5" />
+              Check in
             </Button>
-          </DrawerClose>
-        </DrawerHeader>
+            <DrawerClose asChild>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className="absolute right-3 top-3 h-8 w-8"
+                aria-label="Close attendees drawer"
+              >
+                <X className="h-4 w-4" />
+              </Button>
+            </DrawerClose>
+          </DrawerHeader>
 
-        <div className="flex-1 overflow-y-auto p-4 space-y-3">
-          <EventCheckInStatsCard
-            stats={checkInStats}
-            loading={statsLoading}
-            error={statsError}
-          />
+          <div className="flex-1 overflow-y-auto p-4 space-y-3">
+            <EventCheckInStatsCard
+              stats={checkInStats}
+              loading={statsLoading}
+              error={statsError}
+            />
 
           {loading ? (
             <div className="flex flex-col items-center justify-center gap-3 py-16 text-gray-500">
@@ -331,8 +346,19 @@ export function EventAttendeesDrawer({
               ) : null}
             </>
           )}
-        </div>
-      </DrawerContent>
-    </Drawer>
+          </div>
+        </DrawerContent>
+      </Drawer>
+      <EventCheckInDialog
+        open={checkInDialogOpen}
+        onOpenChange={setCheckInDialogOpen}
+        eventId={eventId}
+        eventTitle={eventTitle}
+        onCheckedIn={() => {
+          setPage(1)
+          setReloadNonce((n) => n + 1)
+        }}
+      />
+    </>
   )
 }
