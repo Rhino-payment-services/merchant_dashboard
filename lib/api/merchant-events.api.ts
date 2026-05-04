@@ -486,3 +486,7 @@ export async function checkInTicket(
   )
   return response.data
 }
+
+export async function deleteMerchantEvent(eventId: string): Promise<void> {
+  await apiClient.delete(`/merchant-events/${eventId}`)
+}

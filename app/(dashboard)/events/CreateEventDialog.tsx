@@ -157,7 +157,7 @@ function FieldHint({ children }: { children: React.ReactNode }) {
       <TooltipTrigger asChild>
         <button
           type="button"
-          className="inline-flex shrink-0 rounded-sm text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          className="inline-flex cursor-pointer shrink-0 rounded-sm text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           aria-label="More information"
         >
           <CircleHelp className="h-3.5 w-3.5" />
@@ -720,7 +720,7 @@ export function CreateEventDialog({
                         type="button"
                         variant="ghost"
                         size="sm"
-                        className="text-red-600 hover:text-red-700"
+                        className="text-red-600 cursor-pointer hover:text-red-700"
                         onClick={() => removeTier(t.key)}
                         disabled={disabled || tiers.length <= 1}
                         aria-label={`Remove tier ${idx + 1}`}
@@ -889,7 +889,7 @@ export function CreateEventDialog({
                   type="button"
                   variant="outline"
                   size="sm"
-                  className="gap-2"
+                  className="gap-2 cursor-pointer"
                   onClick={addTier}
                   disabled={disabled}
                 >
@@ -906,12 +906,13 @@ export function CreateEventDialog({
               variant="outline"
               onClick={() => onOpenChange(false)}
               disabled={submitting}
+              className="cursor-pointer"
             >
               Cancel
             </Button>
             <div className="flex flex-1 justify-end gap-2">
               {step > 1 ? (
-                <Button type="button" variant="outline" onClick={goPrev} disabled={submitting}>
+                <Button className="cursor-pointer" type="button" variant="outline" onClick={goPrev} disabled={submitting}>
                   Previous
                 </Button>
               ) : null}
@@ -920,6 +921,7 @@ export function CreateEventDialog({
                   type="button"
                   onClick={goNext}
                   disabled={disabled || submitting || uploadingBanner}
+                  className="cursor-pointer"
                 >
                   Next
                 </Button>
@@ -928,6 +930,7 @@ export function CreateEventDialog({
                   type="button"
                   onClick={handleSubmit}
                   disabled={disabled || submitting || uploadingBanner}
+                  className="cursor-pointer"
                 >
                   {submitting ? "Creating…" : "Create event"}
                 </Button>

@@ -1,7 +1,7 @@
 "use client"
 
-import React, { useCallback, useEffect, useRef, useState } from "react"
-import { CheckCircle2, QrCode, RefreshCw, ScanLine, ShieldAlert } from "lucide-react"
+import React, { useCallback, useEffect, useState } from "react"
+import { CheckCircle2, QrCode, ShieldAlert } from "lucide-react"
 import { toast } from "sonner"
 import {
   Dialog,
@@ -14,9 +14,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { checkInTicket, type CheckInTicketResponse } from "@/lib/api/merchant-events.api"
-import { Html5Qrcode, Html5QrcodeScanner } from "html5-qrcode"
 
-const SCANNER_REGION_ID = "event-checkin-qr-reader"
 const TICKET_PATTERN = /^TKT-[A-Z0-9]+$/i
 
 function normalizeTicketCode(raw: string): string {
@@ -72,28 +70,10 @@ export function EventCheckInDialog({
   eventTitle,
   onCheckedIn,
 }: EventCheckInDialogProps) {
-  const scannerRef = useRef<Html5QrcodeScanner | null>(null)
-  const scanLockRef = useRef(false)
-  const [startingScanner, setStartingScanner] = useState(false)
   const [manualCode, setManualCode] = useState("")
   const [submitting, setSubmitting] = useState(false)
   const [result, setResult] = useState<CheckInTicketResponse | null>(null)
   const [error, setError] = useState("")
-  const [isMountedScanner, setIsMountedScanner] = useState(false)
-
-  const stopScanner = useCallback(async () => {
-    try {
-      if (scannerRef.current) {
-        await scannerRef.current.clear()
-      }
-    } catch {
-      // ignore scanner clear issues during dialog unmount
-    } finally {
-      scannerRef.current = null
-      scanLockRef.current = false
-      setIsMountedScanner(false)
-    }
-  }, [])
 
   const submitCheckIn = useCallback(
     async (incomingCode: string) => {
@@ -127,67 +107,6 @@ export function EventCheckInDialog({
     [eventId, onCheckedIn]
   )
 
-  const startScanner = useCallback(async () => {
-    if (!open || !eventId || scannerRef.current || isMountedScanner) return
-    setStartingScanner(true)
-    setError("")
-
-    try {
-      if (typeof window === "undefined") return
-      if (!window.isSecureContext) {
-        throw new Error("Camera scanning requires HTTPS or localhost.")
-      }
-      if (!document.getElementById(SCANNER_REGION_ID)) {
-        throw new Error("Scanner container not ready. Re-open the check-in dialog.")
-      }
-      const cameras = await Html5Qrcode.getCameras()
-      if (!cameras?.length) {
-        throw new Error("No camera detected on this device.")
-      }
-
-      const scanner = new Html5QrcodeScanner(
-        SCANNER_REGION_ID,
-        {
-          fps: 10,
-          qrbox: 250,
-        },
-        false
-      )
-      scannerRef.current = scanner
-      setIsMountedScanner(true)
-      scanner.render(
-        (decodedText) => {
-          if (scanLockRef.current) return
-          scanLockRef.current = true
-          void submitCheckIn(decodedText).finally(() => {
-            window.setTimeout(() => {
-              scanLockRef.current = false
-            }, 1200)
-          })
-        },
-        () => {
-          // no-op for scan errors while camera is active
-        }
-      )
-    } catch (e) {
-      const message =
-        e instanceof Error && e.message
-          ? e.message
-          : "Could not start camera scanner. You can still enter ticket code manually."
-      setError(message)
-    } finally {
-      setStartingScanner(false)
-    }
-  }, [open, eventId, isMountedScanner, submitCheckIn])
-
-  useEffect(() => {
-    if (!open) return
-    void startScanner()
-    return () => {
-      void stopScanner()
-    }
-  }, [open, startScanner, stopScanner])
-
   useEffect(() => {
     if (!open) {
       setManualCode("")
@@ -206,27 +125,13 @@ export function EventCheckInDialog({
             Check in attendee
           </DialogTitle>
           <DialogDescription>
-            Scan the ticket QR code for {eventTitle?.trim() || "this event"} or enter the ticket code manually.
+            Enter the ticket code for {eventTitle?.trim() || "this event"} to check in the attendee.
           </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4">
-          <div className="rounded-md border bg-muted/30 p-3">
-            <div className="mb-2 flex items-center gap-2 text-sm font-medium">
-              <ScanLine className="h-4 w-4" />
-              QR scanner
-            </div>
-            <div id={SCANNER_REGION_ID} className="min-h-[260px] overflow-hidden rounded-md bg-background" />
-            {startingScanner ? (
-              <div className="mt-2 flex items-center gap-2 text-xs text-muted-foreground">
-                <RefreshCw className="h-3.5 w-3.5 animate-spin" />
-                Starting camera...
-              </div>
-            ) : null}
-          </div>
-
           <div className="rounded-md border p-3 space-y-2">
-            <Label htmlFor="manual-ticket-code">Manual ticket code</Label>
+            <Label htmlFor="manual-ticket-code">Ticket code</Label>
             <div className="flex gap-2">
               <Input
                 id="manual-ticket-code"
