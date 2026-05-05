@@ -33,7 +33,7 @@ export function DeleteEventModal({
           <div className="min-h-[20rem] rounded flex flex-col gap-5 items-center justify-center w-full bg-white p-6">
             <div className="h-20 w-20 rounded-full flex items-center justify-center bg-red-50">
               <div className="h-16 w-16 flex items-center justify-center rounded-full bg-red-100">
-                <div className="h-12 w-12 flex items-center justify-center rounded-full bg-destructive">
+                <div className="h-12 w-12 flex items-center justify-center rounded-full bg-red-700">
                   <div className="h-6 w-6 flex items-center justify-center rounded-full bg-red-50">
                     <Trash2 className="w-3.5 h-3.5 text-destructive" />
                   </div>
@@ -54,15 +54,14 @@ export function DeleteEventModal({
             <div className="flex flex-row justify-center gap-3 w-full">
               <Button
                 variant="outline"
-                className="w-32"
+                className="w-32 cursor-pointer"
                 onClick={() => onOpenChange(false)}
                 disabled={loading}
               >
                 Cancel
               </Button>
               <Button
-                variant="destructive"
-                className="w-32"
+                className="w-32 bg-red-700 text-white hover:bg-red-700/90 cursor-pointer"
                 onClick={onConfirm}
                 disabled={loading}
               >
