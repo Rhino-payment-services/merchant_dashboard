@@ -21,6 +21,7 @@ import { useRouter } from "next/navigation";
 import { useMerchantAuth } from "@/lib/context/MerchantAuthContext";
 import { useUserProfile } from "../(dashboard)/UserProfileProvider";
 import { useSession } from "next-auth/react";
+import { isGateOnlyStaffUser } from "@/lib/utils/permissions";
 import { Menu, X, Building2, ChevronDown, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -125,6 +126,55 @@ export default function Topbar({ onMenuToggle, isMenuOpen }: TopbarProps) {
     const currentYear = new Date().getFullYear();
     return `${currentYear}-12-31`;
   });
+
+  const gateOnly = isGateOnlyStaffUser(profile, session);
+
+  if (gateOnly) {
+    return (
+      <header className="flex items-center justify-between px-4 py-4 bg-white border-b border-gray-100">
+        <div className="md:hidden">
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={onMenuToggle}
+            className="text-gray-600 hover:text-gray-900"
+          >
+            {isMenuOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
+          </Button>
+        </div>
+        <div className="flex items-center gap-2 min-w-0 flex-1 px-2">
+          <Building2 className="w-4 h-4 text-main-600 shrink-0 hidden sm:block" />
+          <span className="text-sm font-semibold text-gray-900 truncate">
+            {loading ? "…" : businessDisplayName}
+          </span>
+          <span className="text-xs text-gray-500 shrink-0 hidden sm:inline">Gate</span>
+        </div>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <button type="button" className="flex items-center gap-2 focus:outline-none cursor-pointer">
+              <span className="w-10 h-10 rounded-full flex items-center justify-center bg-gray-300">
+                <span className="font-medium text-gray-700 uppercase text-sm">
+                  {(() => {
+                    const n = String((session?.user as any)?.name || "");
+                    const p = [n.split(" ")[0]?.[0], n.split(" ")[1]?.[0]].filter(Boolean).join("");
+                    return p || String((session?.user as any)?.email?.[0] ?? "U").toUpperCase();
+                  })()}
+                </span>
+              </span>
+            </button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-44 mt-2">
+            <DropdownMenuItem
+              onClick={handleLogout}
+              className="text-red-600 cursor-pointer"
+            >
+              Sign Out
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </header>
+    );
+  }
 
   return (
     <header className="flex items-center justify-between px-4 py-4 bg-white">

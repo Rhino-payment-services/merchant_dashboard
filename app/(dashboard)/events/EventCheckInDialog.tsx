@@ -13,7 +13,8 @@ import {
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { checkInTicket, type CheckInTicketResponse } from "@/lib/api/merchant-events.api"
+import { checkInTicket, CheckInTicketError, type CheckInTicketResponse } from "@/lib/api/merchant-events.api"
+import { getCheckInErrorMessage } from "@/lib/utils/check-in-errors"
 
 const TICKET_PATTERN = /^TKT-[A-Z0-9]+$/i
 
@@ -93,10 +94,16 @@ export function EventCheckInDialog({
         const checkedIn = await checkInTicket(eventId, { ticketCode: code })
         setResult(checkedIn)
         setManualCode("")
-        toast.success(`Ticket checked in`)
+        toast.success(checkedIn.message || `Ticket checked in: ${checkedIn.attendeeName}`)
+        if (checkedIn.warning) {
+          toast.warning(checkedIn.warning)
+        }
         onCheckedIn?.()
       } catch (e) {
-        const msg = parseApiError(e)
+        const msg =
+          e instanceof CheckInTicketError
+            ? getCheckInErrorMessage(e.errorCode, e.body)
+            : parseApiError(e)
         setError(msg)
         setResult(null)
         toast.error(msg)

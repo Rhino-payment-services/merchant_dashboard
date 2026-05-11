@@ -2,13 +2,12 @@
  * Permission utilities for checking user capabilities
  */
 
-export interface UserPermissions {
-  canViewBalance?: boolean;
-  canViewTransactions?: boolean;
-  canInitiatePayments?: boolean;
-  canApprovePayments?: boolean;
-  canManageTeam?: boolean;
-}
+import {
+  getEffectiveWalletPermissions,
+  type UserPermissions,
+} from '@/lib/utils/wallet-permissions'
+
+export type { UserPermissions }
 
 export interface UserSession {
   role?: string;
@@ -152,4 +151,45 @@ export function getUserPermissions(user: UserSession): UserPermissions {
   }
 
   return permissions;
+}
+
+type ProfileForGate = {
+  isWalletOwner?: boolean;
+  isTeamMember?: boolean;
+  role?: string;
+  walletPermissions?: UserPermissions | null;
+  businessWallet?: Record<string, unknown> | null;
+} | null;
+
+type SessionForGate = {
+  user?: { userData?: unknown };
+} | null;
+
+/** Gate scanner: owner always; team needs canCheckInEventTickets from wallet or session/login payload. */
+export function canAccessGateScanner(profile: ProfileForGate, session?: SessionForGate): boolean {
+  if (!profile) return false;
+  if (profile.isWalletOwner === true) return true;
+  const p = getEffectiveWalletPermissions(profile, session?.user?.userData);
+  return p.canCheckInEventTickets === true;
+}
+
+/**
+ * Team members who should only use the gate UI: can check in, but no payroll/team/payment management.
+ * Admins/accountants/owners always get the full dashboard.
+ */
+export function isGateOnlyStaffUser(profile: ProfileForGate, session?: SessionForGate): boolean {
+  if (!profile?.isTeamMember || profile.isWalletOwner) return false;
+  const role = String(profile.role || '').toUpperCase();
+  if (role === 'OWNER' || role === 'ADMIN' || role === 'ACCOUNTANT') return false;
+
+  const p = getEffectiveWalletPermissions(profile, session?.user?.userData);
+  if (!p.canCheckInEventTickets) return false;
+
+  const hasElevated =
+    p.canManageTeam === true ||
+    p.canInitiatePayments === true ||
+    p.canApprovePayments === true ||
+    p.canManageEvents === true;
+
+  return !hasElevated;
 }

@@ -1,4 +1,13 @@
 import apiClient from './client'
+import type {
+  AssignEventStaffResponse,
+  CheckInApiErrorBody,
+  CheckInApiSuccessBody,
+  CheckInAttendee,
+  EventStaffResponse,
+  MyAssignedEventsResponse,
+} from '@/types/gate'
+import { getCheckInErrorMessage } from '@/lib/utils/check-in-errors'
 
 export interface MerchantEventListItem {
   id: string
@@ -59,6 +68,7 @@ export async function listMerchantEvents(
   const response = await apiClient.get<MerchantEventListResponse>('/merchant-events', {
     params: buildListQueryParams(params),
   })
+  console.log('---------->response', response.data);
   return response.data
 }
 
@@ -457,11 +467,12 @@ export async function getMerchantEventUser(userId: string): Promise<MerchantEven
 
 export interface CheckInTicketPayload {
   ticketCode: string
+  staffId?: string
 }
 
+/** Normalized check-in result (maps backend `attendee` + meta). */
 export interface CheckInTicketResponse {
   id: string
-  eventId: string
   orderReference: string
   ticketCode: string
   attendeeName: string
@@ -470,19 +481,132 @@ export interface CheckInTicketResponse {
   tierName: string
   status: string
   checkedInAt: string | null
-  checkedInBy: string | null
-  createdAt: string
+  checkedInBy?: string | null
+  createdAt?: string
+  /** Present when API returns success message */
+  message?: string
+  /** Optional business rule warning while still granting entry */
+  warning?: string
+}
+
+export class CheckInTicketError extends Error {
+  constructor(
+    message: string,
+    public readonly errorCode?: string,
+    public readonly httpStatus?: number,
+    public readonly body?: CheckInApiErrorBody
+  ) {
+    super(message)
+    this.name = 'CheckInTicketError'
+  }
+}
+
+function mapAttendeeToResponse(
+  attendee: CheckInAttendee,
+  message: string,
+  warning?: string
+): CheckInTicketResponse {
+  return {
+    id: attendee.id,
+    orderReference: attendee.orderReference,
+    ticketCode: attendee.ticketCode,
+    attendeeName: attendee.attendeeName,
+    attendeePhone: attendee.attendeePhone,
+    attendeeEmail: attendee.attendeeEmail,
+    tierName: attendee.tierName,
+    status: attendee.status,
+    checkedInAt: attendee.checkedInAt,
+    checkedInBy: attendee.checkedInBy ?? undefined,
+    message,
+    warning,
+  }
 }
 
 export async function checkInTicket(
   eventId: string,
   payload: CheckInTicketPayload
 ): Promise<CheckInTicketResponse> {
-  const response = await apiClient.post<CheckInTicketResponse>(
-    `/merchant-events/${eventId}/check-in`,
-    {
-      ticketCode: payload.ticketCode.trim().toUpperCase(),
+  const ticketCode = payload.ticketCode.trim().toUpperCase()
+  const body: { ticketCode: string; staffId?: string } = { ticketCode }
+  if (payload.staffId) body.staffId = payload.staffId
+
+  try {
+    const { data } = await apiClient.post<CheckInApiSuccessBody | CheckInApiErrorBody>(
+      `/merchant-events/${eventId}/check-in`,
+      body
+    )
+
+    if (data && typeof data === 'object' && 'success' in data) {
+      if (data.success === true && 'attendee' in data && data.attendee) {
+        return mapAttendeeToResponse(
+          data.attendee,
+          (data as CheckInApiSuccessBody).message ?? 'Ticket validated. Entry granted.',
+          (data as CheckInApiSuccessBody).warning
+        )
+      }
+      if (data.success === false) {
+        const err = data as CheckInApiErrorBody
+        throw new CheckInTicketError(
+          getCheckInErrorMessage(err.errorCode, err),
+          err.errorCode,
+          200,
+          err
+        )
+      }
     }
+
+    throw new CheckInTicketError('Unexpected check-in response', undefined, undefined)
+  } catch (e: unknown) {
+    if (e instanceof CheckInTicketError) throw e
+
+    const ax = e as {
+      response?: { status?: number; data?: CheckInApiErrorBody & { message?: string | string[] } }
+    }
+    const status = ax.response?.status
+    const d = ax.response?.data
+
+    if (d && typeof d === 'object' && 'success' in d && d.success === false) {
+      const errBody = d as CheckInApiErrorBody
+      throw new CheckInTicketError(
+        getCheckInErrorMessage(errBody.errorCode, errBody),
+        errBody.errorCode,
+        status,
+        errBody
+      )
+    }
+
+    const raw = d?.message
+    const apiMsg =
+      typeof raw === 'string' ? raw : Array.isArray(raw) && raw.length ? raw.join(', ') : ''
+    const msg = apiMsg || (e instanceof Error ? e.message : '') || 'Check-in failed'
+    throw new CheckInTicketError(msg, d?.errorCode, status, d as CheckInApiErrorBody | undefined)
+  }
+}
+
+export async function getMyAssignedEvents(): Promise<MyAssignedEventsResponse> {
+  const response = await apiClient.get<MyAssignedEventsResponse>('/merchant-events/my-assigned-events')
+  return response.data
+}
+
+export async function getEventStaff(eventId: string): Promise<EventStaffResponse> {
+  const response = await apiClient.get<EventStaffResponse>(`/merchant-events/${eventId}/staff`)
+  return response.data
+}
+
+export async function assignEventStaff(
+  eventId: string,
+  teamMemberId: string
+): Promise<AssignEventStaffResponse> {
+  const response = await apiClient.post<AssignEventStaffResponse>(
+    `/merchant-events/${eventId}/staff/assign`,
+    { teamMemberId }
+  )
+  return response.data
+}
+
+export async function removeEventStaff(eventId: string, teamMemberId: string): Promise<{ success: boolean }> {
+  const response = await apiClient.delete<{ success: boolean }>(
+    `/merchant-events/${eventId}/staff/${teamMemberId}`
   )
   return response.data
 }

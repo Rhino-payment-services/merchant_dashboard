@@ -1,5 +1,7 @@
 import apiClient from './client';
 
+export type WalletTeamEventAccess = 'NONE' | 'ALL_EVENTS' | 'SPECIFIC_EVENTS';
+
 export interface TeamMember {
   id: string;
   walletId: string;
@@ -15,6 +17,11 @@ export interface TeamMember {
   canInitiatePayments: boolean;
   canApprovePayments: boolean;
   canManageTeam: boolean;
+  canCheckInEventTickets?: boolean;
+  canViewEventStats?: boolean;
+  canManageEvents?: boolean;
+  eventAccess?: WalletTeamEventAccess;
+  assignedEventIds?: string[];
   invitedAt: string;
   acceptedAt?: string;
   lastAccessAt?: string;
@@ -41,6 +48,11 @@ export interface InviteTeamMemberDto {
   canInitiatePayments?: boolean;
   canApprovePayments?: boolean;
   canManageTeam?: boolean;
+  canCheckInEventTickets?: boolean;
+  canViewEventStats?: boolean;
+  canManageEvents?: boolean;
+  eventAccess?: WalletTeamEventAccess;
+  assignedEventIds?: string[];
 }
 
 export interface AddTeamMemberDirectDto {
@@ -57,7 +69,12 @@ export interface AddTeamMemberDirectDto {
     canInitiatePayments?: boolean;
     canApprovePayments?: boolean;
     canManageTeam?: boolean;
+    canCheckInEventTickets?: boolean;
+    canViewEventStats?: boolean;
+    canManageEvents?: boolean;
   };
+  eventAccess?: WalletTeamEventAccess;
+  assignedEventIds?: string[];
 }
 
 export interface UpdateTeamMemberDto {
@@ -68,6 +85,10 @@ export interface UpdateTeamMemberDto {
   canInitiatePayments?: boolean;
   canApprovePayments?: boolean;
   canManageTeam?: boolean;
+  canCheckInEventTickets?: boolean;
+  canViewEventStats?: boolean;
+  canManageEvents?: boolean;
+  eventAccess?: WalletTeamEventAccess;
 }
 
 export interface TransferOwnershipDto {

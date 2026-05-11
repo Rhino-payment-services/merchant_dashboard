@@ -25,6 +25,8 @@ import {
 import { API_URL } from "@/lib/config"
 import { toast } from "sonner"
 import { RefreshCw } from "lucide-react"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { EventStaffTab } from "./EventStaffTab"
 
 function formatByCurrency(amount: number, currency: string) {
   try {
@@ -160,7 +162,7 @@ export function EventDetailDialog({ open, onOpenChange, eventId }: EventDetailDi
           ) : null}
         </DialogHeader>
 
-        <div className="px-6 py-4 space-y-6">
+        <div className="px-6 py-4">
           {loading ? (
             <div className="flex flex-col items-center justify-center gap-3 py-16 text-gray-500">
               <RefreshCw className="h-8 w-8 animate-spin" aria-hidden />
@@ -174,7 +176,12 @@ export function EventDetailDialog({ open, onOpenChange, eventId }: EventDetailDi
               </Button>
             </div>
           ) : detail ? (
-            <>
+            <Tabs defaultValue="details" className="w-full">
+              <TabsList className="w-full max-w-md grid grid-cols-2">
+                <TabsTrigger value="details">Details</TabsTrigger>
+                <TabsTrigger value="staff">Staff</TabsTrigger>
+              </TabsList>
+              <TabsContent value="details" className="space-y-6 mt-4 focus-visible:outline-none">
               {detail.bannerUrl ? (
                 <div className="rounded-lg overflow-hidden border bg-gray-50 aspect-[21/9] max-h-48">
                   <img
@@ -461,7 +468,11 @@ export function EventDetailDialog({ open, onOpenChange, eventId }: EventDetailDi
                   {detail.updatedAt ? `Updated ${formatOptionalDate(detail.updatedAt)}` : null}
                 </p>
               )}
-            </>
+              </TabsContent>
+              <TabsContent value="staff" className="mt-4 focus-visible:outline-none">
+                <EventStaffTab eventId={eventId} open={open} />
+              </TabsContent>
+            </Tabs>
           ) : null}
         </div>
       </DialogContent>

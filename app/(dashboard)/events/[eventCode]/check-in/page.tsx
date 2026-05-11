@@ -10,8 +10,10 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import {
   checkInTicket,
   getMerchantEventById,
+  CheckInTicketError,
   type CheckInTicketResponse,
 } from "@/lib/api/merchant-events.api"
+import { getCheckInErrorMessage } from "@/lib/utils/check-in-errors"
 
 const TICKET_PATTERN = /^TKT-[A-Z0-9]+$/i
 const EVENT_ID_PATTERN = /^[a-zA-Z0-9-]{6,}$/
@@ -136,9 +138,15 @@ export default function MerchantEventCheckInPage() {
       if (typeof navigator !== "undefined" && "vibrate" in navigator) {
         navigator.vibrate(120)
       }
-      toast.success("Attendee checked in successfully.")
+      toast.success(response.message || `Checked in: ${response.attendeeName}`)
+      if (response.warning) {
+        toast.warning(response.warning)
+      }
     } catch (error) {
-      const message = parseErrorMessage(error)
+      const message =
+        error instanceof CheckInTicketError
+          ? getCheckInErrorMessage(error.errorCode, error.body)
+          : parseErrorMessage(error)
       setSubmitError(message)
       toast.error(message)
     } finally {
@@ -221,6 +229,9 @@ export default function MerchantEventCheckInPage() {
               </p>
               <p className="mt-1">Tier: {result.tierName || "—"}</p>
               <p className="mt-1">Checked in at: {formatDateTime(result.checkedInAt)}</p>
+              {result.warning ? (
+                <p className="mt-2 text-xs text-amber-800">Note: {result.warning}</p>
+              ) : null}
             </div>
           ) : null}
 

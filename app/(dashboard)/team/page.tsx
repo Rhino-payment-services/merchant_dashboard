@@ -48,13 +48,15 @@ import {
   Key,
   ArrowRightLeft,
   Loader2,
-  Phone
+  Phone,
+  Ticket,
 } from 'lucide-react';
 import { toast } from 'sonner';
-import { useQueryClient } from '@tanstack/react-query';
+import { useQueryClient, useQuery } from '@tanstack/react-query';
 import {
   useWalletTeam,
   useMyBusinessWallet,
+  useUpdateTeamMember,
   teamQueryKeys
 } from '@/lib/hooks/useTeam';
 import {
@@ -64,7 +66,8 @@ import {
   transferOwnership,
   requestTransferOwnershipOtp
 } from '@/lib/api/team.api';
-import type { TeamMember } from '@/lib/api/team.api';
+import type { TeamMember, UpdateTeamMemberDto, WalletTeamEventAccess } from '@/lib/api/team.api';
+import { listMerchantEvents } from '@/lib/api/merchant-events.api';
 import { useUserProfile } from '../UserProfileProvider';
 
 export default function TeamManagementPage() {
@@ -80,7 +83,12 @@ export default function TeamManagementPage() {
     firstName: '',
     lastName: '',
     phoneNumber: '',
-    role: 'MEMBER' as 'ADMIN' | 'ACCOUNTANT' | 'MEMBER' | 'VIEWER'
+    role: 'MEMBER' as 'ADMIN' | 'ACCOUNTANT' | 'MEMBER' | 'VIEWER',
+    canCheckInEventTickets: false,
+    canViewEventStats: false,
+    canManageEvents: false,
+    eventAccess: 'NONE' as WalletTeamEventAccess,
+    assignedEventIds: [] as string[],
   });
 
   const [addDirectForm, setAddDirectForm] = useState<{
@@ -90,14 +98,28 @@ export default function TeamManagementPage() {
     phoneNumber: string;
     role: 'ADMIN' | 'ACCOUNTANT' | 'MEMBER' | 'VIEWER';
     password: string;
+    canCheckInEventTickets: boolean;
+    canViewEventStats: boolean;
+    canManageEvents: boolean;
+    eventAccess: WalletTeamEventAccess;
+    assignedEventIds: string[];
   }>({
     email: '',
     firstName: '',
     lastName: '',
     phoneNumber: '',
     role: 'MEMBER',
-    password: '' // Temporary password - user will change via email
+    password: '',
+    canCheckInEventTickets: false,
+    canViewEventStats: false,
+    canManageEvents: false,
+    eventAccess: 'NONE',
+    assignedEventIds: [],
   });
+
+  const [editForm, setEditForm] = useState<UpdateTeamMemberDto & {
+    role: 'ADMIN' | 'ACCOUNTANT' | 'MEMBER' | 'VIEWER';
+  } | null>(null);
 
   const [transferForm, setTransferForm] = useState({
     newOwnerUserId: '',
@@ -126,6 +148,15 @@ export default function TeamManagementPage() {
   // Fetch team members (only if we have a wallet ID)
   const { data: teamData, isLoading, refetch } = useWalletTeam(businessWalletId);
   const teamMembers = teamData?.members || [];
+
+  const updateMemberMutation = useUpdateTeamMember(businessWalletId);
+
+  const { data: eventsPickData } = useQuery({
+    queryKey: ['merchant-events', 'team-picker', businessWalletId],
+    queryFn: () => listMerchantEvents({ page: 1, limit: 100 }),
+    enabled: !!businessWalletId,
+  });
+  const eventPickItems = eventsPickData?.items ?? [];
 
   // Query client for manual mutations
   const queryClient = useQueryClient();
@@ -175,13 +206,34 @@ export default function TeamManagementPage() {
       return;
     }
 
+    if (inviteForm.eventAccess === 'SPECIFIC_EVENTS' && inviteForm.assignedEventIds.length === 0) {
+      toast.error('Select at least one event for “Specific events” access.');
+      return;
+    }
+
     try {
       console.log('Inviting team member to wallet:', businessWalletId, inviteForm);
-      await inviteTeamMember(businessWalletId, inviteForm);
+      const { assignedEventIds, eventAccess, ...rest } = inviteForm;
+      await inviteTeamMember(businessWalletId, {
+        ...rest,
+        eventAccess,
+        ...(eventAccess === 'SPECIFIC_EVENTS' ? { assignedEventIds } : {}),
+      });
       queryClient.invalidateQueries({ queryKey: teamQueryKeys.walletTeam(businessWalletId) });
       toast.success('Team member invited successfully! They will receive an email with instructions to set up their account.');
       setShowInviteDialog(false);
-      setInviteForm({ email: '', firstName: '', lastName: '', phoneNumber: '', role: 'MEMBER' });
+      setInviteForm({
+        email: '',
+        firstName: '',
+        lastName: '',
+        phoneNumber: '',
+        role: 'MEMBER',
+        canCheckInEventTickets: false,
+        canViewEventStats: false,
+        canManageEvents: false,
+        eventAccess: 'NONE',
+        assignedEventIds: [],
+      });
     } catch (error: any) {
       console.error('Error inviting team member:', error);
       toast.error(error.response?.data?.message || 'Failed to invite team member');
@@ -210,11 +262,29 @@ export default function TeamManagementPage() {
       return;
     }
 
+    if (addDirectForm.eventAccess === 'SPECIFIC_EVENTS' && addDirectForm.assignedEventIds.length === 0) {
+      toast.error('Select at least one event for “Specific events” access.');
+      return;
+    }
+
     // Generate a temporary secure password (user will change it via email)
     const tempPassword = Math.random().toString(36).slice(-12) + Math.random().toString(36).slice(-12);
+    const { assignedEventIds, eventAccess, canCheckInEventTickets, canViewEventStats, canManageEvents, ...baseDirect } = addDirectForm;
     const formData = {
-      ...addDirectForm,
-      password: tempPassword
+      ...baseDirect,
+      password: tempPassword,
+      permissions: {
+        canViewBalance: false,
+        canViewTransactions: false,
+        canInitiatePayments: false,
+        canApprovePayments: false,
+        canManageTeam: false,
+        canCheckInEventTickets,
+        canViewEventStats,
+        canManageEvents,
+      },
+      eventAccess,
+      ...(eventAccess === 'SPECIFIC_EVENTS' ? { assignedEventIds } : { assignedEventIds: [] }),
     };
 
     try {
@@ -223,7 +293,19 @@ export default function TeamManagementPage() {
       queryClient.invalidateQueries({ queryKey: teamQueryKeys.walletTeam(businessWalletId) });
       toast.success('Team member added successfully! Login credentials have been sent to their email.');
       setShowAddDirectDialog(false);
-      setAddDirectForm({ email: '', firstName: '', lastName: '', phoneNumber: '', role: 'MEMBER', password: '' });
+      setAddDirectForm({
+        email: '',
+        firstName: '',
+        lastName: '',
+        phoneNumber: '',
+        role: 'MEMBER',
+        password: '',
+        canCheckInEventTickets: false,
+        canViewEventStats: false,
+        canManageEvents: false,
+        eventAccess: 'NONE',
+        assignedEventIds: [],
+      });
     } catch (error: any) {
       console.error('Error adding team member:', error);
       toast.error(error.response?.data?.message || 'Failed to add team member');
@@ -238,6 +320,33 @@ export default function TeamManagementPage() {
     } catch (error: any) {
       console.error('Error removing team member:', error);
       toast.error(error.response?.data?.message || 'Failed to remove team member');
+    }
+  };
+
+  const handleSaveEditMember = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingMember || !editForm) return;
+    try {
+      await updateMemberMutation.mutateAsync({
+        memberId: editingMember.id,
+        data: {
+          role: editForm.role,
+          status: editForm.status,
+          canViewBalance: editForm.canViewBalance,
+          canViewTransactions: editForm.canViewTransactions,
+          canInitiatePayments: editForm.canInitiatePayments,
+          canApprovePayments: editForm.canApprovePayments,
+          canManageTeam: editForm.canManageTeam,
+          canCheckInEventTickets: editForm.canCheckInEventTickets,
+          canViewEventStats: editForm.canViewEventStats,
+          canManageEvents: editForm.canManageEvents,
+          eventAccess: editForm.eventAccess,
+        },
+      });
+      setEditingMember(null);
+      setEditForm(null);
+    } catch {
+      /* useUpdateTeamMember surfaces toast */
     }
   };
 
@@ -464,6 +573,95 @@ export default function TeamManagementPage() {
                   </Select>
                 </div>
 
+                <div className="rounded-lg border border-dashed border-gray-200 p-3 space-y-3 bg-gray-50/60">
+                  <p className="text-xs font-semibold text-gray-700 uppercase tracking-wide flex items-center gap-2">
+                    <Ticket className="h-3.5 w-3.5" /> Events &amp; gate
+                  </p>
+                  <label className="flex items-center gap-2 text-sm cursor-pointer">
+                    <input
+                      type="checkbox"
+                      className="rounded border-gray-300 h-4 w-4"
+                      checked={addDirectForm.canCheckInEventTickets}
+                      onChange={(e) =>
+                        setAddDirectForm({ ...addDirectForm, canCheckInEventTickets: e.target.checked })
+                      }
+                    />
+                    Can check in event tickets (gate scanner)
+                  </label>
+                  <label className="flex items-center gap-2 text-sm cursor-pointer">
+                    <input
+                      type="checkbox"
+                      className="rounded border-gray-300 h-4 w-4"
+                      checked={addDirectForm.canViewEventStats}
+                      onChange={(e) =>
+                        setAddDirectForm({ ...addDirectForm, canViewEventStats: e.target.checked })
+                      }
+                    />
+                    Can view event stats (future)
+                  </label>
+                  <label className="flex items-center gap-2 text-sm cursor-pointer">
+                    <input
+                      type="checkbox"
+                      className="rounded border-gray-300 h-4 w-4"
+                      checked={addDirectForm.canManageEvents}
+                      onChange={(e) =>
+                        setAddDirectForm({ ...addDirectForm, canManageEvents: e.target.checked })
+                      }
+                    />
+                    Can manage events
+                  </label>
+                  <div>
+                    <Label htmlFor="add-event-access">Event access</Label>
+                    <Select
+                      value={addDirectForm.eventAccess}
+                      onValueChange={(v: WalletTeamEventAccess) =>
+                        setAddDirectForm({
+                          ...addDirectForm,
+                          eventAccess: v,
+                          assignedEventIds: v !== 'SPECIFIC_EVENTS' ? [] : addDirectForm.assignedEventIds,
+                        })
+                      }
+                    >
+                      <SelectTrigger id="add-event-access">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="NONE">None — no event routing via gate permissions</SelectItem>
+                        <SelectItem value="ALL_EVENTS">All merchant events</SelectItem>
+                        <SelectItem value="SPECIFIC_EVENTS">Specific events only</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  {addDirectForm.eventAccess === 'SPECIFIC_EVENTS' ? (
+                    <div className="max-h-36 overflow-y-auto border rounded-md p-2 space-y-1 bg-white">
+                      {eventPickItems.length === 0 ? (
+                        <p className="text-xs text-gray-500">No events found. Create events under Events first.</p>
+                      ) : (
+                        eventPickItems.map((ev) => (
+                          <label key={ev.id} className="flex items-center gap-2 text-sm py-0.5 cursor-pointer">
+                            <input
+                              type="checkbox"
+                              className="rounded border-gray-300 h-4 w-4 shrink-0"
+                              checked={addDirectForm.assignedEventIds.includes(ev.id)}
+                              onChange={(e) => {
+                                const checked = e.target.checked;
+                                const next = checked
+                                  ? [...addDirectForm.assignedEventIds, ev.id]
+                                  : addDirectForm.assignedEventIds.filter((id) => id !== ev.id);
+                                setAddDirectForm({ ...addDirectForm, assignedEventIds: next });
+                              }}
+                            />
+                            <span className="truncate">
+                              {ev.title}{' '}
+                              <span className="text-gray-500 font-mono text-xs">({ev.eventCode})</span>
+                            </span>
+                          </label>
+                        ))
+                      )}
+                    </div>
+                  ) : null}
+                </div>
+
                 <div className="flex justify-end gap-3 pt-4">
                   <Button
                     type="button"
@@ -563,6 +761,95 @@ export default function TeamManagementPage() {
                       <SelectItem value="VIEWER">Viewer - Read only</SelectItem>
                     </SelectContent>
                   </Select>
+                </div>
+
+                <div className="rounded-lg border border-dashed border-gray-200 p-3 space-y-3 bg-gray-50/60">
+                  <p className="text-xs font-semibold text-gray-700 uppercase tracking-wide flex items-center gap-2">
+                    <Ticket className="h-3.5 w-3.5" /> Events &amp; gate
+                  </p>
+                  <label className="flex items-center gap-2 text-sm cursor-pointer">
+                    <input
+                      type="checkbox"
+                      className="rounded border-gray-300 h-4 w-4"
+                      checked={inviteForm.canCheckInEventTickets}
+                      onChange={(e) =>
+                        setInviteForm({ ...inviteForm, canCheckInEventTickets: e.target.checked })
+                      }
+                    />
+                    Can check in event tickets (gate scanner)
+                  </label>
+                  <label className="flex items-center gap-2 text-sm cursor-pointer">
+                    <input
+                      type="checkbox"
+                      className="rounded border-gray-300 h-4 w-4"
+                      checked={inviteForm.canViewEventStats}
+                      onChange={(e) =>
+                        setInviteForm({ ...inviteForm, canViewEventStats: e.target.checked })
+                      }
+                    />
+                    Can view event stats (future)
+                  </label>
+                  <label className="flex items-center gap-2 text-sm cursor-pointer">
+                    <input
+                      type="checkbox"
+                      className="rounded border-gray-300 h-4 w-4"
+                      checked={inviteForm.canManageEvents}
+                      onChange={(e) =>
+                        setInviteForm({ ...inviteForm, canManageEvents: e.target.checked })
+                      }
+                    />
+                    Can manage events
+                  </label>
+                  <div>
+                    <Label htmlFor="invite-event-access">Event access</Label>
+                    <Select
+                      value={inviteForm.eventAccess}
+                      onValueChange={(v: WalletTeamEventAccess) =>
+                        setInviteForm({
+                          ...inviteForm,
+                          eventAccess: v,
+                          assignedEventIds: v !== 'SPECIFIC_EVENTS' ? [] : inviteForm.assignedEventIds,
+                        })
+                      }
+                    >
+                      <SelectTrigger id="invite-event-access">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="NONE">None — no event routing via gate permissions</SelectItem>
+                        <SelectItem value="ALL_EVENTS">All merchant events</SelectItem>
+                        <SelectItem value="SPECIFIC_EVENTS">Specific events only</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  {inviteForm.eventAccess === 'SPECIFIC_EVENTS' ? (
+                    <div className="max-h-36 overflow-y-auto border rounded-md p-2 space-y-1 bg-white">
+                      {eventPickItems.length === 0 ? (
+                        <p className="text-xs text-gray-500">No events found. Create events under Events first.</p>
+                      ) : (
+                        eventPickItems.map((ev) => (
+                          <label key={ev.id} className="flex items-center gap-2 text-sm py-0.5 cursor-pointer">
+                            <input
+                              type="checkbox"
+                              className="rounded border-gray-300 h-4 w-4 shrink-0"
+                              checked={inviteForm.assignedEventIds.includes(ev.id)}
+                              onChange={(e) => {
+                                const checked = e.target.checked;
+                                const next = checked
+                                  ? [...inviteForm.assignedEventIds, ev.id]
+                                  : inviteForm.assignedEventIds.filter((id) => id !== ev.id);
+                                setInviteForm({ ...inviteForm, assignedEventIds: next });
+                              }}
+                            />
+                            <span className="truncate">
+                              {ev.title}{' '}
+                              <span className="text-gray-500 font-mono text-xs">({ev.eventCode})</span>
+                            </span>
+                          </label>
+                        ))
+                      )}
+                    </div>
+                  ) : null}
                 </div>
 
                 <div className="flex justify-end gap-3 pt-4">
@@ -720,6 +1007,11 @@ export default function TeamManagementPage() {
                             View Balance
                           </Badge>
                         )}
+                        {member.canViewTransactions && (
+                          <Badge variant="outline" className="text-xs">
+                            View Transactions
+                          </Badge>
+                        )}
                         {member.canInitiatePayments && (
                           <Badge variant="outline" className="text-xs">
                             Initiate Payments
@@ -735,6 +1027,34 @@ export default function TeamManagementPage() {
                             Manage Team
                           </Badge>
                         )}
+                        {member.canCheckInEventTickets ? (
+                          <Badge variant="outline" className="text-xs border-blue-200 text-blue-900">
+                            Gate check-in
+                          </Badge>
+                        ) : null}
+                        {member.eventAccess && member.eventAccess !== 'NONE' ? (
+                          <Badge variant="secondary" className="text-xs">
+                            {member.eventAccess === 'ALL_EVENTS'
+                              ? 'All events'
+                              : member.eventAccess === 'SPECIFIC_EVENTS'
+                                ? `Specific events${
+                                    member.assignedEventIds?.length
+                                      ? ` (${member.assignedEventIds.length})`
+                                      : ''
+                                  }`
+                                : member.eventAccess}
+                          </Badge>
+                        ) : null}
+                        {member.canViewEventStats ? (
+                          <Badge variant="outline" className="text-xs">
+                            Event stats
+                          </Badge>
+                        ) : null}
+                        {member.canManageEvents ? (
+                          <Badge variant="outline" className="text-xs">
+                            Manage events
+                          </Badge>
+                        ) : null}
                       </div>
 
                       {/* Status messages */}
@@ -759,7 +1079,22 @@ export default function TeamManagementPage() {
                         <Button
                           variant="ghost"
                           size="sm"
-                          onClick={() => {/* Edit member */}}
+                          onClick={() => {
+                            setEditingMember(member);
+                            setEditForm({
+                              role: member.role,
+                              status: member.status === 'SUSPENDED' ? 'SUSPENDED' : 'ACTIVE',
+                              canViewBalance: member.canViewBalance,
+                              canViewTransactions: member.canViewTransactions,
+                              canInitiatePayments: member.canInitiatePayments,
+                              canApprovePayments: member.canApprovePayments,
+                              canManageTeam: member.canManageTeam,
+                              canCheckInEventTickets: member.canCheckInEventTickets ?? false,
+                              canViewEventStats: member.canViewEventStats ?? false,
+                              canManageEvents: member.canManageEvents ?? false,
+                              eventAccess: member.eventAccess ?? 'NONE',
+                            });
+                          }}
                         >
                           <Edit className="h-4 w-4" />
                         </Button>
@@ -799,6 +1134,167 @@ export default function TeamManagementPage() {
           )}
         </CardContent>
       </Card>
+
+      <Dialog
+        open={!!editingMember}
+        onOpenChange={(open) => {
+          if (!open) {
+            setEditingMember(null);
+            setEditForm(null);
+          }
+        }}
+      >
+        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Edit team member</DialogTitle>
+            <DialogDescription>
+              Update wallet and gate permissions. Per-event roster assignments are managed from each
+              event&apos;s <strong>Staff</strong> tab.
+            </DialogDescription>
+          </DialogHeader>
+          {editForm && editingMember ? (
+            <form onSubmit={handleSaveEditMember} className="space-y-4">
+              <div className="text-sm text-gray-600">
+                {editingMember.firstName} {editingMember.lastName} — {editingMember.email}
+              </div>
+              <div>
+                <Label>Role</Label>
+                <Select
+                  value={editForm.role}
+                  onValueChange={(value: 'ADMIN' | 'ACCOUNTANT' | 'MEMBER' | 'VIEWER') =>
+                    setEditForm({ ...editForm, role: value })
+                  }
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="ADMIN">Admin</SelectItem>
+                    <SelectItem value="ACCOUNTANT">Accountant</SelectItem>
+                    <SelectItem value="MEMBER">Member</SelectItem>
+                    <SelectItem value="VIEWER">Viewer</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label>Status</Label>
+                <Select
+                  value={editForm.status ?? 'ACTIVE'}
+                  onValueChange={(value: 'ACTIVE' | 'SUSPENDED') =>
+                    setEditForm({ ...editForm, status: value })
+                  }
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="ACTIVE">Active</SelectItem>
+                    <SelectItem value="SUSPENDED">Suspended</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="rounded-md border p-3 space-y-2">
+                <p className="text-xs font-semibold text-gray-700">Wallet</p>
+                {(
+                  [
+                    ['canViewBalance', 'View balance'],
+                    ['canViewTransactions', 'View transactions'],
+                    ['canInitiatePayments', 'Initiate payments'],
+                    ['canApprovePayments', 'Approve payments'],
+                    ['canManageTeam', 'Manage team'],
+                  ] as const
+                ).map(([key, label]) => (
+                  <label key={key} className="flex items-center gap-2 text-sm cursor-pointer">
+                    <input
+                      type="checkbox"
+                      className="rounded border-gray-300 h-4 w-4"
+                      checked={Boolean(editForm[key])}
+                      onChange={(e) => setEditForm({ ...editForm, [key]: e.target.checked })}
+                    />
+                    {label}
+                  </label>
+                ))}
+              </div>
+              <div className="rounded-lg border border-dashed border-gray-200 p-3 space-y-3 bg-gray-50/60">
+                <p className="text-xs font-semibold text-gray-700 uppercase tracking-wide flex items-center gap-2">
+                  <Ticket className="h-3.5 w-3.5" /> Events &amp; gate
+                </p>
+                <label className="flex items-center gap-2 text-sm cursor-pointer">
+                  <input
+                    type="checkbox"
+                    className="rounded border-gray-300 h-4 w-4"
+                    checked={Boolean(editForm.canCheckInEventTickets)}
+                    onChange={(e) =>
+                      setEditForm({ ...editForm, canCheckInEventTickets: e.target.checked })
+                    }
+                  />
+                  Can check in event tickets
+                </label>
+                <label className="flex items-center gap-2 text-sm cursor-pointer">
+                  <input
+                    type="checkbox"
+                    className="rounded border-gray-300 h-4 w-4"
+                    checked={Boolean(editForm.canViewEventStats)}
+                    onChange={(e) => setEditForm({ ...editForm, canViewEventStats: e.target.checked })}
+                  />
+                  Can view event stats
+                </label>
+                <label className="flex items-center gap-2 text-sm cursor-pointer">
+                  <input
+                    type="checkbox"
+                    className="rounded border-gray-300 h-4 w-4"
+                    checked={Boolean(editForm.canManageEvents)}
+                    onChange={(e) => setEditForm({ ...editForm, canManageEvents: e.target.checked })}
+                  />
+                  Can manage events
+                </label>
+                <div>
+                  <Label htmlFor="edit-event-access">Event access</Label>
+                  <Select
+                    value={editForm.eventAccess ?? 'NONE'}
+                    onValueChange={(v: WalletTeamEventAccess) => setEditForm({ ...editForm, eventAccess: v })}
+                  >
+                    <SelectTrigger id="edit-event-access">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="NONE">None</SelectItem>
+                      <SelectItem value="ALL_EVENTS">All merchant events</SelectItem>
+                      <SelectItem value="SPECIFIC_EVENTS">Specific events</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <p className="text-xs text-gray-500">
+                  Changing <strong>Specific events</strong> does not edit the event list here — use invite
+                  with <code className="text-xs">assignedEventIds</code> or the event Staff tab.
+                </p>
+              </div>
+              <div className="flex justify-end gap-2 pt-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => {
+                    setEditingMember(null);
+                    setEditForm(null);
+                  }}
+                >
+                  Cancel
+                </Button>
+                <Button type="submit" disabled={updateMemberMutation.isPending}>
+                  {updateMemberMutation.isPending ? (
+                    <>
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      Saving…
+                    </>
+                  ) : (
+                    'Save changes'
+                  )}
+                </Button>
+              </div>
+            </form>
+          ) : null}
+        </DialogContent>
+      </Dialog>
 
       {/* Transfer Ownership Dialog */}
       <Dialog open={showTransferDialog} onOpenChange={setShowTransferDialog}>

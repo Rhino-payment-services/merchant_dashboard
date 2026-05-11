@@ -5,6 +5,7 @@ import { useSession } from "next-auth/react";
 import { useQuery } from "@tanstack/react-query";
 import axios from "axios";
 import { getAccessibleWallets } from "@/lib/api/wallet-team.api";
+import { getEffectiveWalletPermissions } from "@/lib/utils/wallet-permissions";
 
 type UserProfile = {
   merchantId: string;
@@ -78,7 +79,13 @@ export function UserProfileProvider({
     refetch,
     isRefetching
   } = useQuery({
-    queryKey: ['userProfile', userData?.id, sessionMerchantCode],
+    queryKey: [
+      'userProfile',
+      userData?.id,
+      sessionMerchantCode,
+      Boolean((session?.user as any)?.userData?.canCheckInEventTickets),
+      Boolean((session?.user as any)?.userData?.permissions?.canCheckInEventTickets),
+    ],
     queryFn: async () => {
       // Check if user is a team member by checking for wallet team membership
       const userType = (session?.user as any)?.userType || userData?.userType;
@@ -116,8 +123,23 @@ export function UserProfileProvider({
             merchantInWallet: businessWallet?.merchant
           });
 
-          // Check if user owns this wallet or is a team member
-          isTeamMember = businessWallet?.userId !== userData?.id;
+          // Determine team-vs-owner from explicit wallet team markers first.
+          // Some backend responses may return current user id in `wallet.userId`,
+          // so we cannot rely on `wallet.userId !== user.id` alone.
+          const accessRole = String(businessWallet?.accessRole || "").toUpperCase();
+          const hasWalletTeamMember =
+            Boolean(businessWallet?.walletTeamMember?.id) ||
+            Boolean(businessWallet?.teamMember?.id) ||
+            Boolean(businessWallet?.teamMemberPermissions);
+          const roleImpliesTeamMember = accessRole !== "" && accessRole !== "OWNER";
+          const userIdImpliesTeamMember =
+            businessWallet?.userId && userData?.id
+              ? businessWallet.userId !== userData.id
+              : false;
+
+          isTeamMember = Boolean(
+            hasWalletTeamMember || roleImpliesTeamMember || userIdImpliesTeamMember
+          );
           
           // Merchant data should now be included in the wallet response
           if (businessWallet?.merchant) {
@@ -223,7 +245,11 @@ export function UserProfileProvider({
       // Get wallet team member role if user is a team member
       // The wallet API now returns accessRole and permissions for team members
       const walletTeamRole = businessWallet?.accessRole || (isTeamMember ? null : undefined);
-      const walletPermissions = businessWallet?.permissions;
+      const sessionUserData = (session?.user as any)?.userData;
+      const walletPermissions = getEffectiveWalletPermissions(
+        { businessWallet, walletPermissions: businessWallet?.permissions },
+        sessionUserData
+      );
       
       // Use wallet team role if available, otherwise use base user role
       const effectiveRole = walletTeamRole || userRole;

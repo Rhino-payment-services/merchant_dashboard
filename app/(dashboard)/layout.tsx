@@ -5,6 +5,7 @@ import Topbar from "../components/Topbar";
 import { useState, useEffect } from 'react';
 import MerchantAuthGuard from "@/components/auth/MerchantAuthGuard";
 import { UserProfileProvider } from "./UserProfileProvider";
+import { GateOnlyRedirect } from "./GateOnlyRedirect";
 import { startTokenRefresh, stopTokenRefresh } from "@/lib/utils/token-refresh";
 
 export default function RootLayout({
@@ -35,6 +36,7 @@ export default function RootLayout({
   return (
     <MerchantAuthGuard>
       <UserProfileProvider>
+        <GateOnlyRedirect />
         <div className="w-full h-screen flex bg-gray-50 overflow-hidden">
           {/* Sidebar */}
           <Sidebar 
