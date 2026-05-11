@@ -130,7 +130,12 @@ export const processSinglePayment = async (paymentData: SinglePaymentDto, userId
       
       // Map transaction-specific fields
       phoneNumber: paymentData.phoneNumber,
-      mnoProvider: getValidMnoProvider(paymentData.mnoProvider),
+      mnoProvider:
+        paymentData.mode === 'UTILITIES'
+          ? paymentData.mnoProvider && String(paymentData.mnoProvider).trim()
+            ? getValidMnoProvider(paymentData.mnoProvider)
+            : undefined
+          : getValidMnoProvider(paymentData.mnoProvider),
       recipientName: paymentData.recipientName,
       
       // Bank fields
@@ -152,12 +157,6 @@ export const processSinglePayment = async (paymentData: SinglePaymentDto, userId
             paymentData.customerRef ||
             paymentData.phoneNumber
           : paymentData.utilityAccountNumber,
-      customerRef:
-        paymentData.mode === 'UTILITIES'
-          ? paymentData.customerRef ||
-            paymentData.utilityAccountNumber ||
-            paymentData.phoneNumber
-          : paymentData.customerRef,
       area: paymentData.area,
       
       // Merchant fields
@@ -247,6 +246,9 @@ export const validateTransaction = async (paymentData: SinglePaymentDto): Promis
     validationData.billType = paymentData.utilityProvider;
     validationData.area = paymentData.area;
     validationData.customerPhoneNumber = paymentData.phoneNumber;
+    if (paymentData.mnoProvider) {
+      validationData.network = getValidMnoProvider(paymentData.mnoProvider);
+    }
   } else if (paymentData.mode === 'WALLET_TO_MERCHANT') {
     validationData.merchantCode = paymentData.merchantCode;
   } else if (paymentData.mode === 'MERCHANT_TO_WALLET') {

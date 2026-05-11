@@ -300,7 +300,17 @@ export default function BulkPaymentPage() {
           recipientName: recipientName,
         }));
       }
-      
+      if (
+        recipientName &&
+        singlePayment.mode === 'UTILITIES' &&
+        isAirtimeOrDataUtility(singlePayment.utilityProvider)
+      ) {
+        setSinglePayment((prev) => ({
+          ...prev,
+          recipientName,
+        }));
+      }
+
       if (validation.feePreview) {
         setFeePreview(validation.feePreview);
         toast.success('Fee preview updated');
