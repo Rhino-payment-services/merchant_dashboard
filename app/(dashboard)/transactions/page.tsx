@@ -21,6 +21,9 @@ type StatusType = 'COMPLETED' | 'PENDING' | 'PROCESSING' | 'FAILED' | 'CANCELLED
 function getTransactionTypeDisplay(txn: any): string {
   const meta = txn?.metadata || {};
   const ref = txn?.reference || '';
+  if (meta.merchantEventOrderId || meta.merchantEventOrderReference) {
+    return 'Event Ticket Payment';
+  }
   if (
     txn?.type === 'WALLET_TO_WALLET' &&
     (meta.sweepToDisbursement || meta.sweepFromCollection || (ref && String(ref).startsWith('SWEEP_')))
@@ -37,6 +40,20 @@ function getTransactionTypeDisplay(txn: any): string {
     WITHDRAWAL: 'Withdrawal',
   };
   return typeMap[txn?.type] || txn?.type || 'N/A';
+}
+
+function isEventLedgerTransaction(txn: any): boolean {
+  const meta = txn?.metadata || {};
+  return Boolean(meta.merchantEventOrderId || meta.merchantEventOrderReference);
+}
+
+function getEventLedgerDescription(txn: any): string {
+  const meta = txn?.metadata || {};
+  const orderRef = String(meta.merchantEventOrderReference || '').trim();
+  if (orderRef) {
+    return `Event ticket payment (${orderRef})`;
+  }
+  return 'Event ticket payment';
 }
 
 const statusColor: Record<StatusType, string> = {
@@ -972,7 +989,9 @@ export default function TransactionsPage() {
                           </span>
                         </TableCell>
                         <TableCell className="max-w-xs truncate">
-                          {transaction.description || transaction.reference || '-'}
+                          {isEventLedgerTransaction(transaction)
+                            ? getEventLedgerDescription(transaction)
+                            : (transaction.description || transaction.reference || '-')}
                         </TableCell>
                         <TableCell className="text-sm">
                           {new Date(transaction.createdAt).toLocaleString('en-UG', {
@@ -1555,6 +1574,14 @@ export default function TransactionsPage() {
                         <span className="text-gray-600">Type:</span>
                         <span className="font-medium text-gray-900">{getTransactionTypeDisplay(txn)}</span>
                       </div>
+                      {isEventLedgerTransaction(txn) && (
+                        <div className="flex justify-between">
+                          <span className="text-gray-600">Event Order Ref:</span>
+                          <span className="font-medium text-gray-900">
+                            {txn.metadata?.merchantEventOrderReference || 'N/A'}
+                          </span>
+                        </div>
+                      )}
                       <div className="flex justify-between">
                         <span className="text-gray-600">Date & Time:</span>
                         <span className="font-medium text-gray-900">{formatDate(txn.createdAt)}</span>
