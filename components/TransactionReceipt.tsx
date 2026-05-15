@@ -5,6 +5,7 @@ import { Printer, Download, Loader2 } from 'lucide-react';
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
 import { toast } from 'sonner';
+import { getTransactionTypeDisplay } from '@/lib/utils/transaction-display';
 
 interface Transaction {
   id: string;
@@ -519,20 +520,6 @@ export default function TransactionReceipt({ transaction, merchantInfo }: Transa
     }).format(amount);
   };
 
-  const getTransactionTypeLabel = (type: string) => {
-    const typeLabels: Record<string, string> = {
-      'MERCHANT_TO_WALLET': 'Payment to Customer',
-      'WALLET_TO_MERCHANT': 'Payment from Customer',
-      'WALLET_TO_INTERNAL_MERCHANT': 'Payment from Customer',
-      'WALLET_TO_EXTERNAL_MERCHANT': 'Payment from Customer',
-      'MERCHANT_WITHDRAWAL': 'Merchant Withdrawal',
-      'DEPOSIT': 'Deposit',
-      'WITHDRAWAL': 'Withdrawal',
-      'MNO_TO_WALLET': 'Mobile Money Deposit',
-      'WALLET_TO_MNO': 'Mobile Money Withdrawal',
-    };
-    return typeLabels[type] || type;
-  };
 
   const getStatusBadge = (status: string) => {
     const statusColors: Record<string, string> = {
@@ -625,7 +612,7 @@ export default function TransactionReceipt({ transaction, merchantInfo }: Transa
 
           <div className="flex justify-between items-center border-b border-gray-200 pb-2">
             <span className="text-sm font-semibold text-gray-700">Transaction Type:</span>
-            <span className="text-sm">{getTransactionTypeLabel(transaction.type)}</span>
+            <span className="text-sm">{getTransactionTypeDisplay(transaction)}</span>
           </div>
 
           {/* Sender & Receiver */}

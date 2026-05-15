@@ -15,6 +15,7 @@ import { useQuery } from "@tanstack/react-query";
 import { fetchTransactions } from "../lib/api";
 import { useUserProfile } from "../(dashboard)/UserProfileProvider";
 import { RefreshCw } from "lucide-react";
+import { getTransactionTypeDisplay } from "@/lib/utils/transaction-display";
 
 
 type  StatusType = 'approved' | 'pending' | 'failed' | 'COMPLETED' | 'PENDING' | 'PROCESSING' | 'FAILED' | 'CANCELLED' | 'REFUNDED' | 'SUCCESS';
@@ -406,12 +407,8 @@ export default function RecentTransactions({ transactions, isNewFormat = false, 
                       </div>
                     </TableCell>
                     <TableCell>
-                      <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
-                        txn.direction === 'CREDIT' 
-                          ? 'bg-green-100 text-green-800' 
-                          : 'bg-red-100 text-red-800'
-                      }`}>
-                        {txn.direction || (txn.rdbs_approval_status ? 'DEBIT' : 'N/A')}
+                      <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-slate-100 text-slate-800">
+                        {isNewFormat ? getTransactionTypeDisplay(txn) : (txn.rdbs_type || 'N/A')}
                       </span>
                     </TableCell>
                     <TableCell>
