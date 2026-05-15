@@ -15,37 +15,12 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Badge } from '@/components/ui/badge';
 import TransactionReceipt from '@/components/TransactionReceipt';
 import { useUserProfile } from '../UserProfileProvider';
+import {
+  getTransactionTypeDisplay,
+  isEventLedgerTransaction,
+} from '@/lib/utils/transaction-display';
 
 type StatusType = 'COMPLETED' | 'PENDING' | 'PROCESSING' | 'FAILED' | 'CANCELLED' | 'REFUNDED' | "SUCCESS";
-
-function getTransactionTypeDisplay(txn: any): string {
-  const meta = txn?.metadata || {};
-  const ref = txn?.reference || '';
-  if (meta.merchantEventOrderId || meta.merchantEventOrderReference) {
-    return 'Event Ticket Payment';
-  }
-  if (
-    txn?.type === 'WALLET_TO_WALLET' &&
-    (meta.sweepToDisbursement || meta.sweepFromCollection || (ref && String(ref).startsWith('SWEEP_')))
-  ) {
-    return 'Liquidate';
-  }
-  const typeMap: Record<string, string> = {
-    WALLET_TO_WALLET: 'P2P Transfer',
-    MNO_TO_WALLET: 'Receive from Mobile Money',
-    WALLET_TO_MNO: 'Send to Mobile Money',
-    MERCHANT_TO_WALLET: 'Receive from Merchant',
-    WALLET_TO_MERCHANT: 'Pay Merchant',
-    DEPOSIT: 'Deposit',
-    WITHDRAWAL: 'Withdrawal',
-  };
-  return typeMap[txn?.type] || txn?.type || 'N/A';
-}
-
-function isEventLedgerTransaction(txn: any): boolean {
-  const meta = txn?.metadata || {};
-  return Boolean(meta.merchantEventOrderId || meta.merchantEventOrderReference);
-}
 
 function getEventLedgerDescription(txn: any): string {
   const meta = txn?.metadata || {};
@@ -975,12 +950,8 @@ export default function TransactionsPage() {
                           })()}
                         </TableCell>
                         <TableCell>
-                          <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
-                            transaction.direction === 'CREDIT' 
-                              ? 'bg-green-100 text-green-800' 
-                              : 'bg-red-100 text-red-800'
-                          }`}>
-                            {transaction.direction || 'N/A'}
+                          <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-slate-100 text-slate-800">
+                            {getTransactionTypeDisplay(transaction)}
                           </span>
                         </TableCell>
                         <TableCell>
