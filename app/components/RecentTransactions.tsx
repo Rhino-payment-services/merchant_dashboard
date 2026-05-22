@@ -15,7 +15,13 @@ import { useQuery } from "@tanstack/react-query";
 import { fetchTransactions } from "../lib/api";
 import { useUserProfile } from "../(dashboard)/UserProfileProvider";
 import { RefreshCw } from "lucide-react";
-import { getTransactionTypeDisplay } from "@/lib/utils/transaction-display";
+import {
+  formatTransactionCharges,
+  getTransactionDescriptionDisplay,
+  getTransactionReceiverParty,
+  getTransactionSenderParty,
+  getTransactionTypeDisplay,
+} from "@/lib/utils/transaction-display";
 
 
 type  StatusType = 'approved' | 'pending' | 'failed' | 'COMPLETED' | 'PENDING' | 'PROCESSING' | 'FAILED' | 'CANCELLED' | 'REFUNDED' | 'SUCCESS';
@@ -124,184 +130,10 @@ export default function RecentTransactions({ transactions, isNewFormat = false, 
            'Merchant Business';
   };
 
-  // Helper functions for consistent display - matching transactions page logic
-  const getSenderInfo = (txn: any) => {
-    // Check for admin-funded deposits first
-    if (txn.type === 'DEPOSIT' && txn.metadata?.fundedByAdmin) {
-      // Admin is funding the merchant's wallet
-      return {
-        name: txn.metadata?.adminName || 'Admin User',
-        contact: txn.metadata?.adminPhone || txn.metadata?.adminEmail || 'Admin'
-      };
-    }
-    
-    if (txn.direction === 'DEBIT') {
-      // Merchant is sending - sender is the merchant (wallet owner)
-      return {
-        name: getMerchantName(),
-        contact: profile?.merchant_phone || profile?.ownerPhone || profile?.phone || ''
-      };
-    } else {
-      // CREDIT direction - someone else is sending to merchant
-      // Extract sender info based on transaction type (matching transactions page logic)
-      if (txn.type === 'MERCHANT_TO_WALLET' || txn.type === 'MERCHANT_TO_INTERNAL_WALLET' || txn.type?.includes('MERCHANT_TO_WALLET') || txn.type?.includes('MERCHANT_TO_INTERNAL_WALLET')) {
-        // Merchant sending to wallet
-        return {
-          name: txn.metadata?.merchantName || txn.metadata?.counterpartyInfo?.name || 'Merchant',
-          contact: txn.metadata?.merchantCode || txn.metadata?.accountNumber || ''
-        };
-      } else if (txn.type === 'MNO_TO_WALLET' || txn.type?.includes('MNO_TO_WALLET')) {
-        // Mobile Money sending to wallet
-        if (txn.metadata?.mnoProvider) {
-          return {
-            name: txn.metadata?.userName || `${txn.metadata.mnoProvider} Mobile Money`,
-            contact: txn.metadata?.phoneNumber || ''
-          };
-        } else if (txn.metadata?.phoneNumber) {
-          return {
-            name: txn.metadata?.userName || 'Mobile Money User',
-            contact: txn.metadata?.phoneNumber || ''
-          };
-        } else {
-          return {
-            name: 'External',
-            contact: ''
-          };
-        }
-      } else if (txn.type === 'WALLET_TO_WALLET' || txn.counterpartyId || txn.counterpartyUser) {
-        // P2P - Wallet to Wallet - sender is another RukaPay user
-        const senderName = txn.counterpartyUser?.profile?.firstName && txn.counterpartyUser?.profile?.lastName
-          ? `${txn.counterpartyUser.profile.firstName} ${txn.counterpartyUser.profile.lastName}`
-          : txn.metadata?.counterpartyInfo?.name || txn.metadata?.userName || 'RukaPay User';
-        return {
-          name: senderName,
-          contact: txn.counterpartyUser?.phone || txn.counterpartyId || ''
-        };
-      } else if (txn.metadata?.counterpartyInfo) {
-        return {
-          name: txn.metadata.counterpartyInfo.name,
-          contact: txn.metadata.counterpartyInfo.phone || (txn.metadata.counterpartyInfo as any)?.accountNumber || ''
-        };
-      } else {
-        // Fallback - extract from metadata
-        return {
-          name: txn.metadata?.userName || txn.metadata?.phoneNumber || 'External',
-          contact: txn.metadata?.phoneNumber || txn.metadata?.accountNumber || ''
-        };
-      }
-    }
-  };
-
-  const getReceiverInfo = (txn: any) => {
-    const getPreferredRecipientName = (row: any): string | null => {
-      const meta = row?.metadata || {};
-      const fromMetadata = [
-        meta.recipientName,
-        meta.receiverName,
-        meta.counterpartyInfo?.name,
-        meta.userName,
-        meta.accountName,
-        meta.customerName,
-      ]
-        .map((v: any) => String(v || '').trim())
-        .find((v: string) => v.length > 0);
-
-      if (fromMetadata) return fromMetadata;
-
-      if (row?.counterpartyUser?.profile?.firstName && row?.counterpartyUser?.profile?.lastName) {
-        return `${row.counterpartyUser.profile.firstName} ${row.counterpartyUser.profile.lastName}`.trim();
-      }
-
-      return null;
-    };
-
-    // Check for admin-funded deposits first
-    if (txn.type === 'DEPOSIT' && txn.metadata?.fundedByAdmin) {
-      // Merchant is receiving funds from admin
-      return {
-        name: getMerchantName(),
-        contact: profile?.merchant_phone || profile?.ownerPhone || profile?.phone || ''
-      };
-    }
-    
-    if (txn.direction === 'CREDIT') {
-      // Merchant is receiving - receiver is the merchant (wallet owner)
-      return {
-        name: getMerchantName(),
-        contact: profile?.merchant_phone || profile?.ownerPhone || profile?.phone || ''
-      };
-    } else {
-      // DEBIT direction - merchant is sending to someone
-      const preferredRecipientName = getPreferredRecipientName(txn);
-      // Check MNO/phone first: metadata.merchantName is the SENDER's business name,
-      // not the receiver. Without this order MNO disbursements show the merchant as receiver.
-      if (txn.type === 'WALLET_TO_MNO' || (txn.metadata?.mnoProvider && txn.metadata?.phoneNumber)) {
-        return {
-          name: preferredRecipientName || `${txn.metadata?.mnoProvider || 'Mobile'} Money`,
-          contact: txn.metadata?.phoneNumber || ''
-        };
-      } else if (txn.type === 'WALLET_TO_WALLET' || txn.counterpartyId || txn.counterpartyUser) {
-        const receiverName = preferredRecipientName || 'RukaPay User';
-        return {
-          name: receiverName,
-          contact: txn.counterpartyUser?.phone || txn.counterpartyId || ''
-        };
-      } else if (txn.metadata?.phoneNumber) {
-        return {
-          name: preferredRecipientName || 'Mobile Money User',
-          contact: txn.metadata?.phoneNumber || ''
-        };
-      } else if (txn.type === 'WALLET_TO_MERCHANT' || txn.type === 'WALLET_TO_INTERNAL_MERCHANT' || txn.type?.includes('MERCHANT')) {
-        return {
-          name: preferredRecipientName || txn.metadata?.merchantName || 'Merchant',
-          contact: txn.metadata?.merchantCode || txn.metadata?.accountNumber || ''
-        };
-      } else if (txn.metadata?.counterpartyInfo) {
-        return {
-          name: preferredRecipientName || txn.metadata.counterpartyInfo.name,
-          contact: txn.metadata.counterpartyInfo.phone || (txn.metadata.counterpartyInfo as any)?.accountNumber || ''
-        };
-      } else if (txn.metadata?.accountNumber) {
-        return {
-          name: preferredRecipientName || 'External Account',
-          contact: txn.metadata?.accountNumber || ''
-        };
-      } else {
-        return {
-          name: preferredRecipientName || 'Recipient',
-          contact: txn.metadata?.phoneNumber || txn.metadata?.accountNumber || ''
-        };
-      }
-    }
-  };
-
-  // Prefer a human-friendly description and avoid repeating the reference ID
-  const getDescription = (txn: any) => {
-    if (!isNewFormat) {
-      return txn.rdbs_description || "-";
-    }
-
-    const ref = (txn.reference || "").toString().trim();
-    const primaryDesc = (txn.description || "").toString().trim();
-
-    // If description is missing or just duplicates the reference, try metadata fields
-    if (!primaryDesc || primaryDesc === ref) {
-      const metaDesc =
-        (txn.metadata?.description ||
-          txn.metadata?.narration ||
-          txn.metadata?.note ||
-          "") as string;
-
-      const cleanedMeta = metaDesc.toString().trim();
-      if (cleanedMeta && cleanedMeta !== ref) {
-        return cleanedMeta;
-      }
-
-      // No better option – show a clean dash instead of repeating the reference
-      return "-";
-    }
-
-    return primaryDesc;
+  const viewerContext = {
+    merchantName: getMerchantName(),
+    phone:
+      profile?.merchant_phone || profile?.ownerPhone || profile?.phone || '',
   };
 
   const handleViewAll = () => {
@@ -311,8 +143,6 @@ export default function RecentTransactions({ transactions, isNewFormat = false, 
   const handleViewDetails = () => {
     router.push("/transactions");
   };
-
-  console.log("transactions", transactions);
 
   return (
     <div className="relative">
@@ -355,8 +185,8 @@ export default function RecentTransactions({ transactions, isNewFormat = false, 
             <TableBody>
               {sortedTransactions?.map((txn:any, idx: number) => {
                 // Extract sender and receiver information with contact details
-                const senderInfo = getSenderInfo(txn);
-                const receiverInfo = getReceiverInfo(txn);
+                const senderInfo = getTransactionSenderParty(txn, viewerContext);
+                const receiverInfo = getTransactionReceiverParty(txn, viewerContext);
 
                 return (
                   <TableRow key={isNewFormat ? txn.id : txn.rdbs_transaction_id || idx} className="hover:bg-gray-50 transition">
@@ -399,11 +229,12 @@ export default function RecentTransactions({ transactions, isNewFormat = false, 
                       </div>
                     </TableCell>
                     <TableCell>
-                      <div className="font-[25px]">
-                        <span className='text-[12px]'>
-                          {txn.metadata?.revenue?.currency ?? ""} &nbsp;
-                        </span>
-                        {txn.metadata?.revenue?.amount?.toLocaleString() ?? "N/A"}
+                      <div className="font-medium text-sm text-gray-800">
+                        {isNewFormat
+                          ? formatTransactionCharges(txn)
+                          : txn.rdbs_fee != null
+                            ? `UGX ${Number(txn.rdbs_fee).toLocaleString()}`
+                            : '—'}
                       </div>
                     </TableCell>
                     <TableCell>
@@ -416,8 +247,10 @@ export default function RecentTransactions({ transactions, isNewFormat = false, 
                         {isNewFormat ? txn.status : txn.rdbs_approval_status}
                       </span>
                     </TableCell>
-                    <TableCell className="max-w-xs truncate">
-                      {getDescription(txn)}
+                    <TableCell className="max-w-xs truncate" title={isNewFormat ? getTransactionDescriptionDisplay(txn) : txn.rdbs_description}>
+                      {isNewFormat
+                        ? getTransactionDescriptionDisplay(txn)
+                        : txn.rdbs_description || '—'}
                     </TableCell>
                     <TableCell className="text-sm">
                       {isNewFormat 

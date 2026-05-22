@@ -5,7 +5,14 @@ import { Printer, Download, Loader2 } from 'lucide-react';
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
 import { toast } from 'sonner';
-import { getTransactionTypeDisplay } from '@/lib/utils/transaction-display';
+import {
+  formatMoneyAmount,
+  getTransactionDescriptionDisplay,
+  getTransactionFeeAmount,
+  getTransactionReceiverParty,
+  getTransactionSenderParty,
+  getTransactionTypeDisplay,
+} from '@/lib/utils/transaction-display';
 
 interface Transaction {
   id: string;
@@ -362,142 +369,12 @@ export default function TransactionReceipt({ transaction, merchantInfo }: Transa
     }
   };
 
-  // Extract sender and receiver info with contact details
-  const getSenderInfo = () => {
-    // Check for admin-funded deposits first
-    if (transaction.type === 'DEPOSIT' && transaction.metadata?.fundedByAdmin) {
-      // Admin is funding the merchant's wallet
-      return {
-        name: transaction.metadata?.adminName || 'Admin User',
-        contact: transaction.metadata?.adminPhone || transaction.metadata?.adminEmail || 'Admin'
-      };
-    }
-    
-    if (transaction.direction === 'DEBIT') {
-      // Merchant is sending - sender is the merchant (wallet owner)
-      return {
-        name: merchantInfo?.businessName || 'Merchant',
-        contact: merchantInfo?.phone || ''
-      };
-    } else {
-      // CREDIT direction - someone else is sending to merchant
-      // Extract sender info based on transaction type (matching page logic)
-      if (transaction.type === 'MERCHANT_TO_WALLET' || transaction.type === 'MERCHANT_TO_INTERNAL_WALLET' || transaction.type?.includes('MERCHANT_TO_WALLET') || transaction.type?.includes('MERCHANT_TO_INTERNAL_WALLET')) {
-        // Merchant sending to wallet
-        return {
-          name: transaction.metadata?.merchantName || transaction.metadata?.counterpartyInfo?.name || 'Merchant',
-          contact: transaction.metadata?.merchantCode || transaction.metadata?.accountNumber || ''
-        };
-      } else if (transaction.type === 'MNO_TO_WALLET' || transaction.type?.includes('MNO_TO_WALLET')) {
-        // Mobile Money sending to wallet
-        if (transaction.metadata?.mnoProvider) {
-          return {
-            name: transaction.metadata?.userName || `${transaction.metadata.mnoProvider} Mobile Money`,
-            contact: transaction.metadata?.phoneNumber || ''
-          };
-        } else if (transaction.metadata?.phoneNumber) {
-          return {
-            name: transaction.metadata?.userName || 'Mobile Money User',
-            contact: transaction.metadata?.phoneNumber || ''
-          };
-        } else {
-          return {
-            name: 'External',
-            contact: ''
-          };
-        }
-      } else if (transaction.type === 'WALLET_TO_WALLET' || (transaction as any).counterpartyId || (transaction as any).counterpartyUser) {
-        // P2P - Wallet to Wallet - sender is another RukaPay user
-        const counterpartyUser = (transaction as any).counterpartyUser;
-        const senderName = counterpartyUser?.profile?.firstName && counterpartyUser?.profile?.lastName
-          ? `${counterpartyUser.profile.firstName} ${counterpartyUser.profile.lastName}`
-          : transaction.metadata?.counterpartyInfo?.name || transaction.metadata?.userName || 'RukaPay User';
-        return {
-          name: senderName,
-          contact: counterpartyUser?.phone || (transaction as any).counterpartyId || ''
-        };
-      } else if (transaction.metadata?.counterpartyInfo) {
-        return {
-          name: transaction.metadata.counterpartyInfo.name,
-          contact: transaction.metadata.counterpartyInfo.phone || (transaction.metadata.counterpartyInfo as any)?.accountNumber || ''
-        };
-      } else {
-        // Fallback - extract from metadata
-        return {
-          name: transaction.metadata?.userName || transaction.metadata?.phoneNumber || 'External',
-          contact: transaction.metadata?.phoneNumber || transaction.metadata?.accountNumber || ''
-        };
-      }
-    }
+  const viewerContext = {
+    merchantName: merchantInfo?.businessName || 'Merchant',
+    phone: merchantInfo?.phone || '',
   };
-
-  const getReceiverInfo = () => {
-    // Check for admin-funded deposits first
-    if (transaction.type === 'DEPOSIT' && transaction.metadata?.fundedByAdmin) {
-      // Merchant is receiving funds from admin
-      return {
-        name: merchantInfo?.businessName || 'Merchant',
-        contact: merchantInfo?.phone || ''
-      };
-    }
-    
-    if (transaction.direction === 'CREDIT') {
-      // Merchant is receiving - receiver is the merchant (wallet owner)
-      return {
-        name: merchantInfo?.businessName || 'Merchant',
-        contact: merchantInfo?.phone || ''
-      };
-    } else {
-      // DEBIT direction - merchant is sending to someone
-      // Extract receiver info based on transaction type (matching page logic)
-      if (transaction.type === 'WALLET_TO_WALLET' || (transaction as any).counterpartyId || (transaction as any).counterpartyUser) {
-        // P2P - Wallet to Wallet - receiver is another RukaPay user
-        const counterpartyUser = (transaction as any).counterpartyUser;
-        const receiverName = counterpartyUser?.profile?.firstName && counterpartyUser?.profile?.lastName
-          ? `${counterpartyUser.profile.firstName} ${counterpartyUser.profile.lastName}`
-          : transaction.metadata?.counterpartyInfo?.name || transaction.metadata?.userName || 'RukaPay User';
-        return {
-          name: receiverName,
-          contact: counterpartyUser?.phone || (transaction as any).counterpartyId || ''
-        };
-      } else if (transaction.type === 'WALLET_TO_MERCHANT' || transaction.type === 'WALLET_TO_INTERNAL_MERCHANT' || transaction.type?.includes('MERCHANT') || transaction.metadata?.merchantName) {
-        // Wallet to Merchant - receiver is merchant
-        return {
-          name: transaction.metadata?.merchantName || transaction.metadata?.counterpartyInfo?.name || transaction.metadata?.userName || 'Merchant',
-          contact: transaction.metadata?.merchantCode || transaction.metadata?.accountNumber || ''
-        };
-      } else if (transaction.metadata?.counterpartyInfo) {
-        return {
-          name: transaction.metadata.counterpartyInfo.name,
-          contact: transaction.metadata.counterpartyInfo.phone || (transaction.metadata.counterpartyInfo as any)?.accountNumber || ''
-        };
-      } else if (transaction.metadata?.mnoProvider) {
-        // External Mobile Money - show recipient name if available
-        return {
-          name: transaction.metadata?.userName || transaction.metadata?.recipientName || `${transaction.metadata.mnoProvider} Mobile Money`,
-          contact: transaction.metadata?.phoneNumber || ''
-        };
-      } else if (transaction.metadata?.phoneNumber) {
-        // External Mobile Money (no provider specified)
-        return {
-          name: transaction.metadata?.userName || transaction.metadata?.recipientName || 'Mobile Money User',
-          contact: transaction.metadata?.phoneNumber || ''
-        };
-      } else if (transaction.metadata?.accountNumber) {
-        // Bank/Utility/Other External Account
-        return {
-          name: transaction.metadata?.userName || transaction.metadata?.recipientName || 'External Account',
-          contact: transaction.metadata?.accountNumber || ''
-        };
-      } else {
-        // Fallback
-        return {
-          name: transaction.metadata?.recipientName || transaction.metadata?.userName || 'Recipient',
-          contact: transaction.metadata?.phoneNumber || transaction.metadata?.accountNumber || ''
-        };
-      }
-    }
-  };
+  const senderInfo = getTransactionSenderParty(transaction, viewerContext);
+  const receiverInfo = getTransactionReceiverParty(transaction, viewerContext);
 
   const formatDate = (dateString: string) => {
     const date = new Date(dateString);
@@ -620,28 +497,28 @@ export default function TransactionReceipt({ transaction, merchantInfo }: Transa
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <p className="text-xs font-semibold text-gray-500 uppercase mb-1">From</p>
-                <p className="text-sm font-medium text-gray-800">{getSenderInfo().name}</p>
-                {getSenderInfo().contact && (
-                  <p className="text-xs text-gray-600">{getSenderInfo().contact}</p>
+                <p className="text-sm font-medium text-gray-800">{senderInfo.name}</p>
+                {senderInfo.contact && (
+                  <p className="text-xs text-gray-600">{senderInfo.contact}</p>
                 )}
               </div>
               <div className="text-right">
                 <p className="text-xs font-semibold text-gray-500 uppercase mb-1">To</p>
-                <p className="text-sm font-medium text-gray-800">{getReceiverInfo().name}</p>
-                {getReceiverInfo().contact && (
-                  <p className="text-xs text-gray-600">{getReceiverInfo().contact}</p>
+                <p className="text-sm font-medium text-gray-800">{receiverInfo.name}</p>
+                {receiverInfo.contact && (
+                  <p className="text-xs text-gray-600">{receiverInfo.contact}</p>
                 )}
               </div>
             </div>
           </div>
 
           {/* Description */}
-          {transaction.description && (
-            <div className="flex justify-between items-start border-b border-gray-200 pb-2">
-              <span className="text-sm font-semibold text-gray-700">Description:</span>
-              <span className="text-sm text-right max-w-xs">{transaction.description}</span>
-            </div>
-          )}
+          <div className="flex justify-between items-start border-b border-gray-200 pb-2">
+            <span className="text-sm font-semibold text-gray-700">Description:</span>
+            <span className="text-sm text-right max-w-xs">
+              {getTransactionDescriptionDisplay(transaction)}
+            </span>
+          </div>
         </div>
 
         {/* Amount Breakdown */}
@@ -652,10 +529,15 @@ export default function TransactionReceipt({ transaction, merchantInfo }: Transa
               <span className="text-sm font-medium">{formatCurrency(transaction.amount, transaction.currency)}</span>
             </div>
             
-            {transaction.fee !== undefined && transaction.fee > 0 && (
+            {getTransactionFeeAmount(transaction) > 0 && (
               <div className="flex justify-between items-center">
-                <span className="text-sm text-gray-700">Transaction Fee:</span>
-                <span className="text-sm font-medium">{formatCurrency(transaction.fee, transaction.currency)}</span>
+                <span className="text-sm text-gray-700">Charges:</span>
+                <span className="text-sm font-medium">
+                  {formatMoneyAmount(
+                    getTransactionFeeAmount(transaction),
+                    transaction.currency,
+                  )}
+                </span>
               </div>
             )}
 
@@ -676,7 +558,9 @@ export default function TransactionReceipt({ transaction, merchantInfo }: Transa
                     // For DEBIT (outgoing): Total = amount + fee (total amount debited from merchant)
                     // For CREDIT (incoming): Total = amount or netAmount (net amount received)
                     if (transaction.direction === 'DEBIT') {
-                      const totalAmount = Number(transaction.amount || 0) + Number(transaction.fee || 0);
+                      const totalAmount =
+                        Number(transaction.amount || 0) +
+                        getTransactionFeeAmount(transaction);
                       return formatCurrency(totalAmount, transaction.currency);
                     } else {
                       // CREDIT - show net amount received
