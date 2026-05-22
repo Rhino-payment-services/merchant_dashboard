@@ -17,6 +17,7 @@ import { useUserProfile } from "../(dashboard)/UserProfileProvider";
 import { RefreshCw } from "lucide-react";
 import {
   formatTransactionCharges,
+  formatTransactionNetAmount,
   getTransactionDescriptionDisplay,
   getTransactionReceiverParty,
   getTransactionSenderParty,
@@ -176,6 +177,7 @@ export default function RecentTransactions({ transactions, isNewFormat = false, 
                 <TableHead>Receiver</TableHead>
                 <TableHead>Amount</TableHead>
                 <TableHead>Charges</TableHead>
+                <TableHead>Net Amount</TableHead>
                 <TableHead>Type</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead>Description</TableHead>
@@ -235,6 +237,11 @@ export default function RecentTransactions({ transactions, isNewFormat = false, 
                           : txn.rdbs_fee != null
                             ? `UGX ${Number(txn.rdbs_fee).toLocaleString()}`
                             : '—'}
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <div className="font-semibold text-sm text-green-700">
+                        {isNewFormat ? formatTransactionNetAmount(txn) : '—'}
                       </div>
                     </TableCell>
                     <TableCell>

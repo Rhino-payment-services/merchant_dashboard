@@ -17,7 +17,10 @@ import TransactionReceipt from '@/components/TransactionReceipt';
 import { useUserProfile } from '../UserProfileProvider';
 import {
   formatTransactionCharges,
+  formatTransactionNetAmount,
   getTransactionDescriptionDisplay,
+  getTransactionFeeAmount,
+  getTransactionNetAmount,
   getTransactionReceiverParty,
   getTransactionSenderParty,
   getTransactionTypeDisplay,
@@ -104,61 +107,9 @@ interface BulkTransaction {
 }
 
 function computeNetAmountAndTotalFee(tx: any) {
-  const amount = Number(tx?.amount) || 0;
-  const direction = String(tx?.direction || '').toUpperCase();
-  const feeBreakdown = tx?.metadata?.feeBreakdown || {};
-
-  const rukapayFeeFromBreakdown = feeBreakdown.rukapayFee || 0;
-  const rukapayFee =
-    rukapayFeeFromBreakdown > 0 ? rukapayFeeFromBreakdown : Number(tx?.rukapayFee) || 0;
-
-  const partnerFeeFromBreakdown = feeBreakdown.partnerFee || feeBreakdown.thirdPartyFee || 0;
-  const partnerFee =
-    partnerFeeFromBreakdown > 0 ? partnerFeeFromBreakdown : Number(tx?.thirdPartyFee) || 0;
-
-  const govTaxFromBreakdown = feeBreakdown.governmentTax || feeBreakdown.govTax || 0;
-  const governmentTax =
-    govTaxFromBreakdown > 0 ? govTaxFromBreakdown : Number(tx?.governmentTax) || 0;
-
-  const processingFee = feeBreakdown.processingFee || Number(tx?.processingFee) || 0;
-  const networkFee = feeBreakdown.networkFee || Number(tx?.networkFee) || 0;
-  const complianceFee = feeBreakdown.complianceFee || Number(tx?.complianceFee) || 0;
-  const telecomBankCharge = feeBreakdown.telecomBankCharge || 0;
-
-  let calculatedTotalFees =
-    rukapayFee +
-    partnerFee +
-    governmentTax +
-    processingFee +
-    networkFee +
-    complianceFee +
-    telecomBankCharge;
-
-  if (feeBreakdown.totalFee !== undefined && feeBreakdown.totalFee !== null) {
-    calculatedTotalFees = Number(feeBreakdown.totalFee);
-  }
-
-  let totalFee = calculatedTotalFees;
-
-  if (totalFee === 0) {
-    const feeField = Number(tx?.fee) || 0;
-    if (feeField > 0) {
-      totalFee = feeField;
-    } else {
-      const netAmountField = Number(tx?.netAmount) || 0;
-      if (netAmountField > 0 && amount !== netAmountField) {
-        totalFee = Math.abs(amount - netAmountField);
-      }
-    }
-  }
-
-  const netAmountForDisplay =
-    direction === 'DEBIT' ? amount + totalFee : Number(tx?.netAmount) || amount;
-
-  return {
-    totalFee,
-    netAmountForDisplay,
-  };
+  const totalFee = getTransactionFeeAmount(tx);
+  const netAmountForDisplay = getTransactionNetAmount(tx);
+  return { totalFee, netAmountForDisplay };
 }
 
 export default function TransactionsPage() {
@@ -686,6 +637,7 @@ export default function TransactionsPage() {
                   <TableHead>Receiver</TableHead>
                   <TableHead>Amount</TableHead>
                   <TableHead>Charges</TableHead>
+                  <TableHead>Net Amount</TableHead>
                   <TableHead>Wallet</TableHead>
                   <TableHead>Type</TableHead>
                   <TableHead>Status</TableHead>
@@ -697,7 +649,7 @@ export default function TransactionsPage() {
               <TableBody>
                 {isLoading ? (
                   <TableRow>
-                    <TableCell colSpan={11} className="text-center py-8">
+                    <TableCell colSpan={12} className="text-center py-8">
                       <div className="flex items-center justify-center">
                         <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
                         <span className="ml-2">Loading transactions...</span>
@@ -706,7 +658,7 @@ export default function TransactionsPage() {
                   </TableRow>
                 ) : filteredTransactions.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={11} className="text-center py-8">
+                    <TableCell colSpan={12} className="text-center py-8">
                       <div className="text-gray-500">No transactions found</div>
                     </TableCell>
                   </TableRow>
@@ -757,6 +709,11 @@ export default function TransactionsPage() {
                         <TableCell>
                           <div className="font-medium text-sm text-gray-800">
                             {formatTransactionCharges(transaction)}
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <div className="font-semibold text-sm text-green-700">
+                            {formatTransactionNetAmount(transaction)}
                           </div>
                         </TableCell>
                         {/* Wallet source: show which business wallet handled this transaction */}
@@ -1419,7 +1376,11 @@ export default function TransactionsPage() {
                         </div>
                       )}
                       <div className="flex justify-between border-t-2 pt-2 mt-2">
-                        <span className="text-green-600 font-bold">Net Amount:</span>
+                        <span className="text-green-600 font-bold">
+                          {txn.direction === 'CREDIT'
+                            ? 'Net Amount (to wallet):'
+                            : 'Total Debited:'}
+                        </span>
                         <span className="font-bold text-green-600 text-lg">
                           {formatAmount(netAmountForDisplay)}
                         </span>

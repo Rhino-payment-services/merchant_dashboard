@@ -4,12 +4,17 @@
 
 export const CARD_PAYMENT_LABEL = 'Card Payment';
 
+/** Payer label when the sender is not KYC-validated (MNO / card collection, etc.). */
+export const UNVALIDATED_EXTERNAL_PAYER_LABEL = 'Customer';
+
 export type TransactionLike = {
   type?: string;
   channel?: string;
   reference?: string;
   description?: string;
+  amount?: number;
   fee?: number;
+  netAmount?: number;
   currency?: string;
   direction?: string;
   counterpartyId?: string;
@@ -85,6 +90,96 @@ export function getTransactionFeeAmount(txn: TransactionLike | null | undefined)
   }
 
   return Number.isFinite(fee) ? fee : 0;
+}
+
+/** Phone on file for an external payer (MoMo / card collection). */
+export function getExternalPayerPhone(
+  txn: TransactionLike | null | undefined,
+): string {
+  if (!txn) return '';
+  const meta = (txn.metadata ?? {}) as Record<string, unknown>;
+  const counterpartyInfo = meta.counterpartyInfo as { phone?: string } | undefined;
+  return String(
+    meta.phoneNumber ||
+      meta.customerPhone ||
+      meta.msisdn ||
+      meta.senderPhone ||
+      counterpartyInfo?.phone ||
+      txn.counterpartyUser?.phone ||
+      '',
+  ).trim();
+}
+
+/**
+ * Incoming payment from mobile money, card, or event checkout — payer identity is not verified.
+ */
+export function isUnvalidatedExternalPayerCredit(
+  txn: TransactionLike | null | undefined,
+): boolean {
+  if (!txn || String(txn.direction ?? '').toUpperCase() !== 'CREDIT') {
+    return false;
+  }
+  if (isCreditFromMerchant(txn)) return false;
+
+  const type = String(txn.type ?? '');
+  if (
+    type === 'MNO_TO_WALLET' ||
+    type === 'WALLET_TOPUP_PULL' ||
+    type.includes('MNO_TO_WALLET')
+  ) {
+    return true;
+  }
+  if (isEventLedgerTransaction(txn)) return true;
+  if (isCardPaymentTransaction(txn)) return true;
+
+  const meta = (txn.metadata ?? {}) as Record<string, unknown>;
+  if (
+    meta.channel === 'CARD' ||
+    meta.paymentMethod === 'CARD' ||
+    meta.isCardTransaction === true
+  ) {
+    return true;
+  }
+
+  return false;
+}
+
+/**
+ * Amount credited to or debited from the merchant wallet after fees.
+ * CREDIT: net landed in wallet. DEBIT: total debited (amount + fees).
+ */
+export function getTransactionNetAmount(
+  txn: TransactionLike | null | undefined,
+): number {
+  if (!txn) return 0;
+
+  const amount = Number(txn.amount) || 0;
+  const direction = String(txn.direction ?? '').toUpperCase();
+  const fee = getTransactionFeeAmount(txn);
+  const netField = Number(txn.netAmount);
+
+  if (direction === 'DEBIT') {
+    if (Number.isFinite(netField) && netField > amount) return netField;
+    return amount + fee;
+  }
+
+  if (Number.isFinite(netField) && netField > 0) {
+    return netField;
+  }
+  if (fee > 0 && amount > fee) {
+    return amount - fee;
+  }
+  return amount;
+}
+
+export function formatTransactionNetAmount(
+  txn: TransactionLike | null | undefined,
+): string {
+  if (!txn) return '—';
+  return formatMoneyAmount(
+    getTransactionNetAmount(txn),
+    String(txn.currency || 'UGX'),
+  );
 }
 
 /** CREDIT from another merchant (not a subscriber/MNO payer). */
@@ -206,24 +301,11 @@ export function getTransactionSenderParty(
     }
   }
 
-  if (
-    txn.type === 'MNO_TO_WALLET' ||
-    txn.type === 'WALLET_TOPUP_PULL' ||
-    String(txn.type ?? '').includes('MNO_TO_WALLET')
-  ) {
-    if (meta.mnoProvider) {
-      return {
-        name: String(meta.userName || `${meta.mnoProvider} Mobile Money`),
-        contact: String(meta.phoneNumber || ''),
-      };
-    }
-    if (meta.phoneNumber) {
-      return {
-        name: String(meta.userName || 'Mobile Money User'),
-        contact: String(meta.phoneNumber || ''),
-      };
-    }
-    return { name: 'External', contact: '' };
+  if (isUnvalidatedExternalPayerCredit(txn)) {
+    return {
+      name: UNVALIDATED_EXTERNAL_PAYER_LABEL,
+      contact: getExternalPayerPhone(txn),
+    };
   }
 
   const cp = txn.counterpartyUser;
@@ -253,6 +335,12 @@ export function getTransactionSenderParty(
     accountNumber?: string;
   };
   if (counterpartyInfo?.name) {
+    if (isUnvalidatedExternalPayerCredit(txn)) {
+      return {
+        name: UNVALIDATED_EXTERNAL_PAYER_LABEL,
+        contact: getExternalPayerPhone(txn),
+      };
+    }
     return {
       name: String(counterpartyInfo.name),
       contact: String(

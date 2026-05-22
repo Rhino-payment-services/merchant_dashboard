@@ -9,6 +9,7 @@ import {
   formatMoneyAmount,
   getTransactionDescriptionDisplay,
   getTransactionFeeAmount,
+  getTransactionNetAmount,
   getTransactionReceiverParty,
   getTransactionSenderParty,
   getTransactionTypeDisplay,
@@ -552,21 +553,16 @@ export default function TransactionReceipt({ transaction, merchantInfo }: Transa
 
             <div className="border-t-2 border-gray-300 pt-2 mt-2">
               <div className="flex justify-between items-center">
-                <span className="text-base font-bold text-gray-800">Total:</span>
                 <span className="text-base font-bold text-gray-800">
-                  {(() => {
-                    // For DEBIT (outgoing): Total = amount + fee (total amount debited from merchant)
-                    // For CREDIT (incoming): Total = amount or netAmount (net amount received)
-                    if (transaction.direction === 'DEBIT') {
-                      const totalAmount =
-                        Number(transaction.amount || 0) +
-                        getTransactionFeeAmount(transaction);
-                      return formatCurrency(totalAmount, transaction.currency);
-                    } else {
-                      // CREDIT - show net amount received
-                      return formatCurrency(transaction.netAmount || transaction.amount, transaction.currency);
-                    }
-                  })()}
+                  {transaction.direction === 'CREDIT'
+                    ? 'Net Amount (to wallet):'
+                    : 'Total Debited:'}
+                </span>
+                <span className="text-base font-bold text-green-800">
+                  {formatCurrency(
+                    getTransactionNetAmount(transaction),
+                    transaction.currency,
+                  )}
                 </span>
               </div>
             </div>
