@@ -21,6 +21,7 @@ import {
   getTransactionReceiverParty,
   getTransactionSenderParty,
   getTransactionTypeDisplay,
+  isEventLedgerTransaction,
 } from '@/lib/utils/transaction-display';
 
 type StatusType = 'COMPLETED' | 'PENDING' | 'PROCESSING' | 'FAILED' | 'CANCELLED' | 'REFUNDED' | "SUCCESS";

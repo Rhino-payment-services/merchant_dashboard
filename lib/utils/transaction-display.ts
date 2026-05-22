@@ -233,7 +233,11 @@ export function getTransactionSenderParty(
         ? `${cp.profile.firstName} ${cp.profile.lastName}`
         : null) ||
       String(meta.senderName || meta.userName || '').trim() ||
-      (cp ? null : String((meta.counterpartyInfo as { name?: string })?.name || '')).trim()) ||
+      (cp
+        ? null
+        : String(
+            (meta.counterpartyInfo as { name?: string })?.name || '',
+          ).trim()) ||
       cp?.phone ||
       txn.counterpartyId ||
       'RukaPay User';
