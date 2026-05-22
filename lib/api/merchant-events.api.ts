@@ -16,6 +16,7 @@ export interface MerchantEventListItem {
   currency: string
   status: string
   isPublic?: boolean
+  isFree?: boolean
   isActive?: boolean
   capacity?: number
   ticketsSold?: number
@@ -123,6 +124,7 @@ export interface CreateMerchantEventWithTiersPayload {
   salesEndAt?: string
   currency?: string
   isPublic?: boolean
+  isFree?: boolean
   capacity?: number
   metadata?: Record<string, unknown>
   tiers: CreateMerchantEventTierPayload[]
@@ -162,6 +164,7 @@ export interface UpdateMerchantEventWithTiersPayload {
   salesEndAt?: string
   currency?: string
   isPublic?: boolean
+  isFree?: boolean
   capacity?: number
   metadata?: Record<string, unknown>
   tiers?: CreateMerchantEventTierPayload[]

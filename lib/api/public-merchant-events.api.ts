@@ -55,6 +55,7 @@ export interface PublicMerchantEventDetailResponse {
   startsAt: string
   endsAt?: string | null
   currency: string
+  isFree?: boolean
   checkoutUrl?: string | null
   tiers: PublicMerchantEventTierDto[]
   merchantName?: string | null
@@ -97,6 +98,7 @@ export interface PublicMerchantEventOrderCreatedResponse {
   status: MerchantEventOrderStatus
   paymentStatus: TransactionStatus
   expiresAt?: string | null
+  requiresPayment?: boolean
   createdAt: string
   updatedAt: string
 }
@@ -137,6 +139,7 @@ export interface PublicMerchantEventOrderDetailResponse {
   paymentStatus: TransactionStatus
   expiresAt?: string | null
   paidAt?: string | null
+  requiresPayment?: boolean
   transaction?: PublicMerchantEventOrderTransactionSummary | null
   createdAt: string
   updatedAt: string
