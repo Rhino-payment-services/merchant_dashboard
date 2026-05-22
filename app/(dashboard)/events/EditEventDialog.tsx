@@ -145,6 +145,7 @@ type FormFields = {
   salesEndAt: string
   currency: string
   isPublic: string
+  isFree: string
   capacity: string
   categoryPreset: string
   categoryCustom: string
@@ -162,6 +163,7 @@ const emptyForm = (): FormFields => ({
   salesEndAt: "",
   currency: "UGX",
   isPublic: "true",
+  isFree: "false",
   capacity: "",
   categoryPreset: "_none",
   categoryCustom: "",
@@ -198,6 +200,7 @@ function mapDetailToForm(detail: MerchantEventDetailResponse): FormFields {
     salesEndAt: isoToDatetimeLocal(detail.salesEndAt),
     currency: detail.currency?.trim() || "UGX",
     isPublic: detail.isPublic === false ? "false" : "true",
+    isFree: detail.isFree === true ? "true" : "false",
     capacity: detail.capacity != null ? String(detail.capacity) : "",
     categoryPreset,
     categoryCustom,
@@ -350,6 +353,13 @@ export function EditEventDialog({
     setForm((f) => ({ ...f, [key]: value }))
   }
 
+  const setEventPricingType = (isFreeValue: string) => {
+    updateField("isFree", isFreeValue)
+    if (isFreeValue === "true") {
+      setTiers((rows) => rows.map((r) => ({ ...r, price: "0" })))
+    }
+  }
+
   const validateStep = (s: number): string | null => {
     if (s === 1) {
       if (!form.title.trim()) return "Enter an event title."
@@ -392,6 +402,13 @@ export function EditEventDialog({
         }
         const price = Number.parseFloat(t.price)
         if (Number.isNaN(price) || price < 0) return `Tier ${i + 1}: enter a valid price (≥ 0).`
+        const eventIsFree = form.isFree === "true"
+        if (eventIsFree && price > 0) {
+          return `Tier ${i + 1}: free events require price 0 for every tier.`
+        }
+        if (!eventIsFree && price <= 0) {
+          return `Tier ${i + 1}: paid events require a price greater than 0.`
+        }
         const qty = Number.parseInt(t.quantity, 10)
         if (Number.isNaN(qty) || qty < 1) return `Tier ${i + 1}: quantity must be at least 1.`
         const minO = t.minPerOrder.trim() ? Number.parseInt(t.minPerOrder, 10) : 1
@@ -473,6 +490,7 @@ export function EditEventDialog({
       tiers: tierPayloads,
       currency: eventCurrency,
       isPublic: form.isPublic === "true",
+      isFree: form.isFree === "true",
     }
 
     if (form.description.trim()) payload.description = form.description.trim()
@@ -527,7 +545,11 @@ export function EditEventDialog({
     setTiers((rows) => rows.map((r) => (r.key === key ? { ...r, ...patch } : r)))
   }
 
-  const addTier = () => setTiers((rows) => [...rows, newTierRow()])
+  const addTier = () =>
+    setTiers((rows) => [
+      ...rows,
+      { ...newTierRow(), price: form.isFree === "true" ? "0" : "" },
+    ])
   const removeTier = (key: string) => {
     setTiers((rows) => (rows.length <= 1 ? rows : rows.filter((r) => r.key !== key)))
   }
@@ -715,6 +737,30 @@ export function EditEventDialog({
                 <div className="space-y-2">
                   <div className="flex items-center gap-1.5">
                     <span className="text-sm font-medium inline-flex flex-wrap items-center gap-x-1">
+                      Event type <Req />
+                    </span>
+                    <FieldHint>
+                      Free events register attendees without payment; all ticket tiers must be price 0. Paid
+                      events require every tier to have a price greater than 0.
+                    </FieldHint>
+                  </div>
+                  <Select
+                    value={form.isFree}
+                    onValueChange={setEventPricingType}
+                    disabled={formDisabled}
+                  >
+                    <SelectTrigger id="ee-pricing">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="false">Paid event</SelectItem>
+                      <SelectItem value="true">Free event</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-sm font-medium inline-flex flex-wrap items-center gap-x-1">
                       Visibility <Req />
                     </span>
                     <FieldHint>
@@ -879,12 +925,12 @@ export function EditEventDialog({
                         <Input
                           id={`ee-t${t.key}-price`}
                           type="number"
-                          min={0}
+                          min={form.isFree === "true" ? 0 : 0.01}
                           step="0.01"
-                          value={t.price}
+                          value={form.isFree === "true" ? "0" : t.price}
                           onChange={(e) => updateTier(t.key, { price: e.target.value })}
-                          placeholder="50000"
-                          disabled={formDisabled}
+                          placeholder={form.isFree === "true" ? "0" : "50000"}
+                          disabled={formDisabled || form.isFree === "true"}
                         />
                       </div>
                       <div className="space-y-2">
