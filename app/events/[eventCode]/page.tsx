@@ -115,6 +115,24 @@ function orderIsTerminal(o: PublicMerchantEventOrderDetailResponse): boolean {
   return false
 }
 
+/** When omitted, treat as paid flow (backward compatible). */
+function orderRequiresPayment(o: { requiresPayment?: boolean }): boolean {
+  return o.requiresPayment !== false
+}
+
+function isFreeEvent(detail: PublicMerchantEventDetailResponse | null): boolean {
+  return detail?.isFree === true
+}
+
+function formatTierPrice(
+  tier: PublicMerchantEventTierDto,
+  currency: string,
+  free: boolean
+): string {
+  if (free) return "Free"
+  return formatMoney(tier.price, tier.currency || currency)
+}
+
 function salesAllowed(status: PublicMerchantEventStatusResponse | null): boolean {
   if (!status) return true
   if (status.canPurchase === false) return false
@@ -254,6 +272,13 @@ function PublicEventCheckoutPage({ params }: PageProps) {
         } else if (orderIsTerminal(order)) {
           toast.error("This order can no longer be paid.")
           router.replace(`/events/${encodeURIComponent(routeEventCode)}`)
+        } else if (!orderRequiresPayment(order)) {
+          const tix = await getPublicOrderTickets(order.orderReference)
+          if (!cancelled) {
+            setDetail(detailFromOrder(order))
+            setTicketsData(tix)
+            setStep("tickets")
+          }
         } else {
           setDetail(detailFromOrder(order))
           setCreatedOrder({
@@ -268,6 +293,7 @@ function PublicEventCheckoutPage({ params }: PageProps) {
             status: order.status,
             paymentStatus: order.paymentStatus,
             expiresAt: order.expiresAt ?? null,
+            requiresPayment: order.requiresPayment,
             createdAt: order.createdAt,
             updatedAt: order.updatedAt,
           })
@@ -330,8 +356,15 @@ function PublicEventCheckoutPage({ params }: PageProps) {
       const created = await createPublicEventOrder(routeEventCode, body)
       setCreatedOrder(created)
       setActiveOrderRef(created.orderReference)
-      setStep("pay")
-      toast.success("Order created. Complete payment on your phone.")
+      if (!orderRequiresPayment(created)) {
+        const tix = await getPublicOrderTickets(created.orderReference)
+        setTicketsData(tix)
+        setStep("tickets")
+        toast.success("Registration complete. Your tickets are below.")
+      } else {
+        setStep("pay")
+        toast.success("Order created. Complete payment on your phone.")
+      }
     } catch (err) {
       console.error(err)
       toast.error(err instanceof Error ? err.message : "Could not create order.")
@@ -477,6 +510,8 @@ function PublicEventCheckoutPage({ params }: PageProps) {
     return null
   }
 
+  const freeEvent = isFreeEvent(detail)
+
   return (
     <div className="container mx-auto max-w-xl px-4 py-10 pb-16">
       <div className="mb-8 text-center">
@@ -520,7 +555,7 @@ function PublicEventCheckoutPage({ params }: PageProps) {
         <Card className="border-gray-200 shadow-sm">
           <CardHeader>
             <CardTitle className="text-lg" style={{ color: BRAND }}>
-              Get tickets
+              {freeEvent ? "Register" : "Get tickets"}
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -541,7 +576,7 @@ function PublicEventCheckoutPage({ params }: PageProps) {
                       const avail = tierAvailability(t)
                       return (
                         <SelectItem key={t.id} value={t.id} disabled={avail <= 0}>
-                          {t.name} — {formatMoney(t.price, cur)}
+                          {t.name} — {formatTierPrice(t, cur, freeEvent)}
                           {/* {avail <= 0 ? " (sold out)" : ` (${avail} left)`} */}
                         </SelectItem>
                       )
@@ -586,7 +621,11 @@ function PublicEventCheckoutPage({ params }: PageProps) {
                   onChange={setBuyerPhone}
                   defaultCountry="ug"
                 />
-                <p className="text-xs text-gray-500">Uganda numbers only; used for payment prompt.</p>
+                <p className="text-xs text-gray-500">
+                  {freeEvent
+                    ? "Uganda numbers only; used for your registration."
+                    : "Uganda numbers only; used for payment prompt."}
+                </p>
               </div>
 
               <div className="space-y-2">
@@ -617,10 +656,12 @@ function PublicEventCheckoutPage({ params }: PageProps) {
                   <div className="flex justify-between font-medium text-gray-900">
                     <span>Total</span>
                     <span>
-                      {formatMoney(
-                        selectedTier.price * quantity,
-                        selectedTier.currency || detail.currency
-                      )}
+                      {freeEvent
+                        ? "Free"
+                        : formatMoney(
+                            selectedTier.price * quantity,
+                            selectedTier.currency || detail.currency
+                          )}
                     </span>
                   </div>
                 </div>
@@ -635,8 +676,10 @@ function PublicEventCheckoutPage({ params }: PageProps) {
                 {submitting ? (
                   <>
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Creating order…
+                    {freeEvent ? "Registering…" : "Creating order…"}
                   </>
+                ) : freeEvent ? (
+                  "Get tickets"
                 ) : (
                   "Continue to payment"
                 )}
@@ -646,7 +689,9 @@ function PublicEventCheckoutPage({ params }: PageProps) {
         </Card>
       ) : null}
 
-      {(step === "pay" || step === "polling") && createdOrder ? (
+      {(step === "pay" || step === "polling") &&
+      createdOrder &&
+      orderRequiresPayment(createdOrder) ? (
         <Card className="border-gray-200 shadow-sm">
           <CardHeader>
             <CardTitle className="text-lg" style={{ color: BRAND }}>
