@@ -16,20 +16,14 @@ import { Badge } from '@/components/ui/badge';
 import TransactionReceipt from '@/components/TransactionReceipt';
 import { useUserProfile } from '../UserProfileProvider';
 import {
+  formatTransactionCharges,
+  getTransactionDescriptionDisplay,
+  getTransactionReceiverParty,
+  getTransactionSenderParty,
   getTransactionTypeDisplay,
-  isEventLedgerTransaction,
 } from '@/lib/utils/transaction-display';
 
 type StatusType = 'COMPLETED' | 'PENDING' | 'PROCESSING' | 'FAILED' | 'CANCELLED' | 'REFUNDED' | "SUCCESS";
-
-function getEventLedgerDescription(txn: any): string {
-  const meta = txn?.metadata || {};
-  const orderRef = String(meta.merchantEventOrderReference || '').trim();
-  if (orderRef) {
-    return `Event ticket payment (${orderRef})`;
-  }
-  return 'Event ticket payment';
-}
 
 const statusColor: Record<StatusType, string> = {
   COMPLETED: 'text-green-600 bg-green-50',
@@ -341,171 +335,10 @@ export default function TransactionsPage() {
            'Merchant Business';
   };
 
-  // Helper function to format sender info with details
-  const getSenderInfo = (txn: any) => {
-    // Check for admin-funded deposits first
-    if (txn.type === 'DEPOSIT' && txn.metadata?.fundedByAdmin) {
-      // Admin is funding the merchant's wallet
-      return {
-        name: txn.metadata?.adminName || 'Admin User',
-        contact: txn.metadata?.adminPhone || txn.metadata?.adminEmail || 'Admin'
-      };
-    }
-    
-    if (txn.direction === 'DEBIT') {
-      // Merchant is sending - sender is the merchant (wallet owner)
-      const merchantName = getMerchantName();
-      return {
-        name: merchantName,
-        contact: profile?.merchant_phone || profile?.ownerPhone || profile?.phone || ''
-      };
-    } else {
-      // CREDIT direction - someone else is sending to merchant
-      // Extract sender info based on transaction type (matching admin dashboard logic)
-      if (txn.type === 'MERCHANT_TO_WALLET' || txn.type === 'MERCHANT_TO_INTERNAL_WALLET' || txn.type?.includes('MERCHANT_TO_WALLET') || txn.type?.includes('MERCHANT_TO_INTERNAL_WALLET')) {
-        // Merchant sending to wallet
-        return {
-          name: txn.metadata?.merchantName || txn.metadata?.counterpartyInfo?.name || 'Merchant',
-          contact: txn.metadata?.merchantCode || txn.metadata?.accountNumber || ''
-        };
-      } else if (txn.type === 'MNO_TO_WALLET' || txn.type?.includes('MNO_TO_WALLET')) {
-        // Mobile Money sending to wallet
-        if (txn.metadata?.mnoProvider) {
-          return {
-            name: txn.metadata?.userName || `${txn.metadata.mnoProvider} Mobile Money`,
-            contact: txn.metadata?.phoneNumber || ''
-          };
-        } else if (txn.metadata?.phoneNumber) {
-          return {
-            name: txn.metadata?.userName || 'Mobile Money User',
-            contact: txn.metadata?.phoneNumber || ''
-          };
-        } else {
-          return {
-            name: 'External',
-            contact: ''
-          };
-        }
-      } else if (txn.type === 'WALLET_TO_WALLET' || txn.counterpartyId || txn.counterpartyUser) {
-        // P2P / personal-wallet-to-merchant: sender is the counterpartyUser.
-        // When counterpartyUser.profile.firstName is missing, prefer counterpartyUser.phone
-        // over metadata.counterpartyInfo.name — the latter may be set to the sender's
-        // business name when they also own a merchant account.
-        const cp = txn.counterpartyUser
-        const senderName =
-          (cp?.profile?.firstName && cp?.profile?.lastName
-            ? `${cp.profile.firstName} ${cp.profile.lastName}`
-            : null)
-          || txn.metadata?.senderName
-          || txn.metadata?.userName
-          || (cp ? null : txn.metadata?.counterpartyInfo?.name)  // only use counterpartyInfo if no counterpartyUser
-          || cp?.phone
-          || txn.counterpartyId
-          || 'RukaPay User';
-        return {
-          name: senderName,
-          contact: cp?.phone || txn.counterpartyId || ''
-        };
-      } else if (txn.metadata?.counterpartyInfo) {
-        return {
-          name: txn.metadata.counterpartyInfo.name,
-          contact: txn.metadata.counterpartyInfo.phone || txn.metadata.counterpartyInfo.accountNumber || ''
-        };
-      } else {
-        // Fallback - extract from metadata
-        return {
-          name: txn.metadata?.userName || txn.metadata?.phoneNumber || 'External',
-          contact: txn.metadata?.phoneNumber || txn.metadata?.accountNumber || ''
-        };
-      }
-    }
-  };
-
-  // Helper function to format receiver info with details
-  const getPreferredRecipientName = (txn: any): string | null => {
-    const meta = txn?.metadata || {};
-    const fromMetadata = [
-      meta.recipientName,
-      meta.receiverName,
-      meta.counterpartyInfo?.name,
-      meta.userName,
-      meta.accountName,
-      meta.customerName,
-    ]
-      .map((v: any) => String(v || '').trim())
-      .find((v: string) => v.length > 0);
-
-    if (fromMetadata) return fromMetadata;
-
-    if (txn?.counterpartyUser?.profile?.firstName && txn?.counterpartyUser?.profile?.lastName) {
-      return `${txn.counterpartyUser.profile.firstName} ${txn.counterpartyUser.profile.lastName}`.trim();
-    }
-
-    return null;
-  };
-
-  const getReceiverInfo = (txn: any) => {
-    // Check for admin-funded deposits first
-    if (txn.type === 'DEPOSIT' && txn.metadata?.fundedByAdmin) {
-      // Merchant is receiving funds from admin
-      const merchantName = getMerchantName();
-      return {
-        name: merchantName,
-        contact: profile?.merchant_phone || profile?.ownerPhone || profile?.phone || ''
-      };
-    }
-    
-    if (txn.direction === 'CREDIT') {
-      // Merchant is receiving - receiver is the merchant (wallet owner)
-      const merchantName = getMerchantName();
-      return {
-        name: merchantName,
-        contact: profile?.merchant_phone || profile?.ownerPhone || profile?.phone || ''
-      };
-    } else {
-      // DEBIT direction - merchant is sending to someone
-      const preferredRecipientName = getPreferredRecipientName(txn);
-      // Check MNO/phone/bank first because metadata.merchantName is the SENDER's business
-      // name, not the receiver. Without this order, MNO disbursements would incorrectly
-      // show the sending merchant as the receiver.
-      if (txn.type === 'WALLET_TO_MNO' || (txn.metadata?.mnoProvider && txn.metadata?.phoneNumber)) {
-        return {
-          name: preferredRecipientName || `${txn.metadata?.mnoProvider || 'Mobile'} Money`,
-          contact: txn.metadata?.phoneNumber || ''
-        };
-      } else if (txn.type === 'WALLET_TO_WALLET' || txn.counterpartyId || txn.counterpartyUser) {
-        const receiverName = preferredRecipientName || 'RukaPay User';
-        return {
-          name: receiverName,
-          contact: txn.counterpartyUser?.phone || txn.counterpartyId || ''
-        };
-      } else if (txn.metadata?.phoneNumber) {
-        return {
-          name: preferredRecipientName || 'Mobile Money User',
-          contact: txn.metadata?.phoneNumber || ''
-        };
-      } else if (txn.type === 'WALLET_TO_MERCHANT' || txn.type === 'WALLET_TO_INTERNAL_MERCHANT' || txn.type?.includes('MERCHANT')) {
-        return {
-          name: preferredRecipientName || txn.metadata?.merchantName || 'Merchant',
-          contact: txn.metadata?.merchantCode || txn.metadata?.accountNumber || ''
-        };
-      } else if (txn.metadata?.counterpartyInfo) {
-        return {
-          name: preferredRecipientName || txn.metadata.counterpartyInfo.name,
-          contact: txn.metadata.counterpartyInfo.phone || txn.metadata.counterpartyInfo.accountNumber || ''
-        };
-      } else if (txn.metadata?.accountNumber) {
-        return {
-          name: preferredRecipientName || 'External Account',
-          contact: txn.metadata?.accountNumber || ''
-        };
-      } else {
-        return {
-          name: preferredRecipientName || 'Recipient',
-          contact: txn.metadata?.phoneNumber || txn.metadata?.accountNumber || ''
-        };
-      }
-    }
+  const viewerContext = {
+    merchantName: getMerchantName(),
+    phone:
+      profile?.merchant_phone || profile?.ownerPhone || profile?.phone || '',
   };
 
   const handleRefresh = async () => {
@@ -880,8 +713,8 @@ export default function TransactionsPage() {
                   filteredTransactions.map((transaction) => {
                     // Extract sender and receiver information with contact details
                     const txn = transaction as any;
-                    const senderInfo = getSenderInfo(txn);
-                    const receiverInfo = getReceiverInfo(txn);
+                    const senderInfo = getTransactionSenderParty(txn, viewerContext);
+                    const receiverInfo = getTransactionReceiverParty(txn, viewerContext);
 
                     return (
                       <TableRow key={transaction.id}>
@@ -921,11 +754,8 @@ export default function TransactionsPage() {
                           </div>
                         </TableCell>
                         <TableCell>
-                          <div className="font-[25px]">
-                            <span className='text-[12px]'>
-                             {transaction.metadata?.revenue?.currency ?? ""} &nbsp;
-                            </span>
-                           {transaction.metadata?.revenue?.amount?.toLocaleString() ?? "N/A"}
+                          <div className="font-medium text-sm text-gray-800">
+                            {formatTransactionCharges(transaction)}
                           </div>
                         </TableCell>
                         {/* Wallet source: show which business wallet handled this transaction */}
@@ -959,10 +789,11 @@ export default function TransactionsPage() {
                             {transaction.status}
                           </span>
                         </TableCell>
-                        <TableCell className="max-w-xs truncate">
-                          {isEventLedgerTransaction(transaction)
-                            ? getEventLedgerDescription(transaction)
-                            : (transaction.description || transaction.reference || '-')}
+                        <TableCell
+                          className="max-w-xs truncate"
+                          title={getTransactionDescriptionDisplay(transaction)}
+                        >
+                          {getTransactionDescriptionDisplay(transaction)}
                         </TableCell>
                         <TableCell className="text-sm">
                           {new Date(transaction.createdAt).toLocaleString('en-UG', {
@@ -1429,8 +1260,8 @@ export default function TransactionsPage() {
 
           {selectedTransactionForDetails && (() => {
             const txn = selectedTransactionForDetails;
-            const senderInfo = getSenderInfo(txn);
-            const receiverInfo = getReceiverInfo(txn);
+            const senderInfo = getTransactionSenderParty(txn, viewerContext);
+            const receiverInfo = getTransactionReceiverParty(txn, viewerContext);
             const { totalFee, netAmountForDisplay } = computeNetAmountAndTotalFee(txn);
             const formatAmount = (amount: number) => {
               return new Intl.NumberFormat('en-UG', {
@@ -1656,12 +1487,12 @@ export default function TransactionsPage() {
                 </div>
 
                 {/* Description */}
-                {txn.description && (
-                  <div className="p-4 bg-gray-50 rounded-lg border border-gray-200">
-                    <h4 className="font-semibold text-gray-900 mb-2">Description</h4>
-                    <p className="text-sm text-gray-700">{txn.description}</p>
-                  </div>
-                )}
+                <div className="p-4 bg-gray-50 rounded-lg border border-gray-200">
+                  <h4 className="font-semibold text-gray-900 mb-2">Description</h4>
+                  <p className="text-sm text-gray-700">
+                    {getTransactionDescriptionDisplay(txn)}
+                  </p>
+                </div>
               </div>
             );
           })()}
