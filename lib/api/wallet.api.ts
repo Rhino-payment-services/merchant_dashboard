@@ -63,8 +63,8 @@ export interface SweepResult {
 }
 
 /**
- * Sweep gross amount from collection wallet to disbursement wallet.
- * Backend deducts a 2.5% RukaPay fee; disbursement receives net.
+ * Sweep amount from collection wallet to disbursement wallet (no transfer fee).
+ * Collection/MNO fees are already deducted when payments are collected.
  */
 export const sweepToDisbursement = async (amount: number, merchantCode?: string): Promise<SweepResult> => {
   try {

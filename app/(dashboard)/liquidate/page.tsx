@@ -20,8 +20,6 @@ import {
 } from "@/lib/api/payment.api";
 import { UGANDAN_BANKS } from "@/app/lib/bankList";
 
-const SWEEP_FEE_PERCENT = 2.5;
-const LIQUIDATE_FEE_PERCENT = 2.5;
 const MIN_BANK = 200000;
 const MIN_MOMO = 50000;
 const MIN_RUKAPAY = 20000;
@@ -85,11 +83,8 @@ export default function LiquidatePage() {
 
   const merchantCode = (session?.user as any)?.merchantCode as string | undefined;
   const gross = parseFloat(sweepAmount) || 0;
-  const fee = useMemo(() => Number((gross * SWEEP_FEE_PERCENT / 100).toFixed(0)), [gross]);
-  const net = gross - fee;
   const canSweep =
     gross > 0 &&
-    net > 0 &&
     collectionBalance !== null &&
     gross <= collectionBalance;
 
@@ -120,19 +115,10 @@ export default function LiquidatePage() {
     setSweepLoading(true);
     try {
       const result = await sweepToDisbursement(gross, merchantCode);
-      const effectiveFee = result?.sweepFeeAmount ?? fee;
-      const effectiveNet = result?.netToDisbursement ?? net;
-      const effectivePercent = result?.sweepFeePercent ?? SWEEP_FEE_PERCENT;
-
-      if (effectiveFee > 0) {
-        toast.success(
-          `Liquidated ${fmt(gross)} gross → ${fmt(effectiveNet)} credited to disbursement (RukaPay fee ${effectivePercent}%)`
-        );
-      } else {
-        toast.success(
-          `Liquidated ${fmt(gross)} → ${fmt(effectiveNet)} credited to disbursement (no additional RukaPay sweep fee)`
-        );
-      }
+      const credited = result?.netToDisbursement ?? gross;
+      toast.success(
+        `Transferred ${fmt(credited)} from collection to disbursement (no transfer fee)`,
+      );
 
       setSweepAmount("");
       await fetchBalances();
@@ -150,11 +136,6 @@ export default function LiquidatePage() {
   const hasBankAccount = !!(merchantBankName || (profile as any)?.businessWallet?.merchant?.bankAccountNumber);
 
   const payoutAmountNum = useMemo(() => Number(payoutAmount) || 0, [payoutAmount]);
-  const payoutFee = useMemo(() => {
-    if (payoutAmountNum <= 0) return 0;
-    return Number((payoutAmountNum * (LIQUIDATE_FEE_PERCENT / 100)).toFixed(0));
-  }, [payoutAmountNum, payoutType]);
-  const payoutNet = useMemo(() => Math.max(0, payoutAmountNum - payoutFee), [payoutAmountNum, payoutFee]);
 
   const canPayout = useMemo(() => {
     if (!hasSplitWallets) return false;
@@ -549,7 +530,7 @@ export default function LiquidatePage() {
             Liquidate to disbursement
           </CardTitle>
           <CardDescription>
-            Transfer collected payments into your disbursement wallet. A {SWEEP_FEE_PERCENT}% fee applies; the net amount is credited to disbursement for payments and withdrawals.
+            Move collected funds into your disbursement wallet at no transfer fee. RukaPay collection fees are already deducted when customers pay you. Standard tariffs apply when you send to bank or mobile money below.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -610,19 +591,12 @@ export default function LiquidatePage() {
                 </Button>
               </div>
               {gross > 0 && (
-                <div className="rounded-lg border border-blue-100 bg-blue-50 p-3 text-sm">
-                  <div className="flex justify-between text-gray-700">
-                    <span>Gross</span>
-                    <span className="font-medium">{fmt(gross)}</span>
+                <div className="rounded-lg border border-emerald-100 bg-emerald-50 p-3 text-sm text-emerald-900">
+                  <div className="flex justify-between font-semibold">
+                    <span>Amount to disbursement</span>
+                    <span>{fmt(gross)}</span>
                   </div>
-                  <div className="flex justify-between text-red-600">
-                    <span>Fee ({SWEEP_FEE_PERCENT}%)</span>
-                    <span>− {fmt(fee)}</span>
-                  </div>
-                  <div className="flex justify-between font-semibold text-green-700 border-t border-blue-100 pt-1.5 mt-0.5">
-                    <span>Net to disbursement</span>
-                    <span>{fmt(net)}</span>
-                  </div>
+                  <p className="text-xs text-emerald-800 mt-1">No fee for collection → disbursement transfer.</p>
                 </div>
               )}
             </>
@@ -638,7 +612,7 @@ export default function LiquidatePage() {
             Self liquidate (payout)
           </CardTitle>
           <CardDescription>
-            Liquidate funds from your collection balance to any destination: Bank, Mobile Money, or a RukaPay wallet. Fees and minimums apply.
+            Send from your disbursement wallet to bank, mobile money, or another RukaPay user. Standard payout tariffs and minimum amounts apply (not the old 2.5% liquidation transfer fee).
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -763,22 +737,9 @@ export default function LiquidatePage() {
               </div>
 
               {payoutAmountNum > 0 && (
-                <div className="rounded-lg border border-blue-100 bg-blue-50 p-3 text-sm">
-                  <div className="flex justify-between text-gray-700">
-                    <span>Gross</span>
-                    <span className="font-medium">{fmt(payoutAmountNum)}</span>
-                  </div>
-                  <div className="flex justify-between text-red-600">
-                    <span>
-                      Fee{" "}
-                      ({LIQUIDATE_FEE_PERCENT}%)
-                    </span>
-                    <span>− {fmt(payoutFee)}</span>
-                  </div>
-                  <div className="flex justify-between font-semibold text-green-700 border-t border-blue-100 pt-1.5 mt-0.5">
-                    <span>Net</span>
-                    <span>{fmt(payoutNet)}</span>
-                  </div>
+                <div className="rounded-lg border border-amber-100 bg-amber-50 p-3 text-sm text-amber-900">
+                  Payout amount: <span className="font-semibold">{fmt(payoutAmountNum)}</span>.
+                  Fees are calculated from your standard bank / mobile money tariffs when you confirm the transfer.
                 </div>
               )}
 
