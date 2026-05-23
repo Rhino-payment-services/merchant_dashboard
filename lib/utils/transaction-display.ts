@@ -240,6 +240,28 @@ export function resolveSendingMerchantName(
 }
 
 /** Narration / payment note from the sender (merchant portal or API). */
+export function isSweepTransaction(txn: TransactionLike | null | undefined): boolean {
+  if (!txn) return false;
+  const meta = (txn.metadata ?? {}) as Record<string, unknown>;
+  const ref = String(txn.reference ?? '');
+  return Boolean(
+    meta.sweepToDisbursement ||
+      meta.sweepFromCollection ||
+      meta.internalWalletTransfer ||
+      (ref && ref.startsWith('SWEEP_')),
+  );
+}
+
+function resolveSweepBusinessName(
+  txn: TransactionLike,
+  viewer: MerchantViewerContext,
+): string {
+  const meta = (txn.metadata ?? {}) as Record<string, unknown>;
+  const fromMeta = String(meta.merchantName || '').trim();
+  if (fromMeta) return fromMeta;
+  return viewer.merchantName;
+}
+
 export function getTransactionNarration(
   txn: TransactionLike | null | undefined,
 ): string | null {
@@ -274,6 +296,16 @@ export function getTransactionSenderParty(
   if (!txn) return { name: '—', contact: '' };
 
   const meta = (txn.metadata ?? {}) as Record<string, unknown>;
+
+  if (isSweepTransaction(txn)) {
+    const business = resolveSweepBusinessName(txn, viewer);
+    const direction = String(txn.direction ?? '').toUpperCase();
+    if (direction === 'DEBIT') {
+      return { name: business, contact: '' };
+    }
+    const debitWallet = String(meta.debitWalletType || 'Collection').trim();
+    return { name: `${debitWallet} wallet`, contact: '' };
+  }
 
   if (txn.type === 'DEPOSIT' && meta.fundedByAdmin) {
     return {
@@ -362,6 +394,16 @@ export function getTransactionReceiverParty(
   if (!txn) return { name: '—', contact: '' };
 
   const meta = (txn.metadata ?? {}) as Record<string, unknown>;
+
+  if (isSweepTransaction(txn)) {
+    const business = resolveSweepBusinessName(txn, viewer);
+    const direction = String(txn.direction ?? '').toUpperCase();
+    if (direction === 'CREDIT') {
+      return { name: business, contact: '' };
+    }
+    const creditWallet = String(meta.creditWalletType || 'Disbursement').trim();
+    return { name: `${creditWallet} wallet`, contact: '' };
+  }
 
   const preferredRecipientName = (): string | null => {
     const fromMetadata = [
@@ -532,12 +574,7 @@ export function getTransactionTypeDisplay(txn: TransactionLike | null | undefine
     return 'Event Ticket Payment';
   }
 
-  if (
-    txn.type === 'WALLET_TO_WALLET' &&
-    (meta.sweepToDisbursement ||
-      meta.sweepFromCollection ||
-      (ref && ref.startsWith('SWEEP_')))
-  ) {
+  if (txn.type === 'WALLET_TO_WALLET' && isSweepTransaction(txn)) {
     return 'Liquidate';
   }
 

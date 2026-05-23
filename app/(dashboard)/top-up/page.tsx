@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { ArrowDown, Smartphone, Wallet, CheckCircle2, AlertCircle, Info, RefreshCw } from "lucide-react";
 import { useSession } from "next-auth/react";
-import { useProcessTransaction } from "@/lib/api/payment.api";
+import { useProcessTransaction, useValidatePhoneNumber } from "@/lib/api/payment.api";
 import { getWalletBalance, WalletBalance } from "@/lib/api/wallet.api";
 import { toast } from 'sonner';
 
@@ -18,6 +18,7 @@ interface TopUpForm {
 export default function TopUpPage() {
   const { data: session } = useSession();
   const processTransaction = useProcessTransaction();
+  const validatePhoneNumber = useValidatePhoneNumber();
 
   const [walletData, setWalletData] = useState<WalletBalance | null>(null);
   const [balanceLoading, setBalanceLoading] = useState(true);
@@ -106,8 +107,20 @@ export default function TopUpPage() {
 
       const formattedPhone = formatPhoneNumber(topUpForm.phone);
       const mnoProvider = detectMnoProvider(formattedPhone);
-      
-      // Prepare transaction data for rdbs_core API
+
+      let customerName: string | undefined;
+      try {
+        const validation = await validatePhoneNumber.mutateAsync({
+          phoneNumber: formattedPhone,
+          amount: Number(topUpForm.amount),
+        });
+        if (validation?.status === 1 && validation?.data?.name) {
+          customerName = String(validation.data.name).trim();
+        }
+      } catch (validationError) {
+        console.warn("Customer name validation skipped:", validationError);
+      }
+
       const transactionData = {
         mode: "MNO_TO_WALLET",
         userId: merchantId,
@@ -117,16 +130,13 @@ export default function TopUpPage() {
         phoneNumber: formattedPhone,
         mnoProvider: mnoProvider,
         narration: topUpForm.narration || "Mobile money collection",
-        userName: (session?.user as any)?.userData?.profile?.firstName || session?.user?.name || "Merchant",
         walletType: "BUSINESS",
         channel: "MERCHANT_PORTAL",
+        ...(customerName && { customerName, recipientName: customerName }),
         ...(merchantCode && { merchantCode }),
       };
-      
+
       console.log("Transaction Data (rdbs_core):", transactionData);
-      // #region agent log
-      fetch('http://127.0.0.1:7763/ingest/97572992-60cb-4c5d-a66e-3cafc55b2310',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'de2be0'},body:JSON.stringify({sessionId:'de2be0',location:'top-up/page.tsx:handleSubmit',message:'frontend-payload',data:{merchantCode:transactionData.merchantCode,sessionMerchantCode:(session?.user as any)?.merchantCode,walletType:transactionData.walletType,amount:transactionData.amount},timestamp:Date.now(),hypothesisId:'A'})}).catch(()=>{});
-      // #endregion
       const result = await processTransaction.mutateAsync(transactionData);
       console.log("Transaction result========>", result);
       
