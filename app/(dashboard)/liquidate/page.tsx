@@ -22,9 +22,14 @@ import { UGANDAN_BANKS } from "@/app/lib/bankList";
 
 const SWEEP_FEE_PERCENT = 2.5;
 const LIQUIDATE_FEE_PERCENT = 2.5;
-const MIN_BANK = 200000;
-const MIN_MOMO = 50000;
+// const MIN_BANK = 200000;
+// const MIN_MOMO = 50000;
 const MIN_RUKAPAY = 20000;
+
+
+const MIN_BANK = 400000;
+const MIN_MOMO = 100000;
+
 const fmt = (n: number, currency = "UGX") =>
   new Intl.NumberFormat("en-UG", {
     style: "currency",
