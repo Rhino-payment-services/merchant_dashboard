@@ -20,9 +20,6 @@ import {
 } from "@/lib/api/payment.api";
 import { UGANDAN_BANKS } from "@/app/lib/bankList";
 
-const MIN_BANK = 200000;
-const MIN_MOMO = 50000;
-const MIN_RUKAPAY = 20000;
 const fmt = (n: number, currency = "UGX") =>
   new Intl.NumberFormat("en-UG", {
     style: "currency",
@@ -149,7 +146,6 @@ export default function LiquidatePage() {
       const accountNumberClean = payoutAccount.trim();
       const isValidAccountNumber = /^\d{8,20}$/.test(accountNumberClean);
       return (
-        payoutAmountNum >= MIN_BANK &&
         isValidAccountNumber &&
         payoutAccountName.trim().length >= 2 &&
         payoutAccountName.trim().length <= 100 &&
@@ -159,11 +155,11 @@ export default function LiquidatePage() {
     if (payoutType === "MOMO") {
       const phone = payoutPhone.trim();
       const isValidPhone = /^\+?\d{9,15}$/.test(phone);
-      return payoutAmountNum >= MIN_MOMO && isValidPhone && Boolean(payoutNetwork);
+      return isValidPhone && Boolean(payoutNetwork);
     }
     const phone = payoutPhone.trim();
     const isValidPhone = /^\+?\d{9,15}$/.test(phone);
-    return payoutAmountNum >= MIN_RUKAPAY && isValidPhone;
+    return isValidPhone;
   }, [
     hasSplitWallets,
     collectionBalance,
@@ -185,7 +181,6 @@ export default function LiquidatePage() {
     if (payoutAmountNum > collectionBalance) return "Amount exceeds your collection balance.";
 
     if (payoutType === "BANK") {
-      if (payoutAmountNum < MIN_BANK) return `Minimum bank payout is ${fmt(MIN_BANK)}.`;
       if (!payoutBankName) return "Choose a bank.";
       if (!/^\d{8,20}$/.test(payoutAccount.trim())) return "Account number must be 8–20 digits.";
       if (payoutAccountName.trim().length < 2) return "Enter the account name.";
@@ -194,13 +189,11 @@ export default function LiquidatePage() {
     }
 
     if (payoutType === "MOMO") {
-      if (payoutAmountNum < MIN_MOMO) return `Minimum mobile money payout is ${fmt(MIN_MOMO)}.`;
       if (!/^[+]?\d{9,15}$/.test(payoutPhone.trim())) return "Enter a valid mobile number.";
       if (!payoutNetwork) return "Choose a mobile money network.";
       return null;
     }
 
-    if (payoutAmountNum < MIN_RUKAPAY) return `Minimum RukaPay wallet payout is ${fmt(MIN_RUKAPAY)}.`;
     if (!/^\+?\d{9,15}$/.test(payoutPhone.trim())) return "Enter a valid recipient phone.";
     return null;
   }, [
@@ -612,7 +605,7 @@ export default function LiquidatePage() {
             Self liquidate (payout)
           </CardTitle>
           <CardDescription>
-            Send from your disbursement wallet to bank, mobile money, or another RukaPay user. Standard payout tariffs and minimum amounts apply (not the old 2.5% liquidation transfer fee).
+            Send from your disbursement wallet to bank, mobile money, or another RukaPay user. Standard payout tariffs apply (no extra liquidation transfer fee).
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -657,12 +650,7 @@ export default function LiquidatePage() {
                     placeholder="Enter amount"
                   />
                   <p className="text-xs text-gray-500 mt-1">
-                    Minimum:{" "}
-                    {payoutType === "BANK"
-                      ? fmt(MIN_BANK)
-                      : payoutType === "MOMO"
-                        ? fmt(MIN_MOMO)
-                        : fmt(MIN_RUKAPAY)}
+                    Available in collection: {fmt(collectionBalance ?? 0)}. You can pay out any amount up to your balance.
                   </p>
                 </div>
 
