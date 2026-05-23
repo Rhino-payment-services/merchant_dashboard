@@ -153,8 +153,11 @@ export default function LiquidatePage() {
   const payoutFee = useMemo(() => {
     if (payoutAmountNum <= 0) return 0;
     return Number((payoutAmountNum * (LIQUIDATE_FEE_PERCENT / 100)).toFixed(0));
-  }, [payoutAmountNum, payoutType]);
-  const payoutNet = useMemo(() => Math.max(0, payoutAmountNum - payoutFee), [payoutAmountNum, payoutFee]);
+  }, [payoutAmountNum]);
+  const payoutTotalDebit = useMemo(
+    () => payoutAmountNum + payoutFee,
+    [payoutAmountNum, payoutFee],
+  );
 
   const canPayout = useMemo(() => {
     if (!hasSplitWallets) return false;
@@ -360,6 +363,7 @@ export default function LiquidatePage() {
           channel: "MERCHANT_PORTAL",
           merchantCode,
           payoutType: "BANK",
+          isMerchantLiquidation: true,
           walletId: collectionWalletId,
           walletType: "BUSINESS_COLLECTION",
           isExplicitWalletSelection: true,
@@ -433,6 +437,7 @@ export default function LiquidatePage() {
           channel: "MERCHANT_PORTAL",
           merchantCode,
           payoutType: "MOMO",
+          isMerchantLiquidation: true,
           walletId: collectionWalletId,
           walletType: "BUSINESS_COLLECTION",
           isExplicitWalletSelection: true,
@@ -498,6 +503,7 @@ export default function LiquidatePage() {
           channel: "MERCHANT_PORTAL",
           merchantCode,
           payoutType: "RUKAPAY",
+          isMerchantLiquidation: true,
           walletId: collectionWalletId,
           walletType: "BUSINESS_COLLECTION",
           isExplicitWalletSelection: true,
@@ -765,19 +771,16 @@ export default function LiquidatePage() {
               {payoutAmountNum > 0 && (
                 <div className="rounded-lg border border-blue-100 bg-blue-50 p-3 text-sm">
                   <div className="flex justify-between text-gray-700">
-                    <span>Gross</span>
+                    <span>Payout amount</span>
                     <span className="font-medium">{fmt(payoutAmountNum)}</span>
                   </div>
                   <div className="flex justify-between text-red-600">
-                    <span>
-                      Fee{" "}
-                      ({LIQUIDATE_FEE_PERCENT}%)
-                    </span>
-                    <span>− {fmt(payoutFee)}</span>
+                    <span>Liquidation charge ({LIQUIDATE_FEE_PERCENT}%)</span>
+                    <span>+ {fmt(payoutFee)}</span>
                   </div>
                   <div className="flex justify-between font-semibold text-green-700 border-t border-blue-100 pt-1.5 mt-0.5">
-                    <span>Net</span>
-                    <span>{fmt(payoutNet)}</span>
+                    <span>Total debited from collection</span>
+                    <span>{fmt(payoutTotalDebit)}</span>
                   </div>
                 </div>
               )}

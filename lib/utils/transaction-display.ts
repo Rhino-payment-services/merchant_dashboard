@@ -49,6 +49,17 @@ export function getTransactionTypeDisplay(txn: TransactionLike | null | undefine
     return 'Liquidate';
   }
 
+  if (
+    txn.type === 'MERCHANT_SELF_LIQUIDATION' ||
+    meta.isMerchantLiquidation === true
+  ) {
+    const payout = String(meta.payoutType || '').toUpperCase();
+    if (payout === 'BANK') return 'Self liquidate (bank)';
+    if (payout === 'MOMO') return 'Self liquidate (mobile money)';
+    if (payout === 'RUKAPAY') return 'Self liquidate (RukaPay wallet)';
+    return 'Self liquidate (payout)';
+  }
+
   if (isCardPaymentTransaction(txn)) {
     return CARD_PAYMENT_LABEL;
   }
