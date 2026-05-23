@@ -433,6 +433,20 @@ export function getTransactionReceiverParty(
 
   const preferred = preferredRecipientName();
   if (
+    txn.type === 'MERCHANT_TO_WALLET' ||
+    txn.type === 'MERCHANT_TO_INTERNAL_WALLET'
+  ) {
+    return {
+      name: preferred || 'RukaPay User',
+      contact: String(
+        meta.recipientPhone ||
+          meta.recipientPhoneNumber ||
+          txn.counterpartyUser?.phone ||
+          '',
+      ),
+    };
+  }
+  if (
     txn.type === 'WALLET_TO_MNO' ||
     (meta.mnoProvider && meta.phoneNumber)
   ) {
