@@ -1,4 +1,5 @@
 import apiClient from './client'
+import { resolveAirtimeMnoProvider } from '@/lib/utils'
 
 // Helper function to validate MNO provider
 const getValidMnoProvider = (provider: string | undefined): string => {
@@ -246,7 +247,18 @@ export const validateTransaction = async (paymentData: SinglePaymentDto): Promis
     validationData.billType = paymentData.utilityProvider;
     validationData.area = paymentData.area;
     validationData.customerPhoneNumber = paymentData.phoneNumber;
-    if (paymentData.mnoProvider) {
+    const isAirtime =
+      paymentData.utilityProvider === 'AIRTIME' ||
+      paymentData.utilityProvider === 'DATA_BUNDLES';
+    if (isAirtime) {
+      const network = resolveAirtimeMnoProvider(
+        paymentData.mnoProvider,
+        paymentData.phoneNumber,
+      );
+      if (network) {
+        validationData.network = network;
+      }
+    } else if (paymentData.mnoProvider) {
       validationData.network = getValidMnoProvider(paymentData.mnoProvider);
     }
   } else if (paymentData.mode === 'WALLET_TO_MERCHANT') {

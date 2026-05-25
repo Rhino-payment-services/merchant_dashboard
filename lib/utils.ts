@@ -41,3 +41,31 @@ export function normalizePhoneToUganda(phone: string): string {
   if (digits.length >= 9) return digits.startsWith('256') ? digits : '256' + digits
   return digits
 }
+
+/** MTN / Airtel from Uganda MSISDN prefix (after 256). */
+export function inferMnoProviderFromUganda(phone: string): 'MTN' | 'Airtel' | undefined {
+  const n = normalizePhoneToUganda(phone)
+  if (!n || n.length < 5) return undefined
+  const prefix = n.startsWith('256') ? n.slice(3, 5) : n.slice(0, 2)
+  if (['77', '78', '76', '39'].includes(prefix)) return 'MTN'
+  if (['75', '70', '74', '20'].includes(prefix)) return 'Airtel'
+  return undefined
+}
+
+export function normalizeMnoProviderLabel(
+  provider: string | undefined,
+): 'MTN' | 'Airtel' | undefined {
+  if (!provider?.trim()) return undefined
+  const u = provider.trim().toUpperCase()
+  if (u === 'MTN') return 'MTN'
+  if (u === 'AIRTEL') return 'Airtel'
+  return undefined
+}
+
+/** User-selected network wins; otherwise infer from phone. Never defaults to MTN. */
+export function resolveAirtimeMnoProvider(
+  mnoProvider: string | undefined,
+  phone: string | undefined,
+): 'MTN' | 'Airtel' | undefined {
+  return normalizeMnoProviderLabel(mnoProvider) ?? inferMnoProviderFromUganda(phone || '')
+}

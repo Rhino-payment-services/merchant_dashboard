@@ -24,7 +24,11 @@ import { toast } from 'sonner';
 import { readSheetFromBinaryString, writeWorkbookToFile } from "@/lib/excel-utils";
 import { processBulkTransactionAsync, validateBulkRecipients, getBulkTransactionStatus, BulkTransactionItem, BulkTransactionItemResult } from "@/lib/api/bulk-payment.api";
 import { SinglePaymentDto, FeePreviewResponseDto, processSinglePayment, validateTransaction } from "@/lib/api/single-payment.api";
-import { normalizePhoneToUganda } from "@/lib/utils";
+import {
+  inferMnoProviderFromUganda,
+  normalizePhoneToUganda,
+  resolveAirtimeMnoProvider,
+} from "@/lib/utils";
 
 const TRANSACTION_TYPES = [
   { value: 'WALLET_TO_MNO', label: 'Mobile Money', icon: Phone, color: 'text-blue-600', bg: 'bg-blue-50' },
@@ -230,6 +234,34 @@ export default function BulkPaymentPage() {
     }));
   };
 
+  const handleSinglePaymentModeChange = (mode: SinglePaymentDto['mode']) => {
+    setSinglePayment((prev) => ({
+      ...prev,
+      mode,
+      ...(mode === 'UTILITIES' ? { mnoProvider: undefined } : {}),
+    }));
+    setValidationInfo(null);
+    setFeePreview(null);
+  };
+
+  const handleSingleAirtimePhoneChange = (raw: string) => {
+    const inferred = inferMnoProviderFromUganda(raw);
+    setSinglePayment((prev) => ({
+      ...prev,
+      phoneNumber: raw,
+      mnoProvider: inferred ?? prev.mnoProvider,
+    }));
+  };
+
+  const handleBulkAirtimePhoneChange = (raw: string) => {
+    const inferred = inferMnoProviderFromUganda(raw);
+    setFormData((prev) => ({
+      ...prev,
+      phoneNumber: raw,
+      mnoProvider: inferred ?? prev.mnoProvider,
+    }));
+  };
+
   const previewSinglePaymentFees = async () => {
     if (!singlePayment.amount || singlePayment.amount <= 0) {
       toast.error('Please enter a valid amount');
@@ -242,7 +274,16 @@ export default function BulkPaymentPage() {
         toast.error('Select a bill provider');
         return;
       }
-      if (!isAirtimeOrDataUtility(up) && !singlePayment.customerRef?.trim()) {
+      if (isAirtimeOrDataUtility(up)) {
+        if (!singlePayment.phoneNumber?.trim()) {
+          toast.error('Phone number is required for airtime');
+          return;
+        }
+        if (!resolveAirtimeMnoProvider(singlePayment.mnoProvider, singlePayment.phoneNumber)) {
+          toast.error('Select the recipient mobile network (MTN or Airtel)');
+          return;
+        }
+      } else if (!singlePayment.customerRef?.trim()) {
         toast.error('Customer / account reference is required for this biller');
         return;
       }
@@ -257,8 +298,15 @@ export default function BulkPaymentPage() {
 
     setValidatingTransaction(true);
     try {
+      const airtimeNetwork =
+        singlePayment.mode === 'UTILITIES' &&
+        isAirtimeOrDataUtility(singlePayment.utilityProvider)
+          ? resolveAirtimeMnoProvider(singlePayment.mnoProvider, singlePayment.phoneNumber)
+          : undefined;
+
       const payload: SinglePaymentDto = {
         ...singlePayment,
+        ...(airtimeNetwork ? { mnoProvider: airtimeNetwork } : {}),
         userId: (session?.user as any)?.id,
         phoneNumber:
           singlePayment.mode === 'WALLET_TO_MNO' && singlePayment.phoneNumber
@@ -360,6 +408,10 @@ export default function BulkPaymentPage() {
           toast.error('Phone number is required for airtime and mobile data');
           return;
         }
+        if (!resolveAirtimeMnoProvider(singlePayment.mnoProvider, singlePayment.phoneNumber)) {
+          toast.error('Select the recipient mobile network (MTN or Airtel)');
+          return;
+        }
         if (up === 'DATA_BUNDLES') {
           const q = Number(singlePayment.metadata?.dataQuantity);
           if (!q || Number.isNaN(q)) {
@@ -394,8 +446,15 @@ export default function BulkPaymentPage() {
           ? validationInfo?.recipientName || singlePayment.recipientName
           : singlePayment.recipientName;
 
+      const airtimeNetwork =
+        singlePayment.mode === 'UTILITIES' &&
+        isAirtimeOrDataUtility(singlePayment.utilityProvider)
+          ? resolveAirtimeMnoProvider(singlePayment.mnoProvider, singlePayment.phoneNumber)
+          : undefined;
+
       const payload: SinglePaymentDto = {
         ...singlePayment,
+        ...(airtimeNetwork ? { mnoProvider: airtimeNetwork } : {}),
         phoneNumber:
           singlePayment.mode === 'WALLET_TO_MNO' && singlePayment.phoneNumber
             ? normalizePhoneToUganda(singlePayment.phoneNumber)
@@ -481,6 +540,10 @@ export default function BulkPaymentPage() {
         toast.error('Phone number is required for airtime');
         return;
       }
+      if (!resolveAirtimeMnoProvider(formData.mnoProvider, formData.phoneNumber)) {
+        toast.error('Select the recipient mobile network (MTN or Airtel)');
+        return;
+      }
     } else if (!formData.customerRef?.trim()) {
       toast.error('Customer / account reference is required for this biller');
       return;
@@ -500,6 +563,11 @@ export default function BulkPaymentPage() {
         formData.phoneNumber
           ? normalizePhoneToUganda(formData.phoneNumber)
           : undefined;
+      const airtimeMnoEdit =
+        formData.mode === 'UTILITIES' &&
+        isAirtimeOrDataUtility(formData.utilityProvider)
+          ? resolveAirtimeMnoProvider(formData.mnoProvider, formData.phoneNumber)
+          : undefined;
       setPayments(prev =>
         prev.map((p) =>
           p.id === editingId
@@ -508,6 +576,7 @@ export default function BulkPaymentPage() {
                 ...(formData.mode === 'UTILITIES'
                   ? { utilityProvider: normalizeUtilityProvider(formData.utilityProvider) }
                   : {}),
+                ...(airtimeMnoEdit ? { mnoProvider: airtimeMnoEdit } : {}),
                 id: p.id,
                 itemId: p.itemId,
                 status: 'pending',
@@ -541,12 +610,18 @@ export default function BulkPaymentPage() {
         paymentData.phoneNumber
           ? normalizePhoneToUganda(paymentData.phoneNumber)
           : undefined;
+      const airtimeMno =
+        paymentData.mode === 'UTILITIES' &&
+        isAirtimeOrDataUtility(paymentData.utilityProvider)
+          ? resolveAirtimeMnoProvider(paymentData.mnoProvider, paymentData.phoneNumber)
+          : undefined;
 
       const newPayment: PaymentItem = {
         ...paymentData as BulkTransactionItem,
         ...(paymentData.mode === 'UTILITIES'
           ? { utilityProvider: normalizeUtilityProvider(paymentData.utilityProvider) }
           : {}),
+        ...(airtimeMno ? { mnoProvider: airtimeMno } : {}),
         id: `item-${Date.now()}`,
         itemId: `ITEM-${Date.now()}`,
         status: 'pending',
@@ -600,6 +675,16 @@ export default function BulkPaymentPage() {
     try {
       // Don't send walletType to validation endpoint - it's only needed for processing
       const items: BulkTransactionItem[] = payments.map(p => {
+        const utilProvNorm = normalizeUtilityProvider(p.utilityProvider);
+        const isAirtimeUtil =
+          p.mode === 'UTILITIES' && isAirtimeOrDataUtility(utilProvNorm);
+        const resolvedMno =
+          p.mode === 'WALLET_TO_MNO'
+            ? p.mnoProvider || 'MTN'
+            : isAirtimeUtil
+              ? resolveAirtimeMnoProvider(p.mnoProvider, p.phoneNumber)
+              : p.mnoProvider;
+
         const base: BulkTransactionItem = {
           itemId: p.itemId!,
           mode: p.mode!,
@@ -610,7 +695,7 @@ export default function BulkPaymentPage() {
             p.mode === 'WALLET_TO_MNO' && p.phoneNumber
               ? normalizePhoneToUganda(p.phoneNumber)
               : p.phoneNumber,
-          mnoProvider: p.mnoProvider || 'MTN',
+          ...(resolvedMno ? { mnoProvider: resolvedMno } : {}),
           recipientName: p.recipientName,
           accountNumber: p.accountNumber,
           bankSortCode: p.bankSortCode,
@@ -678,6 +763,14 @@ export default function BulkPaymentPage() {
               p.mode === 'UTILITIES' && isAirtimeOrDataUtility(normalizeUtilityProvider(p.utilityProvider)) && p.phoneNumber
                 ? normalizePhoneToUganda(p.phoneNumber)
                 : p.phoneNumber;
+            const feeAirtimeMno =
+              p.mode === 'UTILITIES' &&
+              isAirtimeOrDataUtility(normalizeUtilityProvider(p.utilityProvider))
+                ? resolveAirtimeMnoProvider(p.mnoProvider, p.phoneNumber)
+                : p.mode === 'WALLET_TO_MNO'
+                  ? p.mnoProvider || 'MTN'
+                  : p.mnoProvider;
+
             const single: SinglePaymentDto = {
               mode: p.mode as SinglePaymentDto['mode'],
               amount: p.amount as number,
@@ -685,7 +778,7 @@ export default function BulkPaymentPage() {
               walletType: 'BUSINESS',
               userId: (session?.user as any)?.id,
               phoneNumber: utilPh,
-              mnoProvider: p.mnoProvider,
+              ...(feeAirtimeMno ? { mnoProvider: feeAirtimeMno } : {}),
               recipientName: p.recipientName,
               accountNumber: p.accountNumber,
               bankSortCode: p.bankSortCode,
@@ -969,6 +1062,10 @@ export default function BulkPaymentPage() {
               transaction.area = String(areaRaw).trim();
             }
             transaction.phoneNumber = pnorm;
+            if (isAirtimeOrDataUtility(normalizeUtilityProvider(p.utilityProvider))) {
+              const network = resolveAirtimeMnoProvider(p.mnoProvider, p.phoneNumber);
+              if (network) transaction.mnoProvider = network;
+            }
           } else {
             // Other modes
             transaction.phoneNumber = p.phoneNumber ? normalizePhoneToUganda(p.phoneNumber) : p.phoneNumber;
@@ -1179,6 +1276,10 @@ export default function BulkPaymentPage() {
               mode === 'UTILITIES' &&
               row.utilityProvider === 'AIRTIME';
             const normPh = airData && ph ? normalizePhoneToUganda(ph) : ph;
+            const mno =
+              mode === 'UTILITIES' && airData
+                ? resolveAirtimeMnoProvider(row.mnoProvider, normPh || ph)
+                : getValidMnoProvider(row.mnoProvider);
             return {
               id: `upload-${Date.now()}-${index}`,
               itemId: `ITEM-${Date.now()}-${index}`,
@@ -1187,7 +1288,7 @@ export default function BulkPaymentPage() {
               currency: row.currency || 'UGX',
               description: row.description || `Payment ${index + 1}`,
               phoneNumber: normPh || ph,
-              mnoProvider: getValidMnoProvider(row.mnoProvider),
+              ...(mno ? { mnoProvider: mno } : {}),
               recipientName: row.recipientName || '',
               accountNumber: row.accountNumber || '',
               bankSortCode: row.bankSortCode || '',
@@ -1312,6 +1413,10 @@ export default function BulkPaymentPage() {
               mode === 'UTILITIES' &&
               row.utilityProvider === 'AIRTIME';
             const normPh = airData && ph ? normalizePhoneToUganda(ph) : ph;
+            const mno =
+              mode === 'UTILITIES' && airData
+                ? resolveAirtimeMnoProvider(row.mnoProvider, normPh || ph)
+                : getValidMnoProvider(row.mnoProvider);
             return {
               id: `upload-${Date.now()}-${index}`,
               itemId: `ITEM-${Date.now()}-${index}`,
@@ -1320,7 +1425,7 @@ export default function BulkPaymentPage() {
               currency: row.currency || 'UGX',
               description: desc || `Payment ${index + 1}`,
               phoneNumber: normPh || ph,
-              mnoProvider: getValidMnoProvider(row.mnoProvider),
+              ...(mno ? { mnoProvider: mno } : {}),
               recipientName: row.recipientName || '',
               accountNumber: row.accountNumber || '',
               bankSortCode: row.bankSortCode || '',
@@ -1645,7 +1750,7 @@ export default function BulkPaymentPage() {
                       return (
                         <button
                           key={type.value}
-                          onClick={() => handleSinglePaymentChange('mode', type.value)}
+                          onClick={() => handleSinglePaymentModeChange(type.value as SinglePaymentDto['mode'])}
                           className={`p-4 rounded-lg border-2 transition-all ${
                             singlePayment.mode === type.value
                               ? 'border-blue-500 bg-blue-50'
@@ -1788,9 +1893,13 @@ export default function BulkPaymentPage() {
                           handleSinglePaymentChange('phoneNumber', '');
                           handleSinglePaymentChange('metadata', undefined);
                         } else {
-                          handleSinglePaymentChange('utilityProvider', 'AIRTIME');
-                          handleSinglePaymentChange('customerRef', '');
-                          handleSinglePaymentChange('metadata', undefined);
+                          setSinglePayment((prev) => ({
+                            ...prev,
+                            utilityProvider: 'AIRTIME',
+                            customerRef: '',
+                            metadata: undefined,
+                            mnoProvider: undefined,
+                          }));
                         }
                       }}
                     >
@@ -1890,16 +1999,35 @@ export default function BulkPaymentPage() {
                             <option value="AIRTIME">Airtime</option>
                           </select>
                         </div>
-                        <div>
-                          <label className="block text-sm font-semibold text-gray-700 mb-2">
-                            Recipient phone <span className="text-red-500">*</span>
-                          </label>
-                          <Input
-                            value={singlePayment.phoneNumber || ''}
-                            onChange={(e) => handleSinglePaymentChange('phoneNumber', e.target.value)}
-                            placeholder="+256… or 07…"
-                            className="w-full"
-                          />
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          <div>
+                            <label className="block text-sm font-semibold text-gray-700 mb-2">
+                              Recipient phone <span className="text-red-500">*</span>
+                            </label>
+                            <Input
+                              value={singlePayment.phoneNumber || ''}
+                              onChange={(e) => handleSingleAirtimePhoneChange(e.target.value)}
+                              placeholder="+256… or 07…"
+                              className="w-full"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-sm font-semibold text-gray-700 mb-2">
+                              Mobile network <span className="text-red-500">*</span>
+                            </label>
+                            <select
+                              value={singlePayment.mnoProvider || ''}
+                              onChange={(e) => handleSinglePaymentChange('mnoProvider', e.target.value)}
+                              className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                            >
+                              <option value="">Select network</option>
+                              <option value="MTN">MTN</option>
+                              <option value="Airtel">Airtel</option>
+                            </select>
+                            <p className="text-xs text-gray-500 mt-1">
+                              Auto-filled from phone prefix when possible; confirm before paying.
+                            </p>
+                          </div>
                         </div>
                         {false && (
                           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -2302,7 +2430,17 @@ export default function BulkPaymentPage() {
                         <button
                           key={type.value}
                           type="button"
-                          onClick={() => setFormData(prev => ({ ...prev, mode: type.value as any }))}
+                          onClick={() =>
+                            setFormData((prev) => ({
+                              ...prev,
+                              mode: type.value as any,
+                              ...(type.value === 'UTILITIES'
+                                ? { mnoProvider: undefined }
+                                : type.value === 'WALLET_TO_MNO' && !prev.mnoProvider
+                                  ? { mnoProvider: 'MTN' }
+                                  : {}),
+                            }))
+                          }
                           className={`p-4 border-2 rounded-lg transition-all ${
                             formData.mode === type.value
                               ? 'border-blue-600 bg-blue-50'
@@ -2444,6 +2582,7 @@ export default function BulkPaymentPage() {
                             customerRef: '',
                             utilityAccountNumber: '',
                             metadata: undefined,
+                            mnoProvider: undefined,
                           }));
                         }
                       }}
@@ -2542,9 +2681,23 @@ export default function BulkPaymentPage() {
                           </label>
                           <Input
                             value={formData.phoneNumber || ''}
-                            onChange={(e) => setFormData((prev) => ({ ...prev, phoneNumber: e.target.value }))}
+                            onChange={(e) => handleBulkAirtimePhoneChange(e.target.value)}
                             placeholder="+256… or 07…"
                           />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-semibold text-gray-700 mb-2">
+                            Mobile network <span className="text-red-500">*</span>
+                          </label>
+                          <select
+                            value={formData.mnoProvider || ''}
+                            onChange={(e) => setFormData((prev) => ({ ...prev, mnoProvider: e.target.value }))}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                          >
+                            <option value="">Select network</option>
+                            <option value="MTN">MTN</option>
+                            <option value="Airtel">Airtel</option>
+                          </select>
                         </div>
                         {false && (
                           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
