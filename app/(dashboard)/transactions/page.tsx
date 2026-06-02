@@ -5,9 +5,28 @@ import { Card } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Button } from '@/components/ui/button';
 import { Input } from '../../../components/ui/input';
+import { DateRangePicker } from '@/components/ui/date-range-picker';
+import { Label } from '@/components/ui/label';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import { formatIsoDateDisplay } from '@/lib/date-picker-utils';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useMyTransactions, TransactionFilter } from '@/lib/api/transactions.api';
-import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, RefreshCw, Activity, BarChart3, Clock, CheckCircle, XCircle, AlertCircle, TrendingUp, TrendingDown, DollarSign, Eye, Search, Printer, CreditCard, Info, Users, AlertTriangle, Building2 } from 'lucide-react';
+import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, RefreshCw, Activity, BarChart3, Clock, CheckCircle, XCircle, AlertCircle, TrendingUp, TrendingDown, DollarSign, Eye, Search, Printer, CreditCard, Info, Users, AlertTriangle, Building2, Download, FileSpreadsheet } from 'lucide-react';
+import { writeWorkbookToFile } from '@/lib/excel-utils';
+import {
+  downloadTextFile,
+  fetchAllBusinessTransactions,
+  merchantTransactionsToCsv,
+  merchantTransactionsToExportRows,
+  resolveExportDateRange,
+  sanitizeMerchantFilenamePart,
+} from '@/lib/utils/merchant-transaction-export';
 import { toast } from 'sonner';
 import { useSession } from 'next-auth/react';
 import { getBulkTransactionStatus, getBulkTransactionList, viewBulkTransactions } from '@/lib/api/bulk-payment.api';
@@ -165,6 +184,7 @@ export default function TransactionsPage() {
   const [bulkStatusFilter, setBulkStatusFilter] = useState<string>('all');
   const [selectedBulkTransaction, setSelectedBulkTransaction] = useState<BulkTransaction | null>(null);
   const [isBulkDetailsOpen, setIsBulkDetailsOpen] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
 
   // Build filter object for API
   const filter: TransactionFilter = useMemo(() => {
@@ -176,6 +196,7 @@ export default function TransactionsPage() {
     if (status) apiFilter.status = status as any;
     if (from) apiFilter.startDate = from;
     if (to) apiFilter.endDate = to;
+    else if (from) apiFilter.endDate = from;
 
     return apiFilter;
   }, [status, from, to, currentPage, currentLimit]);
@@ -293,12 +314,97 @@ export default function TransactionsPage() {
       profile?.merchant_phone || profile?.ownerPhone || profile?.phone || '',
   };
 
+  const exportRangeSummary = useMemo(() => {
+    const range = resolveExportDateRange({ from, to });
+    if (!range) return 'Invalid date range (end before start)';
+    if (range.defaultedToToday) {
+      return `Today (${formatIsoDateDisplay(range.startDate)})`;
+    }
+    if (range.startDate === range.endDate) {
+      return formatIsoDateDisplay(range.startDate);
+    }
+    return `${formatIsoDateDisplay(range.startDate)} – ${formatIsoDateDisplay(range.endDate)}`;
+  }, [from, to]);
+
+  const tableDateSummary = useMemo(() => {
+    if (from && to && from !== to) {
+      return `${formatIsoDateDisplay(from)} – ${formatIsoDateDisplay(to)}`;
+    }
+    if (from) return formatIsoDateDisplay(from);
+    return 'All dates (paginated)';
+  }, [from, to]);
+
   const handleRefresh = async () => {
     try {
       await refetch();
       toast.success('Transactions refreshed');
     } catch (error) {
       toast.error('Failed to refresh transactions');
+    }
+  };
+
+  const runTransactionsExport = async (format: 'csv' | 'xlsx') => {
+    const range = resolveExportDateRange({ from, to });
+    if (!range) {
+      toast.error('End date cannot be before start date');
+      return;
+    }
+
+    setIsExporting(true);
+    const toastId = toast.loading(
+      range.defaultedToToday
+        ? `Exporting today's transactions (${range.startDate})…`
+        : 'Preparing export…',
+    );
+    try {
+      const txs = await fetchAllBusinessTransactions(
+        {
+          startDate: range.startDate,
+          endDate: range.endDate,
+          status: status ? (status as TransactionFilter['status']) : undefined,
+        },
+        childMerchantId || undefined,
+        currentMerchantCode,
+      );
+
+      if (txs.length === 0) {
+        toast.error('No transactions found for the selected date(s)', { id: toastId });
+        return;
+      }
+
+      const rows = merchantTransactionsToExportRows(txs, viewerContext);
+      const merchantPart = sanitizeMerchantFilenamePart(getMerchantName());
+      const fileLabel =
+        range.startDate === range.endDate
+          ? range.startDate
+          : `${range.startDate}_to_${range.endDate}`;
+
+      if (format === 'csv') {
+        downloadTextFile(
+          `${merchantPart}-transactions-${fileLabel}.csv`,
+          merchantTransactionsToCsv(rows),
+        );
+      } else {
+        await writeWorkbookToFile(
+          'Transactions',
+          rows,
+          `${merchantPart}-transactions-${fileLabel}.xlsx`,
+        );
+      }
+
+      const dayNote = range.defaultedToToday ? ` for today (${range.startDate})` : '';
+      toast.success(
+        `Exported ${txs.length} transaction${txs.length === 1 ? '' : 's'}${dayNote}`,
+        { id: toastId },
+      );
+    } catch (error: unknown) {
+      const message =
+        error && typeof error === 'object' && 'message' in error
+          ? String((error as Error).message)
+          : 'Export failed';
+      toast.error(message, { id: toastId });
+    } finally {
+      setIsExporting(false);
     }
   };
 
@@ -449,15 +555,6 @@ export default function TransactionsPage() {
               <h1 className="text-3xl font-bold text-[#08163d] mb-2">Transactions</h1>
               <p className="text-gray-600">View and manage all your transaction history</p>
             </div>
-            <Button 
-              onClick={handleRefresh} 
-              variant="outline" 
-              disabled={isRefetching}
-              className="flex items-center gap-2"
-            >
-              <RefreshCw className={`w-4 h-4 ${isRefetching ? 'animate-spin' : ''}`} />
-              Refresh
-            </Button>
           </div>
           
           {/* Child Merchant Context Banner */}
@@ -580,49 +677,137 @@ export default function TransactionsPage() {
           </Card>
         </div>
 
-        {/* Filters */}
-        <Card className="p-4 mb-6">
-          <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-4">
-            <Input
-              placeholder="Search transactions..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-            />
-            <Input
-              type="date"
-              placeholder="Start Date"
-              value={from}
-              onChange={(e) => setFrom(e.target.value)}
-            />
-            <Input
-              type="date"
-              placeholder="End Date"
-              value={to}
-              onChange={(e) => setTo(e.target.value)}
-            />
-            <select
-              className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-              value={status}
-              onChange={(e) => setStatus(e.target.value)}
-            >
-              <option value="">All Status</option>
-              <option value="PENDING">Pending</option>
-              <option value="PROCESSING">Processing</option>
-              <option value="COMPLETED">Completed</option>
-              <option value="FAILED">Failed</option>
-              <option value="CANCELLED">Cancelled</option>
-              <option value="REFUNDED">Refunded</option>
-            </select>
-            <select
-              className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-              value={currentLimit}
-              onChange={(e) => setCurrentLimit(Number(e.target.value))}
-            >
-              <option value={10}>10 per page</option>
-              <option value={20}>20 per page</option>
-              <option value={50}>50 per page</option>
-              <option value={100}>100 per page</option>
-            </select>
+        <Card className="mb-6 overflow-hidden border border-gray-200 shadow-sm p-4">
+          <div className="space-y-4">
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-12 md:items-end">
+              <div className="md:col-span-5">
+                <Label htmlFor="txn-search" className="mb-1.5 block text-xs font-medium text-gray-700">
+                  Search
+                </Label>
+                <Input
+                  id="txn-search"
+                  placeholder="Reference, description…"
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  className="h-9"
+                />
+              </div>
+              <div className="md:col-span-3">
+                <Label className="mb-1.5 block text-xs font-medium text-gray-700">Status</Label>
+                <Select
+                  value={status || 'all'}
+                  onValueChange={(value) => {
+                    setStatus(value === 'all' ? '' : value);
+                    setCurrentPage(1);
+                  }}
+                >
+                  <SelectTrigger className="h-9 w-full">
+                    <SelectValue placeholder="All status" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All status</SelectItem>
+                    <SelectItem value="PENDING">Pending</SelectItem>
+                    <SelectItem value="PROCESSING">Processing</SelectItem>
+                    <SelectItem value="COMPLETED">Completed</SelectItem>
+                    <SelectItem value="FAILED">Failed</SelectItem>
+                    <SelectItem value="CANCELLED">Cancelled</SelectItem>
+                    <SelectItem value="REFUNDED">Refunded</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="md:col-span-2">
+                <Label className="mb-1.5 block text-xs font-medium text-gray-700">Per page</Label>
+                <Select
+                  value={String(currentLimit)}
+                  onValueChange={(value) => {
+                    setCurrentLimit(Number(value));
+                    setCurrentPage(1);
+                  }}
+                >
+                  <SelectTrigger className="h-9 w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="10">10</SelectItem>
+                    <SelectItem value="20">20</SelectItem>
+                    <SelectItem value="50">50</SelectItem>
+                    <SelectItem value="100">100</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="flex md:col-span-2 md:justify-end">
+                <Button
+                  type="button"
+                  onClick={handleRefresh}
+                  variant="outline"
+                  disabled={isRefetching}
+                  className="h-9 w-full md:w-auto"
+                >
+                  <RefreshCw className={`mr-2 h-4 w-4 ${isRefetching ? 'animate-spin' : ''}`} />
+                  Refresh
+                </Button>
+              </div>
+            </div>
+
+            <div>
+              <div className="mb-1.5 flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+                <Label className="text-xs font-medium text-gray-700">Date range &amp; export</Label>
+                <span className="text-xs text-gray-500">
+                  Export:{' '}
+                  <span className="font-medium text-[#08163d]">{exportRangeSummary}</span>
+                </span>
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <DateRangePicker
+                  layout="inline"
+                  from={from}
+                  to={to}
+                  onFromChange={(value) => {
+                    setFrom(value);
+                    setCurrentPage(1);
+                  }}
+                  onToChange={(value) => {
+                    setTo(value);
+                    setCurrentPage(1);
+                  }}
+                  onClear={() => {
+                    setFrom('');
+                    setTo('');
+                    setCurrentPage(1);
+                  }}
+                />
+                <div className="flex shrink-0 flex-wrap items-center gap-1.5">
+                  <Button
+                    type="button"
+                    onClick={() => runTransactionsExport('csv')}
+                    variant="outline"
+                    disabled={isExporting}
+                    className="h-8 px-2.5 text-xs"
+                  >
+                    <Download className="mr-1.5 h-3.5 w-3.5" />
+                    {isExporting ? '…' : 'CSV'}
+                  </Button>
+                  <Button
+                    type="button"
+                    onClick={() => runTransactionsExport('xlsx')}
+                    className="h-8 bg-[#08163d] px-2.5 text-xs hover:bg-[#131824]"
+                    disabled={isExporting}
+                  >
+                    <FileSpreadsheet className="mr-1.5 h-3.5 w-3.5" />
+                    Excel
+                  </Button>
+                </div>
+              </div>
+              <p className="mt-2 text-xs text-gray-500">
+                Table: <span className="font-medium text-gray-700">{tableDateSummary}</span>
+                {search ? (
+                  <>
+                    {' '}
+                    · Search: <span className="font-medium text-gray-700">{search}</span>
+                  </>
+                ) : null}
+              </p>
+            </div>
           </div>
         </Card>
 

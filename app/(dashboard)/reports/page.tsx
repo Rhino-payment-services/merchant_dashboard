@@ -3,6 +3,7 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { DateRangePicker } from '@/components/ui/date-range-picker';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { useUserProfile } from '../UserProfileProvider';
 import { useMyTransactions, TransactionFilter } from '@/lib/api/transactions.api';
@@ -29,6 +30,19 @@ import { writeWorkbookWithSheetsToFile } from '@/lib/excel-utils';
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
 import { toast } from 'sonner';
+import { useSession } from 'next-auth/react';
+import {
+  downloadTextFile,
+  fetchAllBusinessTransactions,
+  merchantTransactionsToCsv,
+  merchantTransactionsToExportRows,
+  resolveExportDateRange,
+  sanitizeMerchantFilenamePart,
+} from '@/lib/utils/merchant-transaction-export';
+import {
+  getTransactionReceiverParty,
+  getTransactionSenderParty,
+} from '@/lib/utils/transaction-display';
 
 interface Transaction {
   rdbs_transaction_id: string;
@@ -54,7 +68,19 @@ interface ReportSummary {
 }
 
 export default function ReportsPage() {
+  const { data: session } = useSession();
   const { profile, loading: profileLoading } = useUserProfile();
+  const sessionMerchantCode = (session?.user as { merchantCode?: string })?.merchantCode;
+  const firstSessionMerchantCode = (session?.user as { merchants?: { merchantCode?: string }[] })?.merchants?.[0]?.merchantCode;
+  const currentMerchantCode =
+    sessionMerchantCode != null
+      ? String(sessionMerchantCode)
+      : firstSessionMerchantCode != null
+        ? String(firstSessionMerchantCode)
+        : (profile?.merchant_code ?? profile?.merchantCode) != null
+          ? String(profile?.merchant_code ?? profile?.merchantCode ?? '')
+          : null;
+
   const [dateRange, setDateRange] = useState({ from: '', to: '' });
   const [exportDateRange, setExportDateRange] = useState({ from: '', to: '' });
   const [transactionType, setTransactionType] = useState<'all' | 'credit' | 'debit'>('all');
@@ -73,6 +99,7 @@ export default function ReportsPage() {
 
     if (dateRange.from) filter.startDate = dateRange.from;
     if (dateRange.to) filter.endDate = dateRange.to;
+    else if (dateRange.from) filter.endDate = dateRange.from;
     if (status !== 'all') {
       // Map status filter to API status
       if (status === 'success') filter.status = 'COMPLETED';
@@ -216,18 +243,13 @@ export default function ReportsPage() {
   // Filter transactions based on criteria
   const filteredTransactions = useMemo(() => {
     const filtered = transactions.filter(txn => {
-      const date = new Date(txn.rdbs_approval_date);
-      const fromDate = dateRange.from ? new Date(dateRange.from) : null;
-      const toDate = dateRange.to ? new Date(dateRange.to) : null;
-      
-      const matchesDate = (!fromDate || date >= fromDate) && (!toDate || date <= toDate);
       const matchesType = transactionType === 'all' || txn.rdbs_type === transactionType;
       const matchesStatus = status === 'all' || txn.rdbs_approval_status === status;
       const matchesSearch = !searchTerm || 
         txn.rdbs_sender_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
         txn.rdbs_transaction_id.toLowerCase().includes(searchTerm.toLowerCase());
 
-      return matchesDate && matchesType && matchesStatus && matchesSearch;
+      return matchesType && matchesStatus && matchesSearch;
     });
     
     // Sort by rdbs_approval_date in descending order (newest first)
@@ -280,59 +302,83 @@ export default function ReportsPage() {
     }).format(amount);
   };
 
-  const getExportTransactions = (): Transaction[] | null => {
-    if (!exportDateRange.from || !exportDateRange.to) {
-      toast.error('Please select export from/to dates');
-      return null;
-    }
+  const getMerchantViewerContext = () => ({
+    merchantName:
+      profile?.merchant_names ||
+      profile?.merchantBusinessTradeName ||
+      profile?.businessTradeName ||
+      'Merchant',
+    phone: profile?.merchant_phone || profile?.ownerPhone || profile?.phone || '',
+  });
 
-    const fromDate = new Date(exportDateRange.from);
-    const toDate = new Date(exportDateRange.to);
-    toDate.setHours(23, 59, 59, 999);
-
-    if (fromDate > toDate) {
-      toast.error('Export from date cannot be after export to date');
-      return null;
-    }
-
-    const exportTxns = filteredTransactions.filter((txn) => {
-      const txnDate = new Date(txn.rdbs_approval_date);
-      return txnDate >= fromDate && txnDate <= toDate;
+  const loadTransactionsForExport = async () => {
+    const range = resolveExportDateRange({
+      from: exportDateRange.from,
+      to: exportDateRange.to,
     });
-
-    if (exportTxns.length === 0) {
-      toast.error('No transactions found in selected export date range');
+    if (!range) {
+      toast.error('End date cannot be before start date');
       return null;
     }
 
-    return exportTxns;
+    const toastId = toast.loading(
+      range.defaultedToToday
+        ? `Loading today's transactions (${range.startDate})…`
+        : 'Loading transactions for export…',
+    );
+    try {
+      const filter: TransactionFilter = {
+        startDate: range.startDate,
+        endDate: range.endDate,
+      };
+      if (status !== 'all') {
+        if (status === 'success') filter.status = 'COMPLETED';
+        else if (status === 'pending') filter.status = 'PENDING';
+        else if (status === 'failed') filter.status = 'FAILED';
+      }
+      if (transactionType !== 'all') {
+        filter.direction = transactionType === 'credit' ? 'CREDIT' : 'DEBIT';
+      }
+
+      const apiTxs = await fetchAllBusinessTransactions(
+        filter,
+        undefined,
+        currentMerchantCode,
+      );
+
+      if (apiTxs.length === 0) {
+        toast.error('No transactions found for the selected date(s)', { id: toastId });
+        return null;
+      }
+
+      toast.dismiss(toastId);
+      return { apiTxs, range };
+    } catch (error: unknown) {
+      const message =
+        error && typeof error === 'object' && 'message' in error
+          ? String((error as Error).message)
+          : 'Failed to load transactions';
+      toast.error(message, { id: toastId });
+      return null;
+    }
   };
+
+  const exportFileLabel = (range: { startDate: string; endDate: string }) =>
+    range.startDate === range.endDate
+      ? range.startDate
+      : `${range.startDate}_to_${range.endDate}`;
 
   // Export to Excel
   const exportToExcel = async () => {
     setIsExporting(true);
     try {
-      const exportTransactions = getExportTransactions();
-      if (!exportTransactions) {
+      const loaded = await loadTransactionsForExport();
+      if (!loaded) {
         return;
       }
 
-      // Prepare transaction data with all relevant fields
-      const exportData = exportTransactions.map(txn => {
-        const transactionDate = new Date(txn.rdbs_approval_date);
-        return {
-          'Transaction ID': txn.rdbs_transaction_id || 'N/A',
-          'Date': transactionDate.toLocaleDateString('en-UG'),
-          'Time': transactionDate.toLocaleTimeString('en-UG'),
-          'Sender Name': txn.rdbs_sender_name || 'N/A',
-          'Receiver Name': txn.rdbs_receiver_name || 'N/A',
-          'Receiver Number': txn.rdbs_receiver_number || 'N/A',
-          'Transaction Type': txn.rdbs_type?.toUpperCase() || 'N/A',
-          'Amount (UGX)': Number(txn.rdbs_amount || 0),
-          'Status': txn.rdbs_approval_status?.toUpperCase() || 'N/A',
-          'Date (Full)': transactionDate.toISOString(),
-        };
-      });
+      const { apiTxs, range } = loaded;
+      const exportData = merchantTransactionsToExportRows(apiTxs, getMerchantViewerContext());
 
       // Build summary data
       const summaryData = [
@@ -347,10 +393,9 @@ export default function ReportsPage() {
       ];
 
       // Generate filename with merchant name and date
-      const merchantName = profile?.merchant_names || profile?.merchantBusinessTradeName || profile?.businessTradeName || 'Merchant';
-      const sanitizedMerchantName = merchantName.replace(/[^a-zA-Z0-9]/g, '_');
-      const dateStr = new Date().toISOString().split('T')[0];
-      const filename = `${sanitizedMerchantName}-transactions-${exportDateRange.from}-to-${exportDateRange.to}-${dateStr}.xlsx`;
+      const merchantName = getMerchantViewerContext().merchantName;
+      const sanitizedMerchantName = sanitizeMerchantFilenamePart(merchantName);
+      const filename = `${sanitizedMerchantName}-transactions-${exportFileLabel(range)}.xlsx`;
 
       await writeWorkbookWithSheetsToFile(
         [
@@ -359,10 +404,33 @@ export default function ReportsPage() {
         ],
         filename
       );
-      toast.success('Excel file exported successfully');
+      toast.success(`Exported ${apiTxs.length} transaction${apiTxs.length === 1 ? '' : 's'}`);
     } catch (error) {
       console.error('Excel export failed:', error);
       toast.error('Failed to export Excel file. Please try again.');
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
+  const exportToCsv = async () => {
+    setIsExporting(true);
+    try {
+      const loaded = await loadTransactionsForExport();
+      if (!loaded) {
+        return;
+      }
+      const { apiTxs, range } = loaded;
+      const rows = merchantTransactionsToExportRows(apiTxs, getMerchantViewerContext());
+      const merchantName = sanitizeMerchantFilenamePart(getMerchantViewerContext().merchantName);
+      downloadTextFile(
+        `${merchantName}-transactions-${exportFileLabel(range)}.csv`,
+        merchantTransactionsToCsv(rows),
+      );
+      toast.success(`Exported ${apiTxs.length} transaction${apiTxs.length === 1 ? '' : 's'}`);
+    } catch (error) {
+      console.error('CSV export failed:', error);
+      toast.error('Failed to export CSV. Please try again.');
     } finally {
       setIsExporting(false);
     }
@@ -372,10 +440,32 @@ export default function ReportsPage() {
   const exportToPDF = async () => {
     setIsExporting(true);
     try {
-      const exportTransactions = getExportTransactions();
-      if (!exportTransactions) {
+      const loaded = await loadTransactionsForExport();
+      if (!loaded) {
         return;
       }
+
+      const { apiTxs, range } = loaded;
+      const viewer = getMerchantViewerContext();
+      const exportTransactions = apiTxs.map((apiTxn) => {
+        const sender = getTransactionSenderParty(apiTxn, viewer);
+        const receiver = getTransactionReceiverParty(apiTxn, viewer);
+        return {
+          rdbs_transaction_id: apiTxn.reference || apiTxn.id || '',
+          rdbs_approval_date: apiTxn.createdAt || apiTxn.updatedAt || new Date().toISOString(),
+          rdbs_sender_name: sender.name,
+          rdbs_receiver_name: receiver.name,
+          rdbs_receiver_number: receiver.contact || 'N/A',
+          rdbs_amount: Number(apiTxn.amount || 0),
+          rdbs_type: apiTxn.direction === 'CREDIT' ? ('credit' as const) : ('debit' as const),
+          rdbs_approval_status:
+            apiTxn.status === 'COMPLETED' || apiTxn.status === 'SUCCESS'
+              ? ('success' as const)
+              : apiTxn.status === 'PENDING' || apiTxn.status === 'PROCESSING'
+                ? ('pending' as const)
+                : ('failed' as const),
+        };
+      });
 
       // Create a text-based PDF instead of image-based to avoid CSS issues
       const pdf = new jsPDF('landscape', 'mm', 'a4');
@@ -396,11 +486,7 @@ export default function ReportsPage() {
       pdf.setFontSize(10);
       pdf.setFont('helvetica', 'normal');
       let dateRangeText = `Generated on: ${new Date().toLocaleDateString('en-UG')}`;
-      if (exportDateRange.from || exportDateRange.to) {
-        const fromDate = exportDateRange.from ? new Date(exportDateRange.from).toLocaleDateString('en-UG') : 'All time';
-        const toDate = exportDateRange.to ? new Date(exportDateRange.to).toLocaleDateString('en-UG') : 'Today';
-        dateRangeText += ` | Period: ${fromDate} to ${toDate}`;
-      }
+      dateRangeText += ` | Period: ${exportFileLabel(range)}`;
       pdf.text(dateRangeText, pageWidth / 2, margin + 20, { align: 'center' });
       
       // Add summary
@@ -531,7 +617,7 @@ export default function ReportsPage() {
       // Generate filename
       const sanitizedMerchantName = merchantName.replace(/[^a-zA-Z0-9]/g, '_');
       const dateStr = new Date().toISOString().split('T')[0];
-      const filename = `${sanitizedMerchantName}-transaction-report-${exportDateRange.from}-to-${exportDateRange.to}-${dateStr}.pdf`;
+      const filename = `${sanitizedMerchantName}-transaction-report-${exportFileLabel(range)}.pdf`;
       
       pdf.save(filename);
       toast.success('PDF exported successfully');
@@ -609,20 +695,20 @@ export default function ReportsPage() {
               <h1 className="text-3xl font-bold text-[#08163d] mb-2">Reports & Analytics</h1>
               <p className="text-gray-600">Comprehensive transaction analysis and insights</p>
             </div>
-            <div className="flex gap-2">
-              <Input
-                type="date"
-                value={exportDateRange.from}
-                onChange={(e) => setExportDateRange((prev) => ({ ...prev, from: e.target.value }))}
-                className="w-[160px]"
-                title="Export from date"
-              />
-              <Input
-                type="date"
-                value={exportDateRange.to}
-                onChange={(e) => setExportDateRange((prev) => ({ ...prev, to: e.target.value }))}
-                className="w-[160px]"
-                title="Export to date"
+            <div className="flex flex-wrap items-end gap-2">
+              <DateRangePicker
+                from={exportDateRange.from}
+                to={exportDateRange.to}
+                onFromChange={(from) =>
+                  setExportDateRange((prev) => ({ ...prev, from }))
+                }
+                onToChange={(to) =>
+                  setExportDateRange((prev) => ({ ...prev, to }))
+                }
+                onClear={() => setExportDateRange({ from: '', to: '' })}
+                fromLabel="Export from"
+                toLabel="Export to (optional)"
+                className="max-w-md"
               />
               <Button 
                 onClick={handleRefresh}
@@ -633,9 +719,18 @@ export default function ReportsPage() {
                 <RefreshCw className={`w-4 h-4 ${transactionsLoading ? 'animate-spin' : ''}`} />
                 Refresh
               </Button>
+              <Button
+                onClick={exportToCsv}
+                disabled={isExporting}
+                variant="outline"
+                className="flex items-center gap-2"
+              >
+                <Download className="w-4 h-4" />
+                {isExporting ? 'Exporting...' : 'Export CSV'}
+              </Button>
               <Button 
                 onClick={exportToExcel} 
-                disabled={isExporting || filteredTransactions.length === 0}
+                disabled={isExporting}
                 variant="outline"
                 className="flex items-center gap-2"
               >
@@ -644,7 +739,7 @@ export default function ReportsPage() {
               </Button>
               <Button 
                 onClick={exportToPDF} 
-                disabled={isExporting || filteredTransactions.length === 0}
+                disabled={isExporting}
                 className="bg-[#08163d] hover:bg-[#131824]"
               >
                 <FileText className="w-4 h-4 mr-2" />
@@ -664,20 +759,19 @@ export default function ReportsPage() {
           </CardHeader>
           <CardContent>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
-              <div>
-                <label className="block text-sm font-medium mb-1">From Date</label>
-                <Input
-                  type="date"
-                  value={dateRange.from}
-                  onChange={(e) => setDateRange(prev => ({ ...prev, from: e.target.value }))}
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium mb-1">To Date</label>
-                <Input
-                  type="date"
-                  value={dateRange.to}
-                  onChange={(e) => setDateRange(prev => ({ ...prev, to: e.target.value }))}
+              <div className="md:col-span-2">
+                <DateRangePicker
+                  from={dateRange.from}
+                  to={dateRange.to}
+                  onFromChange={(from) =>
+                    setDateRange((prev) => ({ ...prev, from }))
+                  }
+                  onToChange={(to) =>
+                    setDateRange((prev) => ({ ...prev, to }))
+                  }
+                  onClear={() => setDateRange({ from: '', to: '' })}
+                  fromLabel="From date"
+                  toLabel="To date"
                 />
               </div>
               <div>
