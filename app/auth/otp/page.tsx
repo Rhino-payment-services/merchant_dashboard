@@ -2,7 +2,6 @@
 
 import React, { useState, useRef, useEffect, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { getSession } from 'next-auth/react';
 import { Button } from '../../../components/ui/button';
 import { Card } from '../../../components/ui/card';
 import { ArrowLeft, ArrowRight, Building2 } from 'lucide-react';
@@ -99,6 +98,7 @@ function OTPContent() {
       const { data: sessionData } = await parseJsonResponse<{
         success?: boolean;
         message?: string;
+        redirectTo?: string;
       }>(sessionResponse);
 
       if (!sessionResponse.ok || !sessionData.success) {
@@ -110,30 +110,9 @@ function OTPContent() {
         return;
       }
 
-      const session = await getSession();
-      const userData = (session?.user as any)?.userData;
-      const merchants = (session?.user as any)?.merchants || [];
-      const hasPendingMerchant = (session?.user as any)?.hasPendingMerchant === true;
-
       toast.success('OTP verified successfully!');
       clearMerchantOtpPhone();
-
-      if (userData?.mustChangePassword || userData?.isFirstLogin) {
-        toast.info('Please set your password');
-        router.push('/auth/change-password?firstLogin=true');
-        return;
-      }
-
-      // Redirect to merchant selection when multiple merchants or pending KYC
-      if (merchants.length > 1 || (hasPendingMerchant && merchants.length === 0)) {
-        router.push('/auth/select-merchant');
-        router.refresh();
-        return;
-      }
-
-      // Single merchant or none - go to dashboard (or select-merchant handles it)
-      router.push('/');
-      router.refresh();
+      window.location.assign(sessionData.redirectTo || '/');
     } catch (error: unknown) {
       console.error('❌ Sign in error:', error);
       toast.error(extractApiErrorMessage(error, 'Invalid OTP, please try again'));

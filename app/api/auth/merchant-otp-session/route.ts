@@ -3,9 +3,11 @@ import { getApiUrl } from '@/lib/config'
 import { normalizeMerchantPortalPhone } from '@/lib/auth/merchantOtpPhone'
 import type { MerchantVerifyOtpResponse } from '@/lib/auth/merchantOtpUser'
 import {
+  buildSessionCookieChunks,
   createMerchantSessionToken,
   getNextAuthSessionCookieName,
-  MERCHANT_SESSION_MAX_AGE,
+  getSessionCookieOptions,
+  resolveMerchantLoginRedirect,
 } from '@/lib/auth/merchantSession'
 
 export async function POST(request: Request) {
@@ -53,14 +55,14 @@ export async function POST(request: Request) {
     }
 
     const sessionToken = await createMerchantSessionToken(verifyData)
-    const response = NextResponse.json({ success: true })
-    response.cookies.set(getNextAuthSessionCookieName(), sessionToken, {
-      httpOnly: true,
-      sameSite: 'lax',
-      path: '/',
-      secure: process.env.NODE_ENV === 'production',
-      maxAge: MERCHANT_SESSION_MAX_AGE,
-    })
+    const cookieName = getNextAuthSessionCookieName()
+    const cookieOptions = getSessionCookieOptions()
+    const redirectTo = resolveMerchantLoginRedirect(verifyData)
+
+    const response = NextResponse.json({ success: true, redirectTo })
+    for (const cookie of buildSessionCookieChunks(cookieName, sessionToken, cookieOptions)) {
+      response.cookies.set(cookie.name, cookie.value, cookie.options)
+    }
 
     return response
   } catch (error) {

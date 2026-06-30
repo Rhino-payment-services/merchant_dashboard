@@ -6,6 +6,7 @@ import {
   mapMerchantVerifyResponseToAuthUser,
   type MerchantVerifyOtpResponse,
 } from "./auth/merchantOtpUser"
+import { normalizeMerchantPortalPhone } from "./auth/merchantOtpPhone"
 
 function buildMerchantAuthUserFromPayload(payload: string) {
   const data = JSON.parse(payload) as MerchantVerifyOtpResponse
@@ -29,8 +30,9 @@ export const authOptions: NextAuthOptions = {
           }
 
           const apiUrl = getApiUrl()
+          const phoneNumber = normalizeMerchantPortalPhone(credentials.phoneNumber.trim())
           const response = await axios.post(`${apiUrl}/auth/merchant/verify-otp`, {
-            phoneNumber: credentials.phoneNumber.trim(),
+            phoneNumber,
             otp: String(credentials.otp).trim(),
           })
 
