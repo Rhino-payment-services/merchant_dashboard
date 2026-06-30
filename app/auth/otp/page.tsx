@@ -2,6 +2,7 @@
 
 import React, { useState, useRef, useEffect, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
+import { signIn } from 'next-auth/react';
 import { Button } from '../../../components/ui/button';
 import { Card } from '../../../components/ui/card';
 import { ArrowLeft, ArrowRight, Building2 } from 'lucide-react';
@@ -14,7 +15,6 @@ import {
   rememberMerchantOtpPhone,
 } from '@/lib/auth/merchantOtpPhone';
 import { extractApiErrorMessage } from '@/lib/auth/merchantOtpUser';
-import { parseJsonResponse } from '@/lib/auth/parseJsonResponse';
 
 function OTPContent() {
   const router = useRouter();
@@ -89,30 +89,46 @@ function OTPContent() {
     }
     
     try {
-      const sessionResponse = await fetch('/api/auth/merchant-otp-session', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ phoneNumber, otp: otpCode }),
+      // Use NextAuth directly — provider verifies OTP server-side and handles session/cookie
+      const result = await signIn('merchant-otp', {
+        phoneNumber,
+        otp: otpCode,
+        redirect: false,
       });
 
-      const { data: sessionData } = await parseJsonResponse<{
-        success?: boolean;
-        message?: string;
-        redirectTo?: string;
-      }>(sessionResponse);
+      if (result?.error) {
+        toast.error(result.error || 'Invalid OTP. Please try again.');
+        setIsLoading(false);
+        return;
+      }
 
-      if (!sessionResponse.ok || !sessionData.success) {
-        toast.error(
-          (typeof sessionData.message === 'string' && sessionData.message) ||
-            'Invalid OTP. Please try again.',
-        );
+      if (!result?.ok) {
+        toast.error('Authentication failed. Please try again.');
         setIsLoading(false);
         return;
       }
 
       toast.success('OTP verified successfully!');
       clearMerchantOtpPhone();
-      window.location.assign(sessionData.redirectTo || '/');
+
+      // Full navigation so SessionProvider picks up the new session cookie
+      const session = await fetch('/api/auth/session').then(r => r.json());
+      const userData = (session?.user as any)?.userData;
+      const merchants = (session?.user as any)?.merchants || [];
+      const hasPendingMerchant = (session?.user as any)?.hasPendingMerchant === true;
+
+      if (userData?.mustChangePassword || userData?.isFirstLogin) {
+        toast.info('Please set your password');
+        window.location.assign('/auth/change-password?firstLogin=true');
+        return;
+      }
+
+      if (merchants.length > 1 || (hasPendingMerchant && merchants.length === 0)) {
+        window.location.assign('/auth/select-merchant');
+        return;
+      }
+
+      window.location.assign('/');
     } catch (error: unknown) {
       console.error('❌ Sign in error:', error);
       toast.error(extractApiErrorMessage(error, 'Invalid OTP, please try again'));
@@ -135,13 +151,13 @@ function OTPContent() {
         body: JSON.stringify({ phoneNumber })
       });
 
-      const { data } = await parseJsonResponse<{ success?: boolean; message?: string }>(response);
+      const resData = await response.json().catch(() => ({})) as { success?: boolean; message?: string };
 
-      if (data.success) {
+      if (resData.success) {
         rememberMerchantOtpPhone(phoneNumber);
         toast.success('OTP resent successfully!');
       } else {
-        toast.error(data.message || 'Failed to resend OTP');
+        toast.error(resData.message || 'Failed to resend OTP');
       }
     } catch (error) {
       console.error('Resend OTP error:', error);
