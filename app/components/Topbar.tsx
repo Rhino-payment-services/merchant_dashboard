@@ -21,8 +21,13 @@ import { useRouter } from "next/navigation";
 import { useMerchantAuth } from "@/lib/context/MerchantAuthContext";
 import { useUserProfile } from "../(dashboard)/UserProfileProvider";
 import { useSession } from "next-auth/react";
-import { Menu, X, Building2, ChevronDown, Loader2 } from "lucide-react";
+import { Menu, X, Building2, ChevronDown, Loader2, Crown } from "lucide-react";
 import { toast } from "sonner";
+import {
+  AccessibleMerchant,
+  merchantCodesMatch,
+  useAccessibleMerchants,
+} from "@/lib/hooks/useAccessibleMerchants";
 
 const mockNotifications = [
   {
@@ -55,7 +60,7 @@ export default function Topbar({ onMenuToggle, isMenuOpen }: TopbarProps) {
   const { data: session, update: updateSession } = useSession();
   const { profile, loading } = useUserProfile();
   const { user, logout } = useMerchantAuth();
-  const merchants = (session?.user as any)?.merchants || [];
+  const { merchants, loadingChildren } = useAccessibleMerchants();
   const currentMerchantCode = (session?.user as any)?.merchantCode;
   const profileMerchantCode = profile?.merchant_code || profile?.merchantCode;
   const effectiveMerchantCode = currentMerchantCode || profileMerchantCode;
@@ -68,11 +73,7 @@ export default function Topbar({ onMenuToggle, isMenuOpen }: TopbarProps) {
   const displayedMerchantCode = pendingMerchantCode || effectiveMerchantCode;
   const findMerchant = (code: string | null) =>
     code
-      ? merchants.find((m: any) => {
-          const mCode = String(m?.merchantCode || '').trim();
-          const eCode = String(code || '').trim();
-          return mCode === eCode || mCode === eCode.padStart(4, '0') || eCode === mCode.padStart(4, '0');
-        })
+      ? merchants.find((m: AccessibleMerchant) => merchantCodesMatch(m.merchantCode, code))
       : merchants[0];
   const displayedMerchant = findMerchant(displayedMerchantCode);
 
@@ -163,24 +164,61 @@ export default function Topbar({ onMenuToggle, isMenuOpen }: TopbarProps) {
             {!switching && <ChevronDown className="w-4 h-4 text-gray-500 flex-shrink-0 ml-auto" />}
           </button>
         </DropdownMenuTrigger>
-        <DropdownMenuContent align="start" className="w-56 mt-2">
-          {merchants.length > 0 ? (
-            merchants.map((m: any) => {
-              const mCode = String(m?.merchantCode || '').trim();
-              const isActive = mCode === String(displayedMerchantCode || '').trim() ||
-                mCode === String(displayedMerchantCode || '').trim().padStart(4, '0');
-              return (
-                <DropdownMenuItem
-                  key={m.merchantCode || m.id}
-                  onClick={() => handleSwitchMerchant(m.merchantCode ?? m.id)}
-                  className={`cursor-pointer ${isActive ? 'bg-main-50 font-semibold' : ''}`}
-                >
-                  <Building2 className={`w-4 h-4 mr-2 ${isActive ? 'text-main-600' : 'text-gray-400'}`} />
-                  <span className="truncate">{m.businessTradeName || m.merchantCode || 'Merchant'}</span>
-                  {isActive && <span className="ml-auto w-2 h-2 rounded-full bg-main-600 flex-shrink-0" />}
+        <DropdownMenuContent align="start" className="w-64 mt-2">
+          {loadingChildren && merchants.length === 0 ? (
+            <DropdownMenuItem disabled className="text-gray-500">
+              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+              Loading merchants...
+            </DropdownMenuItem>
+          ) : merchants.length > 0 ? (
+            <>
+              {merchants.filter((m: AccessibleMerchant) => m.isOwnAccount).map((m: AccessibleMerchant) => {
+                const isActive = merchantCodesMatch(m.merchantCode, displayedMerchantCode);
+                return (
+                  <DropdownMenuItem
+                    key={m.id}
+                    onClick={() => handleSwitchMerchant(m.merchantCode)}
+                    className={`cursor-pointer ${isActive ? 'bg-main-50 font-semibold' : ''}`}
+                  >
+                    {m.isSuperMerchant ? (
+                      <Crown className={`w-4 h-4 mr-2 ${isActive ? 'text-yellow-600' : 'text-yellow-500'}`} />
+                    ) : (
+                      <Building2 className={`w-4 h-4 mr-2 ${isActive ? 'text-main-600' : 'text-gray-400'}`} />
+                    )}
+                    <span className="truncate">{m.businessTradeName || m.merchantCode || 'Merchant'}</span>
+                    {isActive && <span className="ml-auto w-2 h-2 rounded-full bg-main-600 flex-shrink-0" />}
+                  </DropdownMenuItem>
+                );
+              })}
+              {merchants.some((m: AccessibleMerchant) => m.isChildMerchant) && (
+                <>
+                  <DropdownMenuSeparator />
+                  <div className="px-2 py-1.5 text-xs font-semibold text-gray-500">
+                    Child Merchants
+                  </div>
+                  {merchants.filter((m: AccessibleMerchant) => m.isChildMerchant).map((m: AccessibleMerchant) => {
+                    const isActive = merchantCodesMatch(m.merchantCode, displayedMerchantCode);
+                    return (
+                      <DropdownMenuItem
+                        key={m.id}
+                        onClick={() => handleSwitchMerchant(m.merchantCode)}
+                        className={`cursor-pointer ${isActive ? 'bg-main-50 font-semibold' : ''}`}
+                      >
+                        <Building2 className={`w-4 h-4 mr-2 ${isActive ? 'text-main-600' : 'text-gray-400'}`} />
+                        <span className="truncate">{m.businessTradeName || m.merchantCode || 'Merchant'}</span>
+                        {isActive && <span className="ml-auto w-2 h-2 rounded-full bg-main-600 flex-shrink-0" />}
+                      </DropdownMenuItem>
+                    );
+                  })}
+                </>
+              )}
+              {loadingChildren && (
+                <DropdownMenuItem disabled className="text-gray-500 text-xs">
+                  <Loader2 className="w-3 h-3 mr-2 animate-spin" />
+                  Loading child merchants...
                 </DropdownMenuItem>
-              );
-            })
+              )}
+            </>
           ) : (
             <Link href="/auth/select-merchant">
               <DropdownMenuItem className="flex items-center gap-2 cursor-pointer">

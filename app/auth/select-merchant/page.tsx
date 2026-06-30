@@ -8,6 +8,7 @@ import { Card } from '@/components/ui/card'
 import { Building2, CheckCircle, Clock, ArrowRight } from 'lucide-react'
 import Image from 'next/image'
 import { toast } from 'sonner'
+import { useAccessibleMerchants } from '@/lib/hooks/useAccessibleMerchants'
 
 function SelectMerchantContent() {
   const router = useRouter()
@@ -19,7 +20,7 @@ function SelectMerchantContent() {
     document.title = 'Select Merchant - RukaPay'
   }, [])
 
-  const merchants = (session?.user as any)?.merchants || []
+  const { merchants, loadingChildren } = useAccessibleMerchants()
   const hasPendingMerchant = (session?.user as any)?.hasPendingMerchant === true
 
   const handleSelectMerchant = async (merchantCode: string) => {
@@ -49,8 +50,8 @@ function SelectMerchantContent() {
     }
   }
 
-  // Show full-screen loader while switching (or initial session load) — must be first so nothing else flashes
-  if (isLoading || status === 'loading') {
+  // Show full-screen loader while switching (or initial session / child merchant load)
+  if (isLoading || status === 'loading' || loadingChildren) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-main-50 via-white to-main-50 flex items-center justify-center p-4">
         <div className="text-center space-y-4">
@@ -134,12 +135,12 @@ function SelectMerchantContent() {
           </div>
           <h1 className="text-2xl font-bold text-[#08163d] mb-2">Select Merchant Account</h1>
           <p className="text-gray-600">
-            You have multiple merchant accounts. Choose which one to access.
+            Choose which business account to access, including merchants assigned under your super merchant account.
           </p>
         </div>
 
         <Card className="p-6 space-y-4">
-          {merchants.map((m: { id: string; merchantCode: string; businessTradeName: string; isActive: boolean; isVerified?: boolean }) => (
+          {merchants.filter((m) => m.isOwnAccount).map((m) => (
             <button
               key={m.id}
               onClick={() => handleSelectMerchant(m.merchantCode)}
@@ -169,6 +170,30 @@ function SelectMerchantContent() {
               </div>
             </button>
           ))}
+          {merchants.some((m) => m.isChildMerchant) && (
+            <>
+              <p className="text-xs font-semibold text-gray-500 pt-2 border-t">Child Merchants</p>
+              {merchants.filter((m) => m.isChildMerchant).map((m) => (
+                <button
+                  key={m.id}
+                  onClick={() => handleSelectMerchant(m.merchantCode)}
+                  disabled={isLoading}
+                  className="w-full p-4 rounded-lg border border-gray-200 hover:border-main-500 hover:bg-main-50/50 transition-all text-left flex items-center justify-between gap-4"
+                >
+                  <div className="flex items-center gap-3 min-w-0 flex-1">
+                    <div className="h-10 w-10 rounded-lg bg-blue-50 flex items-center justify-center flex-shrink-0">
+                      <Building2 className="h-5 w-5 text-blue-600" />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="font-medium text-gray-900 truncate">{m.businessTradeName || 'Business'}</p>
+                      <p className="text-sm text-gray-500">Code: {m.merchantCode}</p>
+                    </div>
+                  </div>
+                  <ArrowRight className="h-4 w-4 text-gray-400 flex-shrink-0" />
+                </button>
+              ))}
+            </>
+          )}
         </Card>
 
         <p className="text-center text-sm text-gray-500 mt-4">

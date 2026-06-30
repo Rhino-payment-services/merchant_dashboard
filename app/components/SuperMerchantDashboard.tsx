@@ -29,6 +29,7 @@ import {
   MoreVertical,
 } from 'lucide-react';
 import { getSuperMerchantDashboard, SuperMerchantDashboard as DashboardData } from '@/lib/api/super-merchant.api';
+import { useAccessibleMerchants } from '@/lib/hooks/useAccessibleMerchants';
 import Link from 'next/link';
 import {
   DropdownMenu,
@@ -68,37 +69,28 @@ export default function SuperMerchantDashboard({ merchantId, merchantName }: Sup
   const [selectedChildMerchantId, setSelectedChildMerchantId] = useState<string | null>(null);
   const [selectedMerchantContext, setSelectedMerchantContext] = useState<string>('super-merchant'); // 'super-merchant' or child merchant ID
   
+  const { merchants: accessibleMerchants } = useAccessibleMerchants();
+  
   // Get all available merchants from session (user's own accounts) + child merchants
   const sessionMerchants = (session?.user as any)?.merchants || [];
   const currentMerchantCode = (session?.user as any)?.merchantCode;
   
-  // Get all available merchants (user's own accounts + child merchants)
-  const allMerchants: MerchantItem[] = dashboardData ? [
-    // User's own merchant accounts (from session)
-    ...sessionMerchants.map((m: any) => ({
-      id: m.id,
-      merchantCode: m.merchantCode,
-      businessTradeName: m.businessTradeName,
-      isSuperMerchant: m.isSuperMerchant || false,
-      isOwnAccount: true,
-    })),
-    // Child merchants (assigned to super merchant)
-    ...dashboardData.childMerchants
-      .filter(child => !sessionMerchants.some((s: any) => s.id === child.id)) // Don't duplicate if user also owns it
-      .map(m => ({
-        id: m.id,
-        merchantCode: m.merchantCode,
-        businessTradeName: m.businessTradeName,
-        isSuperMerchant: false,
-        isOwnAccount: false,
-      }))
-  ] : sessionMerchants.map((m: any) => ({
-    id: m.id,
-    merchantCode: m.merchantCode,
-    businessTradeName: m.businessTradeName,
-    isSuperMerchant: m.isSuperMerchant || false,
-    isOwnAccount: true,
-  }));
+  const allMerchants: MerchantItem[] =
+    accessibleMerchants.length > 0
+      ? accessibleMerchants.map((m) => ({
+          id: m.id,
+          merchantCode: m.merchantCode,
+          businessTradeName: m.businessTradeName,
+          isSuperMerchant: m.isSuperMerchant ?? false,
+          isOwnAccount: m.isOwnAccount,
+        }))
+      : sessionMerchants.map((m: any) => ({
+          id: m.id,
+          merchantCode: m.merchantCode,
+          businessTradeName: m.businessTradeName,
+          isSuperMerchant: m.isSuperMerchant || false,
+          isOwnAccount: true,
+        }));
   // Get current selected merchant
   const currentMerchant = allMerchants.find((m: MerchantItem) => m.merchantCode === currentMerchantCode) || allMerchants[0];
   const currentContextId = currentMerchant?.id || selectedMerchantContext;
@@ -223,25 +215,68 @@ export default function SuperMerchantDashboard({ merchantId, merchantName }: Sup
   }
 
   if (error || !dashboardData) {
+    const childCount = allMerchants.filter((m) => !m.isOwnAccount).length;
     return (
-      <Card className="bg-amber-50 border-amber-200">
-        <CardContent className="p-6">
-          <div className="flex flex-col gap-2">
-            <p className="text-amber-800 font-medium">
-              {error === 'No merchants attached' || error?.toLowerCase().includes('no merchants')
-                ? 'No merchants attached'
-                : error || 'Unable to load super merchant dashboard'}
-            </p>
-            <p className="text-sm text-amber-700">
-              Contact your administrator to assign merchants to your super merchant account.
-            </p>
+      <div className="space-y-4">
+        {allMerchants.length > 1 && (
+          <div className="flex justify-end">
+            <Select
+              value={currentContextId}
+              onValueChange={(value) => {
+                const merchant = allMerchants.find((m: MerchantItem) => m.id === value);
+                if (merchant) {
+                  handleSwitchMerchant(merchant.id, merchant.merchantCode);
+                }
+              }}
+            >
+              <SelectTrigger className="w-[280px]">
+                <SelectValue placeholder="Select merchant">
+                  {currentMerchant?.businessTradeName || 'Select merchant'}
+                </SelectValue>
+              </SelectTrigger>
+              <SelectContent>
+                {allMerchants.filter((m: MerchantItem) => m.isOwnAccount).map((merchant) => (
+                  <SelectItem key={merchant.id} value={merchant.id}>
+                    {merchant.businessTradeName}
+                  </SelectItem>
+                ))}
+                {childCount > 0 && (
+                  <>
+                    <div className="px-2 py-1.5 text-xs font-semibold text-gray-500 border-t mt-1">
+                      Child Merchants
+                    </div>
+                    {allMerchants.filter((m: MerchantItem) => !m.isOwnAccount).map((merchant) => (
+                      <SelectItem key={merchant.id} value={merchant.id}>
+                        {merchant.businessTradeName}
+                      </SelectItem>
+                    ))}
+                  </>
+                )}
+              </SelectContent>
+            </Select>
           </div>
-          <Button onClick={fetchDashboardData} variant="outline" className="mt-4">
-            <RefreshCw className="h-4 w-4 mr-2" />
-            Retry
-          </Button>
-        </CardContent>
-      </Card>
+        )}
+        <Card className="bg-amber-50 border-amber-200">
+          <CardContent className="p-6">
+            <div className="flex flex-col gap-2">
+              <p className="text-amber-800 font-medium">
+                {error === 'No merchants attached' || error?.toLowerCase().includes('no merchants')
+                  ? 'No merchants attached'
+                  : error || 'Unable to load super merchant dashboard'}
+              </p>
+              <p className="text-sm text-amber-700">
+                {childCount > 0
+                  ? 'Aggregate stats could not be loaded, but you can still switch to assigned child merchants using the dropdown above.'
+                  : 'Contact your administrator to assign merchants to your super merchant account.'}
+              </p>
+            </div>
+            <Button onClick={fetchDashboardData} variant="outline" className="mt-4">
+              <RefreshCw className="h-4 w-4 mr-2" />
+              Retry
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
     );
   }
 

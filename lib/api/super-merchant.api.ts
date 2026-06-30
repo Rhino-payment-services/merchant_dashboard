@@ -95,7 +95,12 @@ export const getSuperMerchantDashboard = async (merchantId: string): Promise<Sup
 export const getChildMerchants = async (superMerchantId: string): Promise<{ childMerchants: ChildMerchant[]; total: number }> => {
   try {
     const response = await apiClient.get(`/super-merchant/child-merchants/${superMerchantId}`)
-    return response.data
+    const payload = (response.data as { data?: { childMerchants?: ChildMerchant[]; total?: number } })?.data ?? response.data
+    const childMerchants = payload?.childMerchants ?? []
+    return {
+      childMerchants,
+      total: payload?.total ?? childMerchants.length,
+    }
   } catch (error: any) {
     console.error('Error fetching child merchants:', error)
     return { childMerchants: [], total: 0 }
