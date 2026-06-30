@@ -1,11 +1,40 @@
 import { NextAuthOptions } from "next-auth"
 import CredentialsProvider from "next-auth/providers/credentials"
 import axios from "axios"
-import { API_URL } from "./config"
+import { getApiUrl } from "./config"
+import {
+  mapMerchantVerifyResponseToAuthUser,
+  type MerchantVerifyOtpResponse,
+} from "./auth/merchantOtpUser"
+
+function buildMerchantAuthUserFromPayload(payload: string) {
+  const data = JSON.parse(payload) as MerchantVerifyOtpResponse
+  return mapMerchantVerifyResponseToAuthUser(data)
+}
 
 export const authOptions: NextAuthOptions = {
   providers: [
-    // Provider 1: Phone + OTP (Business Owners)
+    // Client already verified OTP with the same API URL as login; establish session only.
+    CredentialsProvider({
+      id: "merchant-otp-verified",
+      name: "Merchant OTP Verified",
+      credentials: {
+        payload: { label: "Verified OTP payload", type: "text" },
+      },
+      async authorize(credentials) {
+        try {
+          if (!credentials?.payload) {
+            throw new Error("Missing verification payload")
+          }
+          return buildMerchantAuthUserFromPayload(credentials.payload)
+        } catch (error: unknown) {
+          console.error("Authorization error:", error)
+          if (error instanceof Error) throw error
+          throw new Error("OTP verification failed")
+        }
+      },
+    }),
+    // Provider 1: Phone + OTP (Business Owners) — server-side verify fallback
     CredentialsProvider({
       id: "merchant-otp",
       name: "Merchant OTP",
@@ -19,42 +48,21 @@ export const authOptions: NextAuthOptions = {
             throw new Error("Phone number and OTP are required")
           }
 
-          // Verify OTP with backend
-          const response = await axios.post(`${API_URL}/auth/merchant/verify-otp`, {
-            phoneNumber: credentials.phoneNumber,
-            otp: credentials.otp
+          const apiUrl = getApiUrl()
+          const response = await axios.post(`${apiUrl}/auth/merchant/verify-otp`, {
+            phoneNumber: credentials.phoneNumber.trim(),
+            otp: String(credentials.otp).trim(),
           })
 
-          const { success, user, accessToken, refreshToken, message } = response.data
-
-          if (!success || !accessToken || !refreshToken) {
-            throw new Error(message || "OTP verification failed")
-          }
-
-          // Return user data with tokens (includes merchants for selection)
-          return {
-            id: user.id,
-            email: user.email,
-            phone: user.phone,
-            name: user.profile?.firstName + " " + user.profile?.lastName || user.phone,
-            role: user.role,
-            userType: user.userType,
-            subscriberType: user.subscriberType,
-            merchantCode: user.merchantCode,
-            merchants: user.merchants || [],
-            hasPendingMerchant: user.hasPendingMerchant || false,
-            hasPassword: user.hasPassword ?? !!user.password,
-            accessToken,
-            refreshToken,
-            user: {
-              ...user,
-              mustChangePassword: user.mustChangePassword || user.isFirstLogin || false,
-              isFirstLogin: user.isFirstLogin || false
-            }
-          }
+          return buildMerchantAuthUserFromPayload(JSON.stringify(response.data))
         } catch (error: any) {
           console.error("Authorization error:", error)
-          throw new Error(error.response?.data?.message || error.message || "OTP verification failed")
+          const message = error.response?.data?.message
+          throw new Error(
+            (Array.isArray(message) ? message[0] : message) ||
+              error.message ||
+              "OTP verification failed",
+          )
         }
       }
     }),
@@ -73,7 +81,7 @@ export const authOptions: NextAuthOptions = {
           }
 
           // Login with backend
-          const response = await axios.post(`${API_URL}/auth/login`, {
+          const response = await axios.post(`${getApiUrl()}/auth/login`, {
             email: credentials.email,
             password: credentials.password
           })

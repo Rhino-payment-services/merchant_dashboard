@@ -12,6 +12,7 @@ import { Phone, Mail, Lock, Building2 } from 'lucide-react';
 import Image from 'next/image';
 import { toast } from 'sonner';
 import { API_URL } from '@/lib/config';
+import { rememberMerchantOtpPhone, normalizeMerchantPortalPhone } from '@/lib/auth/merchantOtpPhone';
 import Link from 'next/link';
 
 function LoginContent() {
@@ -47,13 +48,20 @@ function LoginContent() {
     setIsLoading(true);
     
     try {
+      const phoneNumber = normalizeMerchantPortalPhone(ownerData.phoneNumber);
+      if (!phoneNumber) {
+        toast.error('Please enter a valid phone number');
+        setIsLoading(false);
+        return;
+      }
+
       // Request OTP from backend
       const url = `${API_URL}/auth/merchant/login`;
       console.log('🔗 Calling API:', url);
       const response = await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ phoneNumber: ownerData.phoneNumber })
+        body: JSON.stringify({ phoneNumber })
       });
 
       let data: { success?: boolean; message?: string; expiresIn?: number };
@@ -65,8 +73,8 @@ function LoginContent() {
 
       if (data.success) {
         toast.success('OTP sent to your phone!');
-        // Redirect to OTP page with phoneNumber param (not phone)
-        router.push(`/auth/otp?phoneNumber=${encodeURIComponent(ownerData.phoneNumber)}&expiresIn=${data.expiresIn || 300}`);
+        rememberMerchantOtpPhone(phoneNumber);
+        router.push(`/auth/otp?phoneNumber=${encodeURIComponent(phoneNumber)}&expiresIn=${data.expiresIn || 300}`);
       } else {
         toast.error(data.message || 'Failed to send OTP');
       }

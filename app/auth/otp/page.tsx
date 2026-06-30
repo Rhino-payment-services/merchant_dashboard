@@ -10,11 +10,17 @@ import { ArrowLeft, ArrowRight, Building2 } from 'lucide-react';
 import Image from 'next/image';
 import { toast } from 'sonner';
 import { API_URL } from '@/lib/config';
+import {
+  clearMerchantOtpPhone,
+  readMerchantOtpPhone,
+  rememberMerchantOtpPhone,
+} from '@/lib/auth/merchantOtpPhone';
+import { extractApiErrorMessage } from '@/lib/auth/merchantOtpUser';
 
 function OTPContent() {
   const router = useRouter();
   const searchParams:any = useSearchParams();
-  const phoneNumber = searchParams.get('phoneNumber') || '';
+  const phoneNumber = readMerchantOtpPhone(searchParams.get('phoneNumber'));
   const loginType = searchParams.get('type') || 'merchant'; // 'merchant' or 'team'
   const expiresIn = parseInt(searchParams.get('expiresIn') || '300'); // Default 5 minutes
   // For team members, phoneNumber param contains the phone number
@@ -38,15 +44,16 @@ function OTPContent() {
   }, [countdown]);
 
   const handleOtpChange = (index: number, value: string) => {
-    if (value.length > 1) return; // Only allow single digit
+    const digit = value.replace(/\D/g, '').slice(-1);
+    if (!digit && value.length > 0) return;
     
     const newOtp = [...otp];
-    newOtp[index] = value;
+    newOtp[index] = digit;
     
     setOtp(newOtp);
 
     // Auto-advance to next input
-    if (value && index < 5) {
+    if (digit && index < 5) {
       otpRefs.current[index + 1]?.focus();
     }
   };
@@ -67,17 +74,46 @@ function OTPContent() {
       return;
     }
     
+    if (!phoneNumber) {
+      toast.error('Phone number missing. Please request a new OTP.');
+      router.push('/auth/login');
+      return;
+    }
+
     setIsLoading(true);
     
+    const otpCode = otp.join('').replace(/\D/g, '');
+    if (otpCode.length !== 6) {
+      toast.error('Please enter complete 6-digit OTP');
+      setIsLoading(false);
+      return;
+    }
+    
     try {
-      const otpCode = otp.join('');
-      
-      console.log('🔐 Signing in with NextAuth...', { phoneNumber, loginType, otp: otpCode });
-      
-      // Use NextAuth signIn - team members use same merchant-otp provider (phone + OTP)
-      const result = await signIn('merchant-otp', {
-        phoneNumber: phoneNumber, // Both owner and team use phoneNumber
-        otp: otpCode,
+      const verifyResponse = await fetch(`${API_URL}/auth/merchant/verify-otp`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ phoneNumber, otp: otpCode }),
+      });
+
+      let verifyData: Record<string, unknown> = {};
+      try {
+        verifyData = await verifyResponse.json();
+      } catch {
+        throw new Error(verifyResponse.ok ? 'Invalid response from server' : `Server error ${verifyResponse.status}`);
+      }
+
+      if (!verifyResponse.ok || !verifyData.success) {
+        const message =
+          (typeof verifyData.message === 'string' && verifyData.message) ||
+          'Invalid OTP. Please try again.';
+        toast.error(message);
+        setIsLoading(false);
+        return;
+      }
+
+      const result = await signIn('merchant-otp-verified', {
+        payload: JSON.stringify(verifyData),
         redirect: false,
       });
       
@@ -93,6 +129,7 @@ function OTPContent() {
       if (result?.ok) {
         console.log('✅ Sign in successful!');
         toast.success('OTP verified successfully!');
+        clearMerchantOtpPhone();
         
         // Small delay for session to be available
         await new Promise(resolve => setTimeout(resolve, 300));
@@ -123,9 +160,9 @@ function OTPContent() {
         toast.error('Authentication failed. Please try again.');
         setIsLoading(false);
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('❌ Sign in error:', error);
-      toast.error(error?.message || 'Invalid OTP, please try again');
+      toast.error(extractApiErrorMessage(error, 'Invalid OTP, please try again'));
       setIsLoading(false);
     }
   };
@@ -142,12 +179,13 @@ function OTPContent() {
       const response = await fetch(`${API_URL}/auth/merchant/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ phoneNumber: phoneNumber })
+        body: JSON.stringify({ phoneNumber })
       });
 
       const data = await response.json();
       
       if (data.success) {
+        rememberMerchantOtpPhone(phoneNumber);
         toast.success('OTP resent successfully!');
       } else {
         toast.error(data.message || 'Failed to resend OTP');
