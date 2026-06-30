@@ -2,8 +2,7 @@
 
 import React, { useState, useRef, useEffect, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import Head from 'next/head';
-import { signIn } from 'next-auth/react';
+import { getSession } from 'next-auth/react';
 import { Button } from '../../../components/ui/button';
 import { Card } from '../../../components/ui/card';
 import { ArrowLeft, ArrowRight, Building2 } from 'lucide-react';
@@ -16,6 +15,7 @@ import {
   rememberMerchantOtpPhone,
 } from '@/lib/auth/merchantOtpPhone';
 import { extractApiErrorMessage } from '@/lib/auth/merchantOtpUser';
+import { parseJsonResponse } from '@/lib/auth/parseJsonResponse';
 
 function OTPContent() {
   const router = useRouter();
@@ -90,76 +90,50 @@ function OTPContent() {
     }
     
     try {
-      const verifyResponse = await fetch(`${API_URL}/auth/merchant/verify-otp`, {
+      const sessionResponse = await fetch('/api/auth/merchant-otp-session', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ phoneNumber, otp: otpCode }),
       });
 
-      let verifyData: Record<string, unknown> = {};
-      try {
-        verifyData = await verifyResponse.json();
-      } catch {
-        throw new Error(verifyResponse.ok ? 'Invalid response from server' : `Server error ${verifyResponse.status}`);
-      }
+      const { data: sessionData } = await parseJsonResponse<{
+        success?: boolean;
+        message?: string;
+      }>(sessionResponse);
 
-      if (!verifyResponse.ok || !verifyData.success) {
-        const message =
-          (typeof verifyData.message === 'string' && verifyData.message) ||
-          'Invalid OTP. Please try again.';
-        toast.error(message);
+      if (!sessionResponse.ok || !sessionData.success) {
+        toast.error(
+          (typeof sessionData.message === 'string' && sessionData.message) ||
+            'Invalid OTP. Please try again.',
+        );
         setIsLoading(false);
         return;
       }
 
-      const result = await signIn('merchant-otp-verified', {
-        payload: JSON.stringify(verifyData),
-        redirect: false,
-      });
-      
-      console.log('📥 NextAuth Result:', result);
-      
-      if (result?.error) {
-        console.error('❌ Sign in failed:', result.error);
-        toast.error(result.error || 'Invalid OTP. Please try again.');
-        setIsLoading(false);
+      const session = await getSession();
+      const userData = (session?.user as any)?.userData;
+      const merchants = (session?.user as any)?.merchants || [];
+      const hasPendingMerchant = (session?.user as any)?.hasPendingMerchant === true;
+
+      toast.success('OTP verified successfully!');
+      clearMerchantOtpPhone();
+
+      if (userData?.mustChangePassword || userData?.isFirstLogin) {
+        toast.info('Please set your password');
+        router.push('/auth/change-password?firstLogin=true');
         return;
       }
-      
-      if (result?.ok) {
-        console.log('✅ Sign in successful!');
-        toast.success('OTP verified successfully!');
-        clearMerchantOtpPhone();
-        
-        // Small delay for session to be available
-        await new Promise(resolve => setTimeout(resolve, 300));
-        
-        const session = await fetch('/api/auth/session').then(res => res.json());
-        const userData = (session?.user as any)?.userData;
-        const merchants = (session?.user as any)?.merchants || [];
-        const hasPendingMerchant = (session?.user as any)?.hasPendingMerchant === true;
-        
-        if (userData?.mustChangePassword || userData?.isFirstLogin) {
-          toast.info('Please set your password');
-          router.push('/auth/change-password?firstLogin=true');
-          return;
-        }
-        
-        // Redirect to merchant selection when multiple merchants or pending KYC
-        if (merchants.length > 1 || (hasPendingMerchant && merchants.length === 0)) {
-          router.push('/auth/select-merchant');
-          router.refresh();
-          return;
-        }
-        
-        // Single merchant or none - go to dashboard (or select-merchant handles it)
-        router.push('/');
+
+      // Redirect to merchant selection when multiple merchants or pending KYC
+      if (merchants.length > 1 || (hasPendingMerchant && merchants.length === 0)) {
+        router.push('/auth/select-merchant');
         router.refresh();
-      } else {
-        console.error('❌ Unexpected sign in result:', result);
-        toast.error('Authentication failed. Please try again.');
-        setIsLoading(false);
+        return;
       }
+
+      // Single merchant or none - go to dashboard (or select-merchant handles it)
+      router.push('/');
+      router.refresh();
     } catch (error: unknown) {
       console.error('❌ Sign in error:', error);
       toast.error(extractApiErrorMessage(error, 'Invalid OTP, please try again'));
@@ -182,8 +156,8 @@ function OTPContent() {
         body: JSON.stringify({ phoneNumber })
       });
 
-      const data = await response.json();
-      
+      const { data } = await parseJsonResponse<{ success?: boolean; message?: string }>(response);
+
       if (data.success) {
         rememberMerchantOtpPhone(phoneNumber);
         toast.success('OTP resent successfully!');

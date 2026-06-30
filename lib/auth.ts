@@ -14,26 +14,6 @@ function buildMerchantAuthUserFromPayload(payload: string) {
 
 export const authOptions: NextAuthOptions = {
   providers: [
-    // Client already verified OTP with the same API URL as login; establish session only.
-    CredentialsProvider({
-      id: "merchant-otp-verified",
-      name: "Merchant OTP Verified",
-      credentials: {
-        payload: { label: "Verified OTP payload", type: "text" },
-      },
-      async authorize(credentials) {
-        try {
-          if (!credentials?.payload) {
-            throw new Error("Missing verification payload")
-          }
-          return buildMerchantAuthUserFromPayload(credentials.payload)
-        } catch (error: unknown) {
-          console.error("Authorization error:", error)
-          if (error instanceof Error) throw error
-          throw new Error("OTP verification failed")
-        }
-      },
-    }),
     // Provider 1: Phone + OTP (Business Owners) — server-side verify fallback
     CredentialsProvider({
       id: "merchant-otp",
