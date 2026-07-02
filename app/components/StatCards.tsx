@@ -3,6 +3,7 @@ import { Card, CardContent, CardHeader } from '../../components/ui/card';
 import { Button } from '../../components/ui/button';
 import { useUserProfile } from '../(dashboard)/UserProfileProvider';
 import { useSession } from 'next-auth/react';
+import { useChildMerchantContext } from '@/lib/hooks/useChildMerchantContext';
 import { RefreshCw, ArrowRightLeft } from 'lucide-react';
 import { getWalletBalance, getMyTransactions } from '@/lib/api/wallet.api';
 import SweepToDisbursementModal from './SweepToDisbursementModal';
@@ -10,6 +11,11 @@ import SweepToDisbursementModal from './SweepToDisbursementModal';
 export default function StatCards() {
   const {profile, loading} = useUserProfile()
   const { data: session } = useSession();
+  const {
+    childMerchantId,
+    childMerchantCode,
+    isViewingChild,
+  } = useChildMerchantContext();
 
   // Determine whether this merchant has bulk payments (disbursement wallet) enabled
   const merchants = (session?.user as any)?.merchants ?? [];
@@ -33,11 +39,21 @@ export default function StatCards() {
   const fetchWalletData = async () => {
     try {
       setWalletLoading(true);
-      const balanceData = await getWalletBalance();
+      setWalletBalance(0);
+      setCollectionBalance(null);
+      setDisbursementBalance(null);
+      setTotalTransactions(0);
+      setTotalCredit(0);
+      setTotalDebit(0);
+      const balanceData = await getWalletBalance(childMerchantId || undefined);
       setWalletBalance(balanceData.balance);
       setCollectionBalance(balanceData.collectionBalance ?? null);
       setDisbursementBalance(balanceData.disbursementBalance ?? null);
-      const transactionsData = await getMyTransactions({ limit: 1000 });
+      const transactionsData = await getMyTransactions(
+        { limit: 1000 },
+        childMerchantId || undefined,
+        isViewingChild ? childMerchantCode : undefined,
+      );
       setTotalTransactions(transactionsData.total || 0);
       const credit = (transactionsData.transactions || [])
         .filter(t => (t.direction === 'CREDIT' || t.type === 'DEPOSIT' || t.type === 'TOPUP') && t.status === 'SUCCESS')
@@ -59,18 +75,30 @@ export default function StatCards() {
   };
 
   const merchantCode = (session?.user as any)?.merchantCode;
-  const hasFetchedRef = useRef(false);
+  const hasFetchedRef = useRef<string | null>(null);
+  const fetchKey = `${merchantCode || ''}:${childMerchantId || ''}`;
 
-  // Auto-fetch ONCE per component lifecycle for the current merchant.
-  // - When we land on the dashboard for a merchant, we fetch stats.
-  // - React dev double-mounts won't trigger extra fetches because of the ref guard.
-  // - When you navigate away and come back, a new component instance will fetch again once.
   useEffect(() => {
-    if (!merchantCode) return;
-    if (hasFetchedRef.current) return;
-    hasFetchedRef.current = true;
+    if (!merchantCode && !isViewingChild) return;
+    if (isViewingChild && !childMerchantId) return;
+    if (hasFetchedRef.current === fetchKey) return;
+    hasFetchedRef.current = fetchKey;
     fetchWalletData();
-  }, [merchantCode]);
+  }, [fetchKey, merchantCode, isViewingChild, childMerchantId]);
+
+  if (walletLoading) {
+    return (
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 animate-pulse">
+        {Array.from({ length: 4 }).map((_, index) => (
+          <div key={index} className="rounded-xl border bg-white p-4 space-y-3">
+            <div className="h-4 w-24 bg-gray-200 rounded" />
+            <div className="h-8 w-32 bg-gray-200 rounded" />
+            <div className="h-3 w-20 bg-gray-100 rounded" />
+          </div>
+        ))}
+      </div>
+    );
+  }
 
   // Only show separate collection/disbursement cards when:
   // - bulk payments feature is enabled for this merchant (they have a disbursement wallet)
@@ -172,11 +200,6 @@ export default function StatCards() {
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {stats.map((stat) => (
           <Card key={stat.label} className="flex flex-col gap-2 relative">
-            {walletLoading && (
-              <div className="absolute top-2 right-2">
-                <RefreshCw className="h-3 w-3 animate-spin text-blue-600" />
-              </div>
-            )}
             <CardHeader className="flex flex-row items-center gap-2 text-gray-500 pb-2">
               <span className="text-xl">{stat.icon}</span>
               <span className="text-sm font-medium">{stat.label}</span>

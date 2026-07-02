@@ -29,6 +29,7 @@ import {
 } from '@/lib/utils/merchant-transaction-export';
 import { toast } from 'sonner';
 import { useSession } from 'next-auth/react';
+import { useChildMerchantContext } from '@/lib/hooks/useChildMerchantContext';
 import { getBulkTransactionStatus, getBulkTransactionList, viewBulkTransactions } from '@/lib/api/bulk-payment.api';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Badge } from '@/components/ui/badge';
@@ -148,26 +149,18 @@ export default function TransactionsPage() {
   const [currentLimit, setCurrentLimit] = useState(10);
   const [walletView, setWalletView] = useState<'all' | 'collection' | 'disbursement'>('all');
   
-  // Support for viewing child merchant transactions (for super merchants)
-  const [childMerchantId, setChildMerchantId] = useState<string | null>(null);
-  const [childMerchantCode, setChildMerchantCode] = useState<string | null>(null);
+  const {
+    childMerchantId,
+    childMerchantCode,
+    childMerchantName,
+    isViewingChild,
+    clearChildContext,
+  } = useChildMerchantContext();
   
-  // Check URL params for child merchant context
-  React.useEffect(() => {
-    if (typeof window !== 'undefined') {
-      const params = new URLSearchParams(window.location.search);
-      const merchantId = params.get('merchantId');
-      const merchantCode = params.get('merchantCode');
-      if (merchantId && merchantCode) {
-        setChildMerchantId(merchantId);
-        setChildMerchantCode(merchantCode);
-      }
-    }
-  }, []);
   // When user switches business, reset to first page so we don't show wrong pagination
   React.useEffect(() => {
     setCurrentPage(1);
-  }, [currentMerchantCode]);
+  }, [currentMerchantCode, childMerchantId]);
 
   // Receipt state
   const [selectedTransaction, setSelectedTransaction] = useState<any>(null);
@@ -201,13 +194,21 @@ export default function TransactionsPage() {
     return apiFilter;
   }, [status, from, to, currentPage, currentLimit]);
 
+  const effectiveMerchantCode = isViewingChild
+    ? childMerchantCode
+    : currentMerchantCode;
+
   const { 
     data: transactionsData, 
     isLoading, 
     error, 
     refetch, 
     isRefetching 
-  } = useMyTransactions(filter, childMerchantId || undefined, currentMerchantCode);
+  } = useMyTransactions(
+    filter,
+    childMerchantId || undefined,
+    effectiveMerchantCode,
+  );
 
   // Debug logging
   console.log('Transactions Page - API Response:', transactionsData);
@@ -364,7 +365,7 @@ export default function TransactionsPage() {
           status: status ? (status as TransactionFilter['status']) : undefined,
         },
         childMerchantId || undefined,
-        currentMerchantCode,
+        effectiveMerchantCode,
       );
 
       if (txs.length === 0) {
@@ -558,13 +559,16 @@ export default function TransactionsPage() {
           </div>
           
           {/* Child Merchant Context Banner */}
-          {childMerchantId && childMerchantCode && (
+          {isViewingChild && childMerchantCode && (
             <div className="mt-4 p-4 bg-yellow-50 border border-yellow-200 rounded-lg flex items-center justify-between">
               <div className="flex items-center gap-3">
                 <Building2 className="h-5 w-5 text-yellow-600" />
                 <div>
                   <p className="text-sm font-medium text-yellow-900">
-                    Viewing transactions for child merchant: <span className="font-semibold">{childMerchantCode}</span>
+                    Viewing transactions for child merchant:{' '}
+                    <span className="font-semibold">
+                      {childMerchantName || childMerchantCode}
+                    </span>
                   </p>
                   <p className="text-xs text-yellow-700 mt-1">
                     You are viewing transactions as a super merchant
@@ -574,14 +578,9 @@ export default function TransactionsPage() {
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() => {
-                  setChildMerchantId(null);
-                  setChildMerchantCode(null);
-                  // Remove query params from URL
-                  const url = new URL(window.location.href);
-                  url.searchParams.delete('merchantId');
-                  url.searchParams.delete('merchantCode');
-                  window.history.replaceState({}, '', url.toString());
+                onClick={async () => {
+                  await clearChildContext();
+                  refetch();
                 }}
                 className="text-yellow-700 border-yellow-300 hover:bg-yellow-100"
               >

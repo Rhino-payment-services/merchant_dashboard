@@ -131,6 +131,8 @@ export const authOptions: NextAuthOptions = {
         token.subscriberType = u.subscriberType
         token.merchantCode = u.merchantCode
         token.merchants = u.merchants || []
+        token.viewingChildMerchantId = u.viewingChildMerchantId ?? null
+        token.viewingChildMerchantName = u.viewingChildMerchantName ?? null
         token.hasPendingMerchant = u.hasPendingMerchant || false
         token.hasPassword = u.hasPassword ?? false
       }
@@ -152,6 +154,8 @@ export const authOptions: NextAuthOptions = {
         (session.user as any).subscriberType = token.subscriberType as string;
         (session.user as any).merchantCode = token.merchantCode as string;
         (session.user as any).merchants = token.merchants as any[];
+        (session.user as any).viewingChildMerchantId = (token.viewingChildMerchantId as string | null) ?? null;
+        (session.user as any).viewingChildMerchantName = (token.viewingChildMerchantName as string | null) ?? null;
         (session.user as any).hasPendingMerchant = token.hasPendingMerchant as boolean;
         (session.user as any).hasPassword = token.hasPassword as boolean;
         (session.user as any).accessToken = token.accessToken as string;
