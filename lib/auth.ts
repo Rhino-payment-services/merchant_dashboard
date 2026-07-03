@@ -48,6 +48,39 @@ export const authOptions: NextAuthOptions = {
         }
       }
     }),
+    CredentialsProvider({
+      id: "merchant-pin",
+      name: "Merchant Portal PIN",
+      credentials: {
+        phoneNumber: { label: "Phone Number", type: "text" },
+        pin: { label: "PIN", type: "password" },
+      },
+      async authorize(credentials) {
+        try {
+          if (!credentials?.phoneNumber || !credentials?.pin) {
+            throw new Error("Phone number and PIN are required")
+          }
+
+          const apiUrl = getApiUrl()
+          const phoneNumber = normalizeMerchantPortalPhone(credentials.phoneNumber.trim())
+          const pin = String(credentials.pin).replace(/\D/g, "").trim()
+          const response = await axios.post(`${apiUrl}/auth/merchant/verify-pin`, {
+            phoneNumber,
+            pin,
+          })
+
+          return buildMerchantAuthUserFromPayload(JSON.stringify(response.data))
+        } catch (error: any) {
+          console.error("Merchant PIN authorization error:", error)
+          const message = error.response?.data?.message
+          throw new Error(
+            (Array.isArray(message) ? message[0] : message) ||
+              error.message ||
+              "PIN verification failed",
+          )
+        }
+      },
+    }),
     // Provider 2: Email + Password (Team Members)
     CredentialsProvider({
       id: "team-member",
@@ -131,6 +164,8 @@ export const authOptions: NextAuthOptions = {
         token.subscriberType = u.subscriberType
         token.merchantCode = u.merchantCode
         token.merchants = u.merchants || []
+        token.viewingChildMerchantId = u.viewingChildMerchantId ?? null
+        token.viewingChildMerchantName = u.viewingChildMerchantName ?? null
         token.hasPendingMerchant = u.hasPendingMerchant || false
         token.hasPassword = u.hasPassword ?? false
       }
@@ -152,6 +187,8 @@ export const authOptions: NextAuthOptions = {
         (session.user as any).subscriberType = token.subscriberType as string;
         (session.user as any).merchantCode = token.merchantCode as string;
         (session.user as any).merchants = token.merchants as any[];
+        (session.user as any).viewingChildMerchantId = (token.viewingChildMerchantId as string | null) ?? null;
+        (session.user as any).viewingChildMerchantName = (token.viewingChildMerchantName as string | null) ?? null;
         (session.user as any).hasPendingMerchant = token.hasPendingMerchant as boolean;
         (session.user as any).hasPassword = token.hasPassword as boolean;
         (session.user as any).accessToken = token.accessToken as string;

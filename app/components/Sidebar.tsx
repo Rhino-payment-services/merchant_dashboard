@@ -70,33 +70,24 @@ export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
   const { data: session } = useSession();
   const { profile } = useUserProfile();
   const merchants = (session?.user as any)?.merchants || [];
-  const currentMerchantCode = (session?.user as any)?.merchantCode;
-  const profileMerchantCode = profile?.merchant_code || profile?.merchantCode;
-  const effectiveMerchantCode = currentMerchantCode || profileMerchantCode;
+
+  // Sidebar always shows the logged-in user's own merchant — never the child being viewed
+  const ownMerchant =
+    merchants.find((m: any) => m.isSuperMerchant === true) || merchants[0];
+
+  const currentMerchant = ownMerchant;
+
+  const businessName =
+    ownMerchant?.businessTradeName ||
+    (ownMerchant?.merchantCode ? `Business · ${ownMerchant.merchantCode}` : null);
+
+  const displayMerchantCode = ownMerchant?.merchantCode;
   
-  // Improved merchant matching (handles padding and string comparison like home page)
-  const currentMerchant = effectiveMerchantCode 
-    ? merchants.find((m: any) => {
-        const mCode = String(m?.merchantCode || '').trim();
-        const eCode = String(effectiveMerchantCode || '').trim();
-        return mCode === eCode || mCode === eCode.padStart(4, '0') || eCode === mCode.padStart(4, '0');
-      })
-    : merchants[0];
-  
-  const businessName = profile?.merchant_names || profile?.businessTradeName || currentMerchant?.businessTradeName 
-    || ((effectiveMerchantCode) ? `Business · ${effectiveMerchantCode}` : null);
-  
-  // Feature flags — prefer live wallet data (profile.merchantData) so admin changes
-  // take effect without requiring the merchant to re-login.
-  const liveMerchantData = profile?.merchantData || profile?.businessWallet?.merchant;
-  const featureBulkPayments =
-    (liveMerchantData?.featureBulkPayments ?? currentMerchant?.featureBulkPayments) === true;
-  const featureLiquidation =
-    (liveMerchantData?.featureLiquidation ?? (currentMerchant as any)?.featureLiquidation) === true;
-  const featurePayroll =
-    (liveMerchantData?.featurePayroll ?? currentMerchant?.featurePayroll) === true;
-  const featurePayrollApprovals =
-    (liveMerchantData?.featurePayrollApprovals ?? currentMerchant?.featurePayrollApprovals) === true;
+  // Feature flags from the user's own session merchant (not child context)
+  const featureBulkPayments = currentMerchant?.featureBulkPayments === true;
+  const featureLiquidation = (currentMerchant as any)?.featureLiquidation === true;
+  const featurePayroll = currentMerchant?.featurePayroll === true;
+  const featurePayrollApprovals = currentMerchant?.featurePayrollApprovals === true;
 
   // Liquidate + payroll: require featureLiquidation or featureBulkPayments (Payment link is always shown).
   const canLiquidate = featureLiquidation || featureBulkPayments;
@@ -216,8 +207,8 @@ export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
             <p className="text-sm font-semibold text-[#08163d] truncate" title={businessName}>
               {businessName}
             </p>
-            {effectiveMerchantCode && (
-              <p className="text-xs text-main-600 mt-1">{effectiveMerchantCode}</p>
+            {displayMerchantCode && (
+              <p className="text-xs text-main-600 mt-1">{displayMerchantCode}</p>
             )}
           </div>
         )}
@@ -270,8 +261,8 @@ export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
               </span>
             </div>
             <div className="flex-1 min-w-0">
-              <div className="text-sm font-medium text-gray-900 truncate" title={profile?.merchant_names || profile?.businessTradeName || 'Business'}>
-                {profile?.merchant_names || profile?.businessTradeName || 'Business'}
+              <div className="text-sm font-medium text-gray-900 truncate" title={businessName || 'Business'}>
+                {businessName || 'Business'}
               </div>
               <div className="text-xs text-gray-500 truncate">
                 {profile?.owner_name ? `Signed in as ${profile.owner_name}` : 'Merchant'}

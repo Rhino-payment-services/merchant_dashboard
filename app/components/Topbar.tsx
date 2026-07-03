@@ -22,12 +22,26 @@ import { useMerchantAuth } from "@/lib/context/MerchantAuthContext";
 import { useUserProfile } from "../(dashboard)/UserProfileProvider";
 import { useSession } from "next-auth/react";
 import { Menu, X, Building2, ChevronDown, Loader2, Crown } from "lucide-react";
-import { toast } from "sonner";
 import {
   AccessibleMerchant,
   merchantCodesMatch,
   useAccessibleMerchants,
 } from "@/lib/hooks/useAccessibleMerchants";
+import { useMerchantSwitch } from "@/lib/hooks/useMerchantSwitch";
+import { cn } from "@/lib/utils";
+
+function merchantMenuItemClass(isActive: boolean) {
+  return cn(
+    "cursor-pointer",
+    isActive && [
+      "bg-main-50 font-semibold text-gray-900",
+      "data-[highlighted]:!bg-accent data-[highlighted]:!text-accent-foreground",
+      "focus:!bg-accent focus:!text-accent-foreground",
+      "data-[highlighted]:[&_svg]:!text-white",
+      "data-[highlighted]:[&_.merchant-active-dot]:!bg-white",
+    ],
+  );
+}
 
 const mockNotifications = [
   {
@@ -57,17 +71,18 @@ interface TopbarProps {
 
 export default function Topbar({ onMenuToggle, isMenuOpen }: TopbarProps) {
   const router = useRouter();
-  const { data: session, update: updateSession } = useSession();
+  const { data: session } = useSession();
   const { profile, loading } = useUserProfile();
   const { user, logout } = useMerchantAuth();
   const { merchants, loadingChildren } = useAccessibleMerchants();
+  const { switchMerchant, switching: merchantSwitching } = useMerchantSwitch();
   const currentMerchantCode = (session?.user as any)?.merchantCode;
   const profileMerchantCode = profile?.merchant_code || profile?.merchantCode;
   const effectiveMerchantCode = currentMerchantCode || profileMerchantCode;
 
   // Optimistic state: set immediately on click so the UI doesn't snap back
   const [pendingMerchantCode, setPendingMerchantCode] = useState<string | null>(null);
-  const [switching, setSwitching] = useState(false);
+  const switching = merchantSwitching;
 
   // Resolve displayed merchant using pending code first (optimistic), then session
   const displayedMerchantCode = pendingMerchantCode || effectiveMerchantCode;
@@ -82,20 +97,15 @@ export default function Topbar({ onMenuToggle, isMenuOpen }: TopbarProps) {
     ? (displayedMerchant?.businessTradeName || (displayedMerchantCode ? `Business · ${displayedMerchantCode}` : 'Select business'))
     : (profile?.merchant_names || profile?.businessTradeName || displayedMerchant?.businessTradeName || (displayedMerchantCode ? `Business · ${displayedMerchantCode}` : 'Select business'));
 
-  const handleSwitchMerchant = async (merchantCode: string) => {
-    const code = String(merchantCode || '').trim();
-    if (!code || code === effectiveMerchantCode || switching) return;
-    try {
-      setSwitching(true);
-      setPendingMerchantCode(code); // optimistically show new name right away
-      await updateSession({ merchantCode: code });
-      toast.success("Company switched");
-      // Hard navigate so the new session is guaranteed to be picked up everywhere
-      window.location.href = '/';
-    } catch {
-      setPendingMerchantCode(null); // rollback on failure
-      setSwitching(false);
-      toast.error("Failed to switch company");
+  const handleSwitchMerchant = async (merchant: AccessibleMerchant) => {
+    const code = String(merchant.merchantCode || '').trim();
+    if (!code || merchantCodesMatch(code, effectiveMerchantCode) || switching) return;
+
+    setPendingMerchantCode(code);
+    const success = await switchMerchant(merchant, '/');
+    setPendingMerchantCode(null);
+    if (!success) {
+      return;
     }
   };
 
@@ -177,8 +187,8 @@ export default function Topbar({ onMenuToggle, isMenuOpen }: TopbarProps) {
                 return (
                   <DropdownMenuItem
                     key={m.id}
-                    onClick={() => handleSwitchMerchant(m.merchantCode)}
-                    className={`cursor-pointer ${isActive ? 'bg-main-50 font-semibold' : ''}`}
+                    onClick={() => handleSwitchMerchant(m)}
+                    className={merchantMenuItemClass(isActive)}
                   >
                     {m.isSuperMerchant ? (
                       <Crown className={`w-4 h-4 mr-2 ${isActive ? 'text-yellow-600' : 'text-yellow-500'}`} />
@@ -186,7 +196,9 @@ export default function Topbar({ onMenuToggle, isMenuOpen }: TopbarProps) {
                       <Building2 className={`w-4 h-4 mr-2 ${isActive ? 'text-main-600' : 'text-gray-400'}`} />
                     )}
                     <span className="truncate">{m.businessTradeName || m.merchantCode || 'Merchant'}</span>
-                    {isActive && <span className="ml-auto w-2 h-2 rounded-full bg-main-600 flex-shrink-0" />}
+                    {isActive && (
+                      <span className="merchant-active-dot ml-auto w-2 h-2 rounded-full bg-main-600 flex-shrink-0" />
+                    )}
                   </DropdownMenuItem>
                 );
               })}
@@ -201,12 +213,14 @@ export default function Topbar({ onMenuToggle, isMenuOpen }: TopbarProps) {
                     return (
                       <DropdownMenuItem
                         key={m.id}
-                        onClick={() => handleSwitchMerchant(m.merchantCode)}
-                        className={`cursor-pointer ${isActive ? 'bg-main-50 font-semibold' : ''}`}
+                        onClick={() => handleSwitchMerchant(m)}
+                        className={merchantMenuItemClass(isActive)}
                       >
                         <Building2 className={`w-4 h-4 mr-2 ${isActive ? 'text-main-600' : 'text-gray-400'}`} />
                         <span className="truncate">{m.businessTradeName || m.merchantCode || 'Merchant'}</span>
-                        {isActive && <span className="ml-auto w-2 h-2 rounded-full bg-main-600 flex-shrink-0" />}
+                        {isActive && (
+                      <span className="merchant-active-dot ml-auto w-2 h-2 rounded-full bg-main-600 flex-shrink-0" />
+                    )}
                       </DropdownMenuItem>
                     );
                   })}

@@ -15,6 +15,9 @@ export type MerchantVerifyOtpResponse = {
     hasPassword?: boolean
     mustChangePassword?: boolean
     isFirstLogin?: boolean
+    mustSetupMerchantPortalPin?: boolean
+    merchantPortalPinSet?: boolean
+    pinLoginEnabled?: boolean
     profile?: { firstName?: string; lastName?: string } | null
     [key: string]: unknown
   }
@@ -52,6 +55,9 @@ export function mapMerchantVerifyResponseToAuthUser(data: MerchantVerifyOtpRespo
       ...user,
       mustChangePassword: user.mustChangePassword || user.isFirstLogin || false,
       isFirstLogin: user.isFirstLogin || false,
+      mustSetupMerchantPortalPin: user.mustSetupMerchantPortalPin || false,
+      merchantPortalPinSet: user.merchantPortalPinSet || false,
+      pinLoginEnabled: user.pinLoginEnabled || false,
     },
   }
 }

@@ -7,12 +7,13 @@ import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Building2, CheckCircle, Clock, ArrowRight } from 'lucide-react'
 import Image from 'next/image'
-import { toast } from 'sonner'
 import { useAccessibleMerchants } from '@/lib/hooks/useAccessibleMerchants'
+import { useMerchantSwitch } from '@/lib/hooks/useMerchantSwitch'
 
 function SelectMerchantContent() {
   const router = useRouter()
-  const { data: session, status, update } = useSession()
+  const { data: session, status } = useSession()
+  const { switchMerchant, switching: merchantSwitching } = useMerchantSwitch()
   const [isLoading, setIsLoading] = useState(false)
   const [selectedMerchantCode, setSelectedMerchantCode] = useState<string | null>(null)
 
@@ -23,35 +24,18 @@ function SelectMerchantContent() {
   const { merchants, loadingChildren } = useAccessibleMerchants()
   const hasPendingMerchant = (session?.user as any)?.hasPendingMerchant === true
 
-  const handleSelectMerchant = async (merchantCode: string) => {
+  const handleSelectMerchant = async (merchant: (typeof merchants)[number]) => {
     setIsLoading(true)
-    setSelectedMerchantCode(merchantCode)
-    try {
-      await update({ merchantCode })
-      toast.success('Merchant selected')
-      // Wait for session to propagate before navigating so dashboard fetches use correct X-Merchant-Code
-      await new Promise(resolve => setTimeout(resolve, 400))
-      const { getSession } = await import('next-auth/react')
-      const updatedSession = await getSession()
-      const updatedCode = (updatedSession?.user as any)?.merchantCode
-      if (updatedCode === merchantCode || String(updatedCode) === String(merchantCode)) {
-        router.push('/')
-        router.refresh()
-      } else {
-        // Session not yet propagated - wait a bit more then navigate anyway
-        await new Promise(resolve => setTimeout(resolve, 300))
-        router.push('/')
-        router.refresh()
-      }
-    } catch (err) {
-      toast.error('Failed to switch merchant')
+    setSelectedMerchantCode(merchant.merchantCode)
+    const success = await switchMerchant(merchant, '/')
+    if (!success) {
       setIsLoading(false)
       setSelectedMerchantCode(null)
     }
   }
 
   // Show full-screen loader while switching (or initial session / child merchant load)
-  if (isLoading || status === 'loading' || loadingChildren) {
+  if (isLoading || merchantSwitching || status === 'loading' || loadingChildren) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-main-50 via-white to-main-50 flex items-center justify-center p-4">
         <div className="text-center space-y-4">
@@ -111,7 +95,7 @@ function SelectMerchantContent() {
     const m = merchants[0]
     const currentCode = (session?.user as any)?.merchantCode
     if (currentCode !== m.merchantCode) {
-      handleSelectMerchant(m.merchantCode)
+      handleSelectMerchant(m)
       return null // loader above will render on next tick once isLoading=true
     }
     router.replace('/')
@@ -143,7 +127,7 @@ function SelectMerchantContent() {
           {merchants.filter((m) => m.isOwnAccount).map((m) => (
             <button
               key={m.id}
-              onClick={() => handleSelectMerchant(m.merchantCode)}
+              onClick={() => handleSelectMerchant(m)}
               disabled={isLoading}
               className="w-full p-4 rounded-lg border border-gray-200 hover:border-main-500 hover:bg-main-50/50 transition-all text-left flex items-center justify-between gap-4"
             >
@@ -176,7 +160,7 @@ function SelectMerchantContent() {
               {merchants.filter((m) => m.isChildMerchant).map((m) => (
                 <button
                   key={m.id}
-                  onClick={() => handleSelectMerchant(m.merchantCode)}
+                  onClick={() => handleSelectMerchant(m)}
                   disabled={isLoading}
                   className="w-full p-4 rounded-lg border border-gray-200 hover:border-main-500 hover:bg-main-50/50 transition-all text-left flex items-center justify-between gap-4"
                 >

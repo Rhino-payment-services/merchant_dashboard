@@ -15,6 +15,7 @@ import {
   rememberMerchantOtpPhone,
 } from '@/lib/auth/merchantOtpPhone';
 import { extractApiErrorMessage } from '@/lib/auth/merchantOtpUser';
+import { resolveMerchantOwnerPostLoginPath } from '@/lib/auth/merchantPortalAuth';
 
 function OTPContent() {
   const router = useRouter();
@@ -111,24 +112,8 @@ function OTPContent() {
       toast.success('OTP verified successfully!');
       clearMerchantOtpPhone();
 
-      // Full navigation so SessionProvider picks up the new session cookie
       const session = await fetch('/api/auth/session').then(r => r.json());
-      const userData = (session?.user as any)?.userData;
-      const merchants = (session?.user as any)?.merchants || [];
-      const hasPendingMerchant = (session?.user as any)?.hasPendingMerchant === true;
-
-      if (userData?.mustChangePassword || userData?.isFirstLogin) {
-        toast.info('Please set your password');
-        window.location.assign('/auth/change-password?firstLogin=true');
-        return;
-      }
-
-      if (merchants.length > 1 || (hasPendingMerchant && merchants.length === 0)) {
-        window.location.assign('/auth/select-merchant');
-        return;
-      }
-
-      window.location.assign('/');
+      window.location.assign(resolveMerchantOwnerPostLoginPath(session));
     } catch (error: unknown) {
       console.error('❌ Sign in error:', error);
       toast.error(extractApiErrorMessage(error, 'Invalid OTP, please try again'));
