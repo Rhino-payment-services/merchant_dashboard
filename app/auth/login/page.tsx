@@ -13,6 +13,11 @@ import Image from 'next/image';
 import { toast } from 'sonner';
 import { API_URL } from '@/lib/config';
 import { rememberMerchantOtpPhone, normalizeMerchantPortalPhone } from '@/lib/auth/merchantOtpPhone';
+import {
+  fetchMerchantLoginOptions,
+  resolveMerchantOwnerPostLoginPath,
+  type MerchantLoginOptions,
+} from '@/lib/auth/merchantPortalAuth';
 import Link from 'next/link';
 
 function LoginContent() {
@@ -24,6 +29,9 @@ function LoginContent() {
   const tabParam = searchParams.get('tab');
   const [isLoading, setIsLoading] = useState(false);
   const [activeTab, setActiveTab] = useState(tabParam === 'team' ? "team" : "owner");
+  const [ownerLoginMode, setOwnerLoginMode] = useState<'otp' | 'pin'>('otp');
+  const [loginOptions, setLoginOptions] = useState<MerchantLoginOptions | null>(null);
+  const [portalPin, setPortalPin] = useState('');
 
   // Owner login (Phone + OTP)
   const [ownerData, setOwnerData] = useState({
@@ -35,6 +43,29 @@ function LoginContent() {
     email: '',
     password: ''
   });
+
+  useEffect(() => {
+    const phone = normalizeMerchantPortalPhone(ownerData.phoneNumber);
+    if (!phone || phone.replace(/\D/g, '').length < 9) {
+      setLoginOptions(null);
+      return;
+    }
+
+    let cancelled = false;
+    const timer = setTimeout(async () => {
+      const options = await fetchMerchantLoginOptions(phone);
+      if (cancelled) return;
+      setLoginOptions(options);
+      if (!options?.pinEnabled && ownerLoginMode === 'pin') {
+        setOwnerLoginMode('otp');
+      }
+    }, 400);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [ownerData.phoneNumber, ownerLoginMode]);
 
   // Handle Owner Login - Request OTP
   const handleOwnerLogin = async (e: React.FormEvent) => {
@@ -86,6 +117,54 @@ function LoginContent() {
       } else {
         toast.error(message || 'Failed to send OTP. Please try again.');
       }
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleOwnerPinLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+
+    const phoneNumber = normalizeMerchantPortalPhone(ownerData.phoneNumber);
+    if (!phoneNumber) {
+      toast.error('Please enter a valid phone number');
+      return;
+    }
+    if (!loginOptions?.pinEnabled) {
+      toast.error('PIN login is not enabled for this account');
+      return;
+    }
+    if (!portalPin || portalPin.length < 4) {
+      toast.error('Please enter your portal PIN');
+      return;
+    }
+
+    setIsLoading(true);
+    try {
+      const result = await signIn('merchant-pin', {
+        phoneNumber,
+        pin: portalPin,
+        redirect: false,
+      });
+
+      if (result?.error) {
+        toast.error(result.error || 'Invalid phone number or PIN');
+        return;
+      }
+
+      if (!result?.ok) {
+        toast.error('Authentication failed. Please try again.');
+        return;
+      }
+
+      toast.success('Signed in successfully');
+      rememberMerchantOtpPhone(phoneNumber);
+
+      const session = await fetch('/api/auth/session').then((r) => r.json());
+      window.location.assign(resolveMerchantOwnerPostLoginPath(session));
+    } catch (error: unknown) {
+      console.error('PIN login error:', error);
+      toast.error(error instanceof Error ? error.message : 'PIN login failed');
     } finally {
       setIsLoading(false);
     }
@@ -198,8 +277,64 @@ function LoginContent() {
             </TabsTrigger>
           </TabsList>
 
-          {/* Business Owner Login (Phone + OTP) */}
+          {/* Business Owner Login (Phone + OTP or PIN) */}
           <TabsContent value="owner">
+            {loginOptions?.pinEnabled && (
+              <Tabs value={ownerLoginMode} onValueChange={(v) => setOwnerLoginMode(v as 'otp' | 'pin')} className="mb-4">
+                <TabsList className="grid w-full grid-cols-2">
+                  <TabsTrigger value="otp">OTP</TabsTrigger>
+                  <TabsTrigger value="pin">PIN</TabsTrigger>
+                </TabsList>
+              </Tabs>
+            )}
+
+            {ownerLoginMode === 'pin' && loginOptions?.pinEnabled ? (
+              <form onSubmit={handleOwnerPinLogin} className="space-y-4">
+                <div>
+                  <label htmlFor="phoneNumberPin" className="text-sm font-medium text-gray-700">Phone Number</label>
+                  <div className="mt-2">
+                    <PhoneNumberInput
+                      value={ownerData.phoneNumber}
+                      onChange={(value) => setOwnerData({ ...ownerData, phoneNumber: value })}
+                      placeholder="700 123 456"
+                      defaultCountry="ug"
+                    />
+                  </div>
+                </div>
+                <div>
+                  <label htmlFor="portalPin" className="text-sm font-medium text-gray-700">Portal PIN</label>
+                  <div className="relative mt-2">
+                    <Lock className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
+                    <Input
+                      id="portalPin"
+                      type="password"
+                      inputMode="numeric"
+                      maxLength={6}
+                      placeholder="Enter your portal PIN"
+                      value={portalPin}
+                      onChange={(e) => setPortalPin(e.target.value.replace(/\D/g, ''))}
+                      className="pl-10"
+                      required
+                    />
+                  </div>
+                  {loginOptions?.pinSetupRequired && (
+                    <p className="text-xs text-amber-600 mt-2">
+                      No portal PIN set yet. Sign in with OTP first, or use a temporary PIN from your admin.
+                    </p>
+                  )}
+                </div>
+                <Button
+                  type="submit"
+                  className="w-full py-3 bg-main-600 hover:bg-main-700 text-white font-medium rounded-lg transition-all duration-200"
+                  disabled={isLoading}
+                >
+                  {isLoading ? 'Signing in…' : 'Sign in with PIN'}
+                </Button>
+                <p className="text-xs text-center text-gray-500">
+                  Merchant dashboard PIN only
+                </p>
+              </form>
+            ) : (
             <form onSubmit={handleOwnerLogin} className="space-y-4">
               <div>
                 <label htmlFor="phoneNumber" className="text-sm font-medium text-gray-700">Phone Number</label>
@@ -228,6 +363,7 @@ function LoginContent() {
                 You'll receive a 6-digit OTP via SMS
               </p>
             </form>
+            )}
           </TabsContent>
 
           {/* Team Member Login (Email + Password only) */}
