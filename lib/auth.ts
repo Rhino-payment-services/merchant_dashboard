@@ -48,6 +48,39 @@ export const authOptions: NextAuthOptions = {
         }
       }
     }),
+    CredentialsProvider({
+      id: "merchant-pin",
+      name: "Merchant Portal PIN",
+      credentials: {
+        phoneNumber: { label: "Phone Number", type: "text" },
+        pin: { label: "PIN", type: "password" },
+      },
+      async authorize(credentials) {
+        try {
+          if (!credentials?.phoneNumber || !credentials?.pin) {
+            throw new Error("Phone number and PIN are required")
+          }
+
+          const apiUrl = getApiUrl()
+          const phoneNumber = normalizeMerchantPortalPhone(credentials.phoneNumber.trim())
+          const pin = String(credentials.pin).replace(/\D/g, "").trim()
+          const response = await axios.post(`${apiUrl}/auth/merchant/verify-pin`, {
+            phoneNumber,
+            pin,
+          })
+
+          return buildMerchantAuthUserFromPayload(JSON.stringify(response.data))
+        } catch (error: any) {
+          console.error("Merchant PIN authorization error:", error)
+          const message = error.response?.data?.message
+          throw new Error(
+            (Array.isArray(message) ? message[0] : message) ||
+              error.message ||
+              "PIN verification failed",
+          )
+        }
+      },
+    }),
     // Provider 2: Email + Password (Team Members)
     CredentialsProvider({
       id: "team-member",
