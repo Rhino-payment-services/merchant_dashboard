@@ -31,6 +31,7 @@ import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
 import { toast } from 'sonner';
 import { useSession } from 'next-auth/react';
+import { useChildMerchantContext } from '@/lib/hooks/useChildMerchantContext';
 import {
   downloadTextFile,
   fetchAllBusinessTransactions,
@@ -81,6 +82,15 @@ export default function ReportsPage() {
           ? String(profile?.merchant_code ?? profile?.merchantCode ?? '')
           : null;
 
+  const {
+    childMerchantId,
+    childMerchantCode,
+    isViewingChild,
+  } = useChildMerchantContext();
+  const effectiveMerchantCode = isViewingChild
+    ? childMerchantCode
+    : currentMerchantCode;
+
   const [dateRange, setDateRange] = useState({ from: '', to: '' });
   const [exportDateRange, setExportDateRange] = useState({ from: '', to: '' });
   const [transactionType, setTransactionType] = useState<'all' | 'credit' | 'debit'>('all');
@@ -119,7 +129,11 @@ export default function ReportsPage() {
     isLoading: transactionsLoading, 
     error: transactionsError,
     refetch: refetchTransactions
-  } = useMyTransactions(apiFilter);
+  } = useMyTransactions(
+    apiFilter,
+    childMerchantId || undefined,
+    effectiveMerchantCode,
+  );
 
   // Transform API transactions to the format expected by the reports page
   const transformTransaction = (apiTxn: any): Transaction => {
@@ -342,8 +356,8 @@ export default function ReportsPage() {
 
       const apiTxs = await fetchAllBusinessTransactions(
         filter,
-        undefined,
-        currentMerchantCode,
+        childMerchantId || undefined,
+        effectiveMerchantCode,
       );
 
       if (apiTxs.length === 0) {

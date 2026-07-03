@@ -106,3 +106,27 @@ export const getChildMerchants = async (superMerchantId: string): Promise<{ chil
     return { childMerchants: [], total: 0 }
   }
 }
+
+export interface ChildMerchantWallet {
+  userId: string
+  merchantId: string
+  merchantCode: string
+  businessTradeName: string
+  balance: number
+  collectionBalance?: number
+  disbursementBalance?: number
+  currency: string
+  updatedAt: string
+}
+
+/**
+ * Get business wallet for a child merchant (super merchant access)
+ */
+export const getChildMerchantWallet = async (
+  childMerchantId: string,
+): Promise<ChildMerchantWallet> => {
+  const response = await apiClient.get<ChildMerchantWallet>(
+    `/super-merchant/child-merchant/${childMerchantId}/wallet`,
+  )
+  return response.data
+}

@@ -69,6 +69,10 @@ export function UserProfileProvider({
   // Get user data from session (preferred) or MerchantAuthContext
   const userData = (session?.user as any)?.userData || (session?.user as any)?.user || user;
   const sessionMerchantCode = (session?.user as any)?.merchantCode ?? (userData as any)?.merchantCode;
+  const viewingChildMerchantId =
+    (session?.user as any)?.viewingChildMerchantId ?? null;
+  const viewingChildMerchantName =
+    (session?.user as any)?.viewingChildMerchantName ?? null;
   const sessionMerchants = (session?.user as any)?.merchants || (userData as any)?.merchants || [];
 
   const {
@@ -78,8 +82,58 @@ export function UserProfileProvider({
     refetch,
     isRefetching
   } = useQuery({
-    queryKey: ['userProfile', userData?.id, sessionMerchantCode],
+    queryKey: ['userProfile', userData?.id, sessionMerchantCode, viewingChildMerchantId],
     queryFn: async () => {
+      if (viewingChildMerchantId) {
+        const { getChildMerchantWallet } = await import('@/lib/api/super-merchant.api');
+        const childWallet = await getChildMerchantWallet(viewingChildMerchantId);
+        const businessName =
+          childWallet.businessTradeName ||
+          viewingChildMerchantName ||
+          childWallet.merchantCode ||
+          sessionMerchantCode ||
+          'Business';
+
+        return {
+          merchantId: childWallet.merchantId,
+          merchant_names: businessName,
+          merchant_code: childWallet.merchantCode,
+          owner_name: '',
+          merchant_phone: '',
+          business_email: '',
+          merchant_balance: childWallet.balance || 0,
+          merchant_card: '',
+          merchant_card_exp: '',
+          merchant_card_number: '',
+          merchant_status: 'ACTIVE',
+          merchant_transactions: [],
+          businessWallet: {
+            balance: childWallet.balance,
+            collectionBalance: childWallet.collectionBalance,
+            disbursementBalance: childWallet.disbursementBalance,
+            currency: childWallet.currency,
+            merchantId: childWallet.merchantId,
+            merchant: {
+              id: childWallet.merchantId,
+              merchantCode: childWallet.merchantCode,
+              businessTradeName: businessName,
+            },
+          },
+          userType: (session?.user as any)?.userType || userData?.userType,
+          role: (session?.user as any)?.role || userData?.role,
+          isTeamMember: false,
+          isWalletOwner: false,
+          merchantData: {
+            id: childWallet.merchantId,
+            merchantCode: childWallet.merchantCode,
+            businessTradeName: businessName,
+          },
+          merchantBusinessTradeName: businessName,
+          businessTradeName: businessName,
+          merchantCode: childWallet.merchantCode,
+        };
+      }
+
       // Check if user is a team member by checking for wallet team membership
       const userType = (session?.user as any)?.userType || userData?.userType;
       const userRole = (session?.user as any)?.role || userData?.role;

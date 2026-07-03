@@ -1,5 +1,5 @@
 "use client"
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import Head from 'next/head';
 import { Card } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -29,12 +29,14 @@ import {
 } from '@/lib/utils/merchant-transaction-export';
 import { toast } from 'sonner';
 import { useSession } from 'next-auth/react';
+import { useChildMerchantContext } from '@/lib/hooks/useChildMerchantContext';
 import { getBulkTransactionStatus, getBulkTransactionList, viewBulkTransactions } from '@/lib/api/bulk-payment.api';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Badge } from '@/components/ui/badge';
 import TransactionReceipt from '@/components/TransactionReceipt';
 import { useUserProfile } from '../UserProfileProvider';
 import {
+  computeMerchantTransactionSummary,
   formatTransactionCharges,
   formatTransactionNetAmount,
   getTransactionDescriptionDisplay,
@@ -44,6 +46,7 @@ import {
   getTransactionSenderParty,
   getTransactionTypeDisplay,
   isEventLedgerTransaction,
+  matchesTransactionStatusFilter,
 } from '@/lib/utils/transaction-display';
 
 type StatusType = 'COMPLETED' | 'PENDING' | 'PROCESSING' | 'FAILED' | 'CANCELLED' | 'REFUNDED' | "SUCCESS";
@@ -148,26 +151,18 @@ export default function TransactionsPage() {
   const [currentLimit, setCurrentLimit] = useState(10);
   const [walletView, setWalletView] = useState<'all' | 'collection' | 'disbursement'>('all');
   
-  // Support for viewing child merchant transactions (for super merchants)
-  const [childMerchantId, setChildMerchantId] = useState<string | null>(null);
-  const [childMerchantCode, setChildMerchantCode] = useState<string | null>(null);
+  const {
+    childMerchantId,
+    childMerchantCode,
+    childMerchantName,
+    isViewingChild,
+    clearChildContext,
+  } = useChildMerchantContext();
   
-  // Check URL params for child merchant context
-  React.useEffect(() => {
-    if (typeof window !== 'undefined') {
-      const params = new URLSearchParams(window.location.search);
-      const merchantId = params.get('merchantId');
-      const merchantCode = params.get('merchantCode');
-      if (merchantId && merchantCode) {
-        setChildMerchantId(merchantId);
-        setChildMerchantCode(merchantCode);
-      }
-    }
-  }, []);
   // When user switches business, reset to first page so we don't show wrong pagination
   React.useEffect(() => {
     setCurrentPage(1);
-  }, [currentMerchantCode]);
+  }, [currentMerchantCode, childMerchantId]);
 
   // Receipt state
   const [selectedTransaction, setSelectedTransaction] = useState<any>(null);
@@ -185,6 +180,8 @@ export default function TransactionsPage() {
   const [selectedBulkTransaction, setSelectedBulkTransaction] = useState<BulkTransaction | null>(null);
   const [isBulkDetailsOpen, setIsBulkDetailsOpen] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
+  const [summaryTransactions, setSummaryTransactions] = useState<any[]>([]);
+  const [summaryLoading, setSummaryLoading] = useState(true);
 
   // Build filter object for API
   const filter: TransactionFilter = useMemo(() => {
@@ -201,13 +198,61 @@ export default function TransactionsPage() {
     return apiFilter;
   }, [status, from, to, currentPage, currentLimit]);
 
+  const summaryApiFilter = useMemo(() => {
+    const apiFilter: Omit<TransactionFilter, 'page' | 'limit' | 'status'> = {};
+    if (from) apiFilter.startDate = from;
+    if (to) apiFilter.endDate = to;
+    else if (from) apiFilter.endDate = from;
+    return apiFilter;
+  }, [from, to]);
+
+  const effectiveMerchantCode = isViewingChild
+    ? childMerchantCode
+    : currentMerchantCode;
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadSummaryTransactions() {
+      setSummaryLoading(true);
+      try {
+        const all = await fetchAllBusinessTransactions(
+          summaryApiFilter,
+          childMerchantId || undefined,
+          effectiveMerchantCode,
+        );
+        if (!cancelled) {
+          setSummaryTransactions(dedupeAdminFundTransactions(all));
+        }
+      } catch (error) {
+        console.error('Error loading transaction summary:', error);
+        if (!cancelled) {
+          setSummaryTransactions([]);
+        }
+      } finally {
+        if (!cancelled) {
+          setSummaryLoading(false);
+        }
+      }
+    }
+
+    loadSummaryTransactions();
+    return () => {
+      cancelled = true;
+    };
+  }, [summaryApiFilter, childMerchantId, effectiveMerchantCode]);
+
   const { 
     data: transactionsData, 
     isLoading, 
     error, 
     refetch, 
     isRefetching 
-  } = useMyTransactions(filter, childMerchantId || undefined, currentMerchantCode);
+  } = useMyTransactions(
+    filter,
+    childMerchantId || undefined,
+    effectiveMerchantCode,
+  );
 
   // Debug logging
   console.log('Transactions Page - API Response:', transactionsData);
@@ -255,32 +300,45 @@ export default function TransactionsPage() {
 
   // Slice unified list into per-wallet views (collection/disbursement)
   const viewScopedTransactions = useMemo(() => {
-    if (walletView === 'all') return transactions;
-    return transactions.filter((tx: any) => {
+    let base = transactions;
+    if (status) {
+      base = base.filter((tx: any) => matchesTransactionStatusFilter(tx, status));
+    }
+    if (walletView === 'all') return base;
+    return base.filter((tx: any) => {
       const bucket = classifyWalletView(tx);
       if (walletView === 'collection') return bucket === 'collection';
       if (walletView === 'disbursement') return bucket === 'disbursement';
       return true;
     });
-  }, [transactions, walletView]);
+  }, [transactions, walletView, status]);
 
-  // Calculate summary statistics from currently-scoped transactions
+  const viewScopedSummaryTransactions = useMemo(() => {
+    let base = summaryTransactions;
+    if (status) {
+      base = base.filter((tx: any) => matchesTransactionStatusFilter(tx, status));
+    }
+    if (walletView === 'all') return base;
+    return base.filter((tx: any) => {
+      const bucket = classifyWalletView(tx);
+      if (walletView === 'collection') return bucket === 'collection';
+      if (walletView === 'disbursement') return bucket === 'disbursement';
+      return true;
+    });
+  }, [summaryTransactions, walletView, status]);
+
+  // Summary across all filtered transactions (not just the current page)
   const calculatedSummary = useMemo(() => {
-    const base = viewScopedTransactions;
-    const totalAmount = base.reduce((sum, tx) => sum + (tx.amount || 0), 0);
-    const totalFee = base.reduce((sum, tx) => sum + (tx.fee || 0), 0);
-    const successfulCount = base.filter(tx => tx.status === 'SUCCESS' || tx.status === 'COMPLETED').length;
-    const failedCount = base.filter(tx => tx.status === 'FAILED').length;
-    
+    const stats = computeMerchantTransactionSummary(viewScopedSummaryTransactions);
     return {
-      totalAmount,
-      totalFee,
-      successfulCount,
-      failedCount,
-        totalTransactions: base.length,
-      walletType: (summary as any).walletType || 'PERSONAL'
+      totalAmount: stats.totalGrossAmount,
+      totalFee: stats.totalFees,
+      successfulCount: stats.successfulCount,
+      failedCount: stats.failedCount,
+      totalTransactions: stats.totalCount,
+      walletType: (summary as any).walletType || 'PERSONAL',
     };
-  }, [viewScopedTransactions, (summary as any).walletType]);
+  }, [viewScopedSummaryTransactions, (summary as any).walletType]);
 
   // Filter transactions client-side by search within the current wallet view
   const filteredTransactions = useMemo(() => {
@@ -357,15 +415,16 @@ export default function TransactionsPage() {
         : 'Preparing export…',
     );
     try {
-      const txs = await fetchAllBusinessTransactions(
-        {
-          startDate: range.startDate,
-          endDate: range.endDate,
-          status: status ? (status as TransactionFilter['status']) : undefined,
-        },
-        childMerchantId || undefined,
-        currentMerchantCode,
-      );
+      const txs = dedupeAdminFundTransactions(
+        await fetchAllBusinessTransactions(
+          {
+            startDate: range.startDate,
+            endDate: range.endDate,
+          },
+          childMerchantId || undefined,
+          effectiveMerchantCode,
+        ),
+      ).filter((tx) => matchesTransactionStatusFilter(tx, status || undefined));
 
       if (txs.length === 0) {
         toast.error('No transactions found for the selected date(s)', { id: toastId });
@@ -558,13 +617,16 @@ export default function TransactionsPage() {
           </div>
           
           {/* Child Merchant Context Banner */}
-          {childMerchantId && childMerchantCode && (
+          {isViewingChild && childMerchantCode && (
             <div className="mt-4 p-4 bg-yellow-50 border border-yellow-200 rounded-lg flex items-center justify-between">
               <div className="flex items-center gap-3">
                 <Building2 className="h-5 w-5 text-yellow-600" />
                 <div>
                   <p className="text-sm font-medium text-yellow-900">
-                    Viewing transactions for child merchant: <span className="font-semibold">{childMerchantCode}</span>
+                    Viewing transactions for child merchant:{' '}
+                    <span className="font-semibold">
+                      {childMerchantName || childMerchantCode}
+                    </span>
                   </p>
                   <p className="text-xs text-yellow-700 mt-1">
                     You are viewing transactions as a super merchant
@@ -574,14 +636,9 @@ export default function TransactionsPage() {
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() => {
-                  setChildMerchantId(null);
-                  setChildMerchantCode(null);
-                  // Remove query params from URL
-                  const url = new URL(window.location.href);
-                  url.searchParams.delete('merchantId');
-                  url.searchParams.delete('merchantCode');
-                  window.history.replaceState({}, '', url.toString());
+                onClick={async () => {
+                  await clearChildContext();
+                  refetch();
                 }}
                 className="text-yellow-700 border-yellow-300 hover:bg-yellow-100"
               >
@@ -652,30 +709,42 @@ export default function TransactionsPage() {
           <Card className="p-4">
             <h3 className="text-sm font-medium text-gray-500">Total Amount</h3>
             <p className="text-2xl font-bold text-gray-900">
-              {new Intl.NumberFormat('en-UG', { 
+              {summaryLoading ? '...' : new Intl.NumberFormat('en-UG', { 
                 style: 'currency', 
                 currency: 'UGX' 
               }).format(calculatedSummary.totalAmount || 0)}
             </p>
+            <p className="text-xs text-gray-400 mt-1">Successful transactions · gross amount</p>
           </Card>
           <Card className="p-4">
             <h3 className="text-sm font-medium text-gray-500">Total Fees</h3>
             <p className="text-2xl font-bold text-gray-900">
-              {new Intl.NumberFormat('en-UG', { 
+              {summaryLoading ? '...' : new Intl.NumberFormat('en-UG', { 
                 style: 'currency', 
                 currency: 'UGX' 
               }).format(calculatedSummary.totalFee || 0)}
             </p>
+            <p className="text-xs text-gray-400 mt-1">Successful transactions only</p>
           </Card>
           <Card className="p-4">
             <h3 className="text-sm font-medium text-gray-500">Successful</h3>
-            <p className="text-2xl font-bold text-green-600">{calculatedSummary.successfulCount || 0}</p>
+            <p className="text-2xl font-bold text-green-600">
+              {summaryLoading ? '...' : calculatedSummary.successfulCount || 0}
+            </p>
+            <p className="text-xs text-gray-400 mt-1">All matching filters</p>
           </Card>
           <Card className="p-4">
             <h3 className="text-sm font-medium text-gray-500">Failed</h3>
-            <p className="text-2xl font-bold text-red-600">{calculatedSummary.failedCount || 0}</p>
+            <p className="text-2xl font-bold text-red-600">
+              {summaryLoading ? '...' : calculatedSummary.failedCount || 0}
+            </p>
+            <p className="text-xs text-gray-400 mt-1">Failed, cancelled, or refunded</p>
           </Card>
         </div>
+        <p className="text-xs text-gray-500 -mt-4 mb-6">
+          Summary totals include all transactions matching your date, status, and wallet filters — not just the current page.
+          Total Amount matches the <span className="font-medium">Amount</span> column (before fees), not Net Amount or wallet balance.
+        </p>
 
         <Card className="mb-6 overflow-hidden border border-gray-200 shadow-sm p-4">
           <div className="space-y-4">

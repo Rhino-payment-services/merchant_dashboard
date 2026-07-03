@@ -30,6 +30,7 @@ import {
 } from 'lucide-react';
 import { getSuperMerchantDashboard, SuperMerchantDashboard as DashboardData } from '@/lib/api/super-merchant.api';
 import { useAccessibleMerchants } from '@/lib/hooks/useAccessibleMerchants';
+import { useMerchantSwitch } from '@/lib/hooks/useMerchantSwitch';
 import Link from 'next/link';
 import {
   DropdownMenu,
@@ -62,7 +63,8 @@ interface MerchantItem {
 
 export default function SuperMerchantDashboard({ merchantId, merchantName }: SuperMerchantDashboardProps) {
   const router = useRouter();
-  const { data: session, update: updateSession } = useSession();
+  const { data: session } = useSession();
+  const { switchMerchant, switching: merchantSwitching } = useMerchantSwitch();
   const [loading, setLoading] = useState(true);
   const [dashboardData, setDashboardData] = useState<DashboardData | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -128,9 +130,13 @@ export default function SuperMerchantDashboard({ merchantId, merchantName }: Sup
     }).format(amount) + ' UGX';
   };
 
-  const handleViewChildMerchantTransactions = (childMerchantId: string, merchantCode: string) => {
-    // Navigate to transactions page with child merchant context
-    router.push(`/transactions?merchantId=${childMerchantId}&merchantCode=${merchantCode}`);
+  const handleViewChildMerchantTransactions = async (targetMerchantId: string, _merchantCode: string) => {
+    const merchant = accessibleMerchants.find((m) => m.id === targetMerchantId);
+    if (merchant) {
+      await switchMerchant(merchant, '/transactions');
+    } else {
+      router.push('/transactions');
+    }
   };
 
   const handleViewChildMerchantDetails = (childMerchantId: string) => {
@@ -139,30 +145,30 @@ export default function SuperMerchantDashboard({ merchantId, merchantName }: Sup
     // TODO: Implement child merchant details view
   };
 
-  const handleViewChildMerchantReports = (childMerchantId: string, merchantCode: string) => {
-    router.push(`/reports?merchantId=${childMerchantId}&merchantCode=${merchantCode}`);
+  const handleViewChildMerchantReports = async (targetMerchantId: string, _merchantCode: string) => {
+    const merchant = accessibleMerchants.find((m) => m.id === targetMerchantId);
+    if (merchant) {
+      await switchMerchant(merchant, '/reports');
+    } else {
+      router.push('/reports');
+    }
   };
 
   const handleViewChildMerchantQR = (merchantCode: string, businessName: string) => {
     router.push(`/qr-code?merchantCode=${merchantCode}&merchantName=${encodeURIComponent(businessName)}`);
   };
 
-  const handleSwitchMerchant = async (merchantIdToSwitch: string, merchantCode: string) => {
+  const handleSwitchMerchant = async (merchantIdToSwitch: string, _merchantCode: string) => {
+    const merchant = accessibleMerchants.find((m) => m.id === merchantIdToSwitch);
+    if (!merchant || merchantSwitching) return;
+
     if (merchantIdToSwitch === dashboardData?.superMerchant.id) {
-      // Switching to super merchant's own account
       setSelectedMerchantContext('super-merchant');
-      // Update session to use super merchant's code
-      await updateSession({ merchantCode });
-      router.push('/');
-      router.refresh();
     } else {
-      // Switching to a child merchant
       setSelectedMerchantContext(merchantIdToSwitch);
-      // Update session to use child merchant's code
-      await updateSession({ merchantCode });
-      router.push('/');
-      router.refresh();
     }
+
+    await switchMerchant(merchant, '/');
   };
 
   if (loading) {

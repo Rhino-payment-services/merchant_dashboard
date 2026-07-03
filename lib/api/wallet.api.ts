@@ -38,8 +38,21 @@ export interface TransactionsResponse {
  * Get merchant wallet balance
  * Uses /wallet/me/business to explicitly get the business wallet
  */
-export const getWalletBalance = async (): Promise<WalletBalance> => {
+export const getWalletBalance = async (childMerchantId?: string): Promise<WalletBalance> => {
   try {
+    if (childMerchantId) {
+      const { getChildMerchantWallet } = await import('./super-merchant.api')
+      const wallet = await getChildMerchantWallet(childMerchantId)
+      return {
+        userId: wallet.userId,
+        balance: wallet.balance,
+        collectionBalance: wallet.collectionBalance,
+        disbursementBalance: wallet.disbursementBalance,
+        currency: wallet.currency,
+        updatedAt: wallet.updatedAt,
+      }
+    }
+
     const response = await apiClient.get('/wallet/me/business')
     return response.data
   } catch (error: any) {
@@ -82,15 +95,27 @@ export const sweepToDisbursement = async (amount: number, merchantCode?: string)
  * This ensures that ONLY business wallet transactions are shown in the merchant dashboard
  * Personal wallet transactions will NEVER appear here
  */
-export const getMyTransactions = async (params?: {
+export const getMyTransactions = async (
+  params?: {
   page?: number
   limit?: number
   status?: string
   type?: string
   startDate?: string
   endDate?: string
-}): Promise<TransactionsResponse> => {
+},
+  childMerchantId?: string,
+  merchantCode?: string | null,
+): Promise<TransactionsResponse> => {
   try {
+    if (childMerchantId) {
+      const response = await apiClient.get(
+        `/super-merchant/child-merchant/${childMerchantId}/transactions`,
+        { params },
+      )
+      return response.data
+    }
+
     const response = await apiClient.get('/wallet/me/business/transactions', { params })
     return response.data
   } catch (error: any) {

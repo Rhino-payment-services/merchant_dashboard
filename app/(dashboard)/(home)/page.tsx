@@ -11,6 +11,8 @@ import QRCodeButton from "@/app/components/QRCodeButton";
 import SuperMerchantDashboard from "@/app/components/SuperMerchantDashboard";
 import { useUserProfile } from "../UserProfileProvider";
 import { useSession } from "next-auth/react";
+import DashboardSkeleton from "@/app/components/DashboardSkeleton";
+import { useChildMerchantContext } from '@/lib/hooks/useChildMerchantContext';
 import { RefreshCw, Crown } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
@@ -28,6 +30,13 @@ export default function Home() {
   const [isSuperMerchant, setIsSuperMerchant] = useState(false);
   const [superMerchantLoading, setSuperMerchantLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const {
+    childMerchantId,
+    childMerchantCode,
+    childMerchantName,
+    isViewingChild,
+    isContextReady,
+  } = useChildMerchantContext();
 
   const merchantCode = (session?.user as any)?.merchantCode;
   const userId = (session?.user as any)?.id;
@@ -69,6 +78,11 @@ export default function Home() {
   // Check if current merchant is a SUPER_MERCHANT (at merchant level, not user level)
   useEffect(() => {
     const checkSuperMerchantStatus = async () => {
+      if (isViewingChild) {
+        setSuperMerchantLoading(false);
+        return;
+      }
+
       // First, check if session merchants array has isSuperMerchant field (fastest check)
       if (sessionMerchantId && sessionMerchants.length > 0) {
         const sessionMerchant = sessionMerchants.find((m: any) => m.id === sessionMerchantId);
@@ -106,14 +120,19 @@ export default function Home() {
     if (!loading) {
       checkSuperMerchantStatus();
     }
-  }, [currentMerchantIdForCheck, loading, sessionMerchantId, sessionMerchants]);
+  }, [currentMerchantIdForCheck, loading, sessionMerchantId, sessionMerchants, isViewingChild]);
 
   // Helper to (re)load recent transactions for the current merchant
   const loadRecentTransactions = async () => {
-    if (!merchantCode) return;
+    if (!merchantCode && !isViewingChild) return;
+    if (isViewingChild && !childMerchantId) return;
     try {
       setTransactionsLoading(true);
-      const data = await getMyTransactions({ limit: 5 });
+      const data = await getMyTransactions(
+        { limit: 5 },
+        childMerchantId || undefined,
+        isViewingChild ? childMerchantCode : undefined,
+      );
       setRecentTransactions(data.transactions || []);
     } catch (error) {
       console.error('Error fetching recent transactions:', error);
@@ -125,9 +144,9 @@ export default function Home() {
 
   // Initial / merchant-change load for recent transactions
   useEffect(() => {
-    if (!merchantCode) return;
+    if (!merchantCode && !isViewingChild) return;
     loadRecentTransactions();
-  }, [merchantCode]);
+  }, [merchantCode, childMerchantId, isViewingChild]);
 
   const handleRefresh = async () => {
     try {
@@ -172,10 +191,11 @@ export default function Home() {
     sessionMerchants,
   ]);
 
+  const dashboardLoading = !isContextReady || (isViewingChild && loading && !profile);
+
   // Regular merchant dashboard content
   const RegularDashboard = () => (
     <>
-      {/* Stat Cards */}
       <div className="relative">
         {refreshing && (
           <div className="absolute top-2 right-2 z-10">
@@ -186,20 +206,21 @@ export default function Home() {
           </div>
         )}
         {process.env.NODE_ENV === 'development' && <DebugWallet />}
-        <StatCards />
+        {dashboardLoading ? <DashboardSkeleton /> : <StatCards />}
       </div>
-      
+
       <div className="grid grid-cols-1 gap-6">
-        {/* Recent Transactions */}
         <div className="lg:col-span-2 bg-white rounded-xl shadow p-4">
-          {transactionsLoading ? (
-            <div className="flex items-center justify-center p-8">
-              <RefreshCw className="h-6 w-6 animate-spin text-blue-600" />
-              <span className="ml-2 text-gray-600">Loading transactions...</span>
+          {dashboardLoading || transactionsLoading ? (
+            <div className="space-y-3 animate-pulse py-2">
+              <div className="h-5 w-40 bg-gray-200 rounded" />
+              {Array.from({ length: 3 }).map((_, index) => (
+                <div key={index} className="h-12 bg-gray-100 rounded" />
+              ))}
             </div>
           ) : (
-            <RecentTransactions 
-              transactions={recentTransactions as any} 
+            <RecentTransactions
+              transactions={recentTransactions as any}
               isNewFormat={true}
             />
           )}
@@ -232,7 +253,11 @@ export default function Home() {
               </div>
               <div className="flex flex-col sm:flex-row sm:items-baseline gap-1 sm:gap-2">
                 <span className="text-base text-gray-600">
-                  Managing <span className="font-semibold text-[#08163d]">{profile?.merchant_names || profile?.merchantBusinessTradeName || profile?.businessTradeName || 'Business'}</span>
+                  Managing <span className="font-semibold text-[#08163d]">
+                    {isViewingChild
+                      ? (childMerchantName || childMerchantCode || 'Child Merchant')
+                      : (profile?.merchant_names || profile?.merchantBusinessTradeName || profile?.businessTradeName || 'Business')}
+                  </span>
                   {profile?.owner_name && (
                     <span className="text-gray-500 font-normal"> · {profile.owner_name}</span>
                   )}
@@ -282,7 +307,7 @@ export default function Home() {
           </div>
         )}
         {/* Super Merchant gets tabs, regular merchants get standard dashboard */}
-        {!superMerchantLoading && isSuperMerchant && currentMerchantId ? (
+        {!superMerchantLoading && isSuperMerchant && currentMerchantId && !isViewingChild ? (
           <Tabs defaultValue="aggregate" className="w-full">
             <TabsList className="mb-6">
               <TabsTrigger value="aggregate" className="flex items-center gap-2">
@@ -305,11 +330,8 @@ export default function Home() {
               <RegularDashboard />
             </TabsContent>
           </Tabs>
-        ) : superMerchantLoading ? (
-          <div className="flex items-center justify-center p-12">
-            <RefreshCw className="h-6 w-6 animate-spin text-blue-600" />
-            <span className="ml-3 text-gray-600">Checking super merchant status...</span>
-          </div>
+        ) : superMerchantLoading && !isViewingChild ? (
+          <DashboardSkeleton />
         ) : (
           <RegularDashboard />
         )}

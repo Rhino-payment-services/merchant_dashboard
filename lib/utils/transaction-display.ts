@@ -17,6 +17,7 @@ export type TransactionLike = {
   netAmount?: number;
   currency?: string;
   direction?: string;
+  status?: string;
   counterpartyId?: string;
   counterpartyUser?: {
     phone?: string;
@@ -170,6 +171,109 @@ export function getTransactionNetAmount(
     return amount - fee;
   }
   return amount;
+}
+
+export interface MerchantTransactionSummary {
+  totalCount: number;
+  successfulCount: number;
+  failedCount: number;
+  pendingCount: number;
+  /** Sum of gross amount for successful transactions (matches Amount column). */
+  totalGrossAmount: number;
+  /** Sum of fees for successful transactions. */
+  totalFees: number;
+  /** Sum of gross amount for successful credits. */
+  totalCreditGross: number;
+  /** Sum of gross amount for successful debits. */
+  totalDebitGross: number;
+}
+
+export function isSuccessfulTransactionStatus(status?: string): boolean {
+  const normalized = String(status || '').toUpperCase();
+  return normalized === 'SUCCESS' || normalized === 'COMPLETED';
+}
+
+/** Match UI status filter against transaction status (backend may not filter by status). */
+export function matchesTransactionStatusFilter(
+  txn: TransactionLike | null | undefined,
+  statusFilter?: string,
+): boolean {
+  if (!statusFilter) return true;
+  const txStatus = String(txn?.status || '').toUpperCase();
+  const filter = statusFilter.toUpperCase();
+  if (filter === 'COMPLETED') {
+    return txStatus === 'SUCCESS' || txStatus === 'COMPLETED';
+  }
+  return txStatus === filter;
+}
+
+export function isCreditLikeTransaction(txn: TransactionLike | null | undefined): boolean {
+  if (!txn) return false;
+  const direction = String(txn.direction || '').toUpperCase();
+  const type = String(txn.type || '').toUpperCase();
+  return (
+    direction === 'CREDIT' ||
+    type === 'DEPOSIT' ||
+    type === 'TOPUP' ||
+    type === 'WALLET_FUNDING'
+  );
+}
+
+export function isDebitLikeTransaction(txn: TransactionLike | null | undefined): boolean {
+  if (!txn) return false;
+  const direction = String(txn.direction || '').toUpperCase();
+  const type = String(txn.type || '').toUpperCase();
+  return (
+    direction === 'DEBIT' ||
+    type === 'WITHDRAWAL' ||
+    type === 'TRANSFER'
+  );
+}
+
+/** Aggregate merchant transaction stats consistently across dashboard and transactions pages. */
+export function computeMerchantTransactionSummary(
+  transactions: TransactionLike[],
+): MerchantTransactionSummary {
+  let successfulCount = 0;
+  let failedCount = 0;
+  let pendingCount = 0;
+  let totalGrossAmount = 0;
+  let totalFees = 0;
+  let totalCreditGross = 0;
+  let totalDebitGross = 0;
+
+  for (const txn of transactions) {
+    const status = String(txn.status || '').toUpperCase();
+    if (isSuccessfulTransactionStatus(status)) {
+      successfulCount += 1;
+      const amount = Number(txn.amount) || 0;
+      const fee = getTransactionFeeAmount(txn);
+      totalGrossAmount += amount;
+      totalFees += fee;
+      if (isCreditLikeTransaction(txn)) {
+        totalCreditGross += amount;
+      } else if (isDebitLikeTransaction(txn)) {
+        totalDebitGross += amount;
+      }
+      continue;
+    }
+    if (status === 'FAILED' || status === 'CANCELLED' || status === 'REFUNDED') {
+      failedCount += 1;
+      continue;
+    }
+    pendingCount += 1;
+  }
+
+  return {
+    totalCount: transactions.length,
+    successfulCount,
+    failedCount,
+    pendingCount,
+    totalGrossAmount,
+    totalFees,
+    totalCreditGross,
+    totalDebitGross,
+  };
 }
 
 export function formatTransactionNetAmount(
