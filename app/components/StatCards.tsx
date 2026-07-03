@@ -6,6 +6,8 @@ import { useSession } from 'next-auth/react';
 import { useChildMerchantContext } from '@/lib/hooks/useChildMerchantContext';
 import { RefreshCw, ArrowRightLeft } from 'lucide-react';
 import { getWalletBalance, getMyTransactions } from '@/lib/api/wallet.api';
+import { fetchAllBusinessTransactions } from '@/lib/utils/merchant-transaction-export';
+import { computeMerchantTransactionSummary } from '@/lib/utils/transaction-display';
 import SweepToDisbursementModal from './SweepToDisbursementModal';
 
 export default function StatCards() {
@@ -49,20 +51,23 @@ export default function StatCards() {
       setWalletBalance(balanceData.balance);
       setCollectionBalance(balanceData.collectionBalance ?? null);
       setDisbursementBalance(balanceData.disbursementBalance ?? null);
-      const transactionsData = await getMyTransactions(
-        { limit: 1000 },
+
+      const merchantCodeForTx = isViewingChild ? childMerchantCode : undefined;
+      const meta = await getMyTransactions(
+        { page: 1, limit: 1 },
         childMerchantId || undefined,
-        isViewingChild ? childMerchantCode : undefined,
+        merchantCodeForTx,
       );
-      setTotalTransactions(transactionsData.total || 0);
-      const credit = (transactionsData.transactions || [])
-        .filter(t => (t.direction === 'CREDIT' || t.type === 'DEPOSIT' || t.type === 'TOPUP') && t.status === 'SUCCESS')
-        .reduce((sum, t) => sum + t.amount, 0);
-      setTotalCredit(credit);
-      const debit = (transactionsData.transactions || [])
-        .filter(t => (t.direction === 'DEBIT' || t.type === 'WITHDRAWAL' || t.type === 'TRANSFER') && t.status === 'SUCCESS')
-        .reduce((sum, t) => sum + t.amount, 0);
-      setTotalDebit(debit);
+      setTotalTransactions(meta.total || 0);
+
+      const allTransactions = await fetchAllBusinessTransactions(
+        {},
+        childMerchantId || undefined,
+        merchantCodeForTx,
+      );
+      const summary = computeMerchantTransactionSummary(allTransactions);
+      setTotalCredit(summary.totalCreditGross);
+      setTotalDebit(summary.totalDebitGross);
     } catch (error) {
       console.error('Error fetching wallet data:', error);
       setWalletBalance(0);
