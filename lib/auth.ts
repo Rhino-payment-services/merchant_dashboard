@@ -75,8 +75,7 @@ export const authOptions: NextAuthOptions = {
           const message = error.response?.data?.message
           throw new Error(
             (Array.isArray(message) ? message[0] : message) ||
-              error.message ||
-              "PIN verification failed",
+              "Invalid phone number or PIN.",
           )
         }
       },

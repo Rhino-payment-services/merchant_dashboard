@@ -7,7 +7,8 @@ import { Button } from "@/components/ui/button";
 import { useSession } from "next-auth/react";
 import { toast } from "sonner";
 import apiClient from "@/lib/api/client";
-import { User, Mail, Phone, Lock, AlertCircle } from "lucide-react";
+import { User, Mail, Phone, Lock, AlertCircle, KeyRound } from "lucide-react";
+import Link from "next/link";
 
 export default function SettingsPage() {
   const { data: session, update } = useSession();
@@ -137,6 +138,8 @@ export default function SettingsPage() {
   };
 
   const phoneDisplay = userData?.phone || (session?.user as any)?.phone || "—";
+  const pinLoginEnabled = userData?.pinLoginEnabled === true;
+  const portalPinSet = userData?.merchantPortalPinSet === true;
 
   return (
     <div className="min-h-screen bg-gray-50 p-8">
@@ -236,6 +239,27 @@ export default function SettingsPage() {
             </div>
           </form>
         </Card>
+
+        {pinLoginEnabled && (
+          <Card className="p-8 mb-8">
+            <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
+              <KeyRound className="w-5 h-5 text-main-600" />
+              Merchant Portal PIN
+            </h3>
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+              <p className="text-sm text-gray-700">
+                {portalPinSet
+                  ? "Your portal PIN is set. Use the button below to change it."
+                  : "No portal PIN set yet. Create one to use PIN sign-in."}
+              </p>
+              <Button asChild variant="outline" className="shrink-0">
+                <Link href="/auth/setup-portal-pin">
+                  {portalPinSet ? "Change portal PIN" : "Set up portal PIN"}
+                </Link>
+              </Button>
+            </div>
+          </Card>
+        )}
 
         <Card className="p-8 mb-8">
           <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
