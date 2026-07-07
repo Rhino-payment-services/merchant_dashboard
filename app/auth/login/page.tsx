@@ -6,6 +6,7 @@ import { signIn } from 'next-auth/react';
 import { Button } from '../../../components/ui/button';
 import { Card } from '../../../components/ui/card';
 import { Input } from '../../../components/ui/input';
+import { PinInput } from '../../../components/ui/pin-input';
 import { PhoneNumberInput } from '../../../components/ui/phone-input';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../../../components/ui/tabs';
 import { Phone, Mail, Lock, Building2 } from 'lucide-react';
@@ -148,8 +149,12 @@ function LoginContent() {
       });
 
       if (result?.error) {
-        toast.error(result.error || 'Invalid phone number or PIN');
-        return;
+        const message =
+          result.error === 'CredentialsSignin'
+            ? 'Invalid phone number or PIN.'
+            : result.error
+        toast.error(message)
+        return
       }
 
       if (!result?.ok) {
@@ -303,17 +308,13 @@ function LoginContent() {
                 </div>
                 <div>
                   <label htmlFor="portalPin" className="text-sm font-medium text-gray-700">Portal PIN</label>
-                  <div className="relative mt-2">
-                    <Lock className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
-                    <Input
+                  <div className="mt-2">
+                    <PinInput
                       id="portalPin"
-                      type="password"
-                      inputMode="numeric"
-                      maxLength={6}
                       placeholder="Enter your portal PIN"
                       value={portalPin}
-                      onChange={(e) => setPortalPin(e.target.value.replace(/\D/g, ''))}
-                      className="pl-10"
+                      onChange={setPortalPin}
+                      leftIcon={<Lock className="h-4 w-4" />}
                       required
                     />
                   </div>
@@ -331,7 +332,20 @@ function LoginContent() {
                   {isLoading ? 'Signing in…' : 'Sign in with PIN'}
                 </Button>
                 <p className="text-xs text-center text-gray-500">
-                  Merchant dashboard PIN only
+                  Merchant dashboard PIN only ·{' '}
+                  <Link
+                    href={
+                      ownerData.phoneNumber
+                        ? `/auth/forgot-portal-pin?phoneNumber=${encodeURIComponent(
+                            normalizeMerchantPortalPhone(ownerData.phoneNumber) ||
+                              ownerData.phoneNumber,
+                          )}`
+                        : '/auth/forgot-portal-pin'
+                    }
+                    className="text-main-600 hover:underline"
+                  >
+                    Forgot portal PIN?
+                  </Link>
                 </p>
               </form>
             ) : (

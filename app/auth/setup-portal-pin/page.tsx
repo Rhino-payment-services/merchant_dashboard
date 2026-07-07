@@ -5,13 +5,13 @@ import { useSession } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
-import { Input } from '@/components/ui/input'
+import { PinInput } from '@/components/ui/pin-input'
 import { Label } from '@/components/ui/label'
 import { toast } from 'sonner'
 import { setupMerchantPortalPin } from '@/lib/auth/merchantPortalAuth'
 
 function SetupPortalPinContent() {
-  const { data: session, status } = useSession()
+  const { data: session, status, update } = useSession()
   const router = useRouter()
   const [newPin, setNewPin] = useState('')
   const [confirmPin, setConfirmPin] = useState('')
@@ -48,6 +48,16 @@ function SetupPortalPinContent() {
         confirmPin,
         portalPinSet ? currentPin : undefined,
       )
+      await update({
+        user: {
+          ...(session?.user as object),
+          userData: {
+            ...((session?.user as { userData?: Record<string, unknown> })?.userData || {}),
+            merchantPortalPinSet: true,
+            mustSetupMerchantPortalPin: false,
+          },
+        },
+      })
       toast.success('Merchant portal PIN saved')
       router.replace('/')
     } catch (error: unknown) {
@@ -79,43 +89,37 @@ function SetupPortalPinContent() {
           {portalPinSet && (
             <div>
               <Label htmlFor="currentPin">Current portal PIN</Label>
-              <Input
-                id="currentPin"
-                type="password"
-                inputMode="numeric"
-                maxLength={6}
-                value={currentPin}
-                onChange={(e) => setCurrentPin(e.target.value.replace(/\D/g, ''))}
-                className="mt-1"
-                required
-              />
+              <div className="mt-1">
+                <PinInput
+                  id="currentPin"
+                  value={currentPin}
+                  onChange={setCurrentPin}
+                  required
+                />
+              </div>
             </div>
           )}
           <div>
             <Label htmlFor="newPin">{portalPinSet ? 'New portal PIN' : 'Portal PIN (4–6 digits)'}</Label>
-            <Input
-              id="newPin"
-              type="password"
-              inputMode="numeric"
-              maxLength={6}
-              value={newPin}
-              onChange={(e) => setNewPin(e.target.value.replace(/\D/g, ''))}
-              className="mt-1"
-              required
-            />
+            <div className="mt-1">
+              <PinInput
+                id="newPin"
+                value={newPin}
+                onChange={setNewPin}
+                required
+              />
+            </div>
           </div>
           <div>
             <Label htmlFor="confirmPin">Confirm portal PIN</Label>
-            <Input
-              id="confirmPin"
-              type="password"
-              inputMode="numeric"
-              maxLength={6}
-              value={confirmPin}
-              onChange={(e) => setConfirmPin(e.target.value.replace(/\D/g, ''))}
-              className="mt-1"
-              required
-            />
+            <div className="mt-1">
+              <PinInput
+                id="confirmPin"
+                value={confirmPin}
+                onChange={setConfirmPin}
+                required
+              />
+            </div>
           </div>
           <Button type="submit" className="w-full" disabled={isLoading}>
             {isLoading ? 'Saving…' : 'Save portal PIN'}

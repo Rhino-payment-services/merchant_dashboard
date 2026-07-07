@@ -35,7 +35,7 @@ export default function RootLayout({
   return (
     <MerchantAuthGuard>
       <UserProfileProvider>
-        <div className="w-full h-screen flex bg-gray-50 overflow-hidden">
+        <div className="w-full h-screen flex bg-gray-50 overflow-hidden min-h-0">
           {/* Sidebar */}
           <Sidebar 
             isOpen={isMobileMenuOpen} 

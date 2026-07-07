@@ -175,13 +175,13 @@ export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
       
       {/* Sidebar */}
       <aside className={`
-        fixed md:static top-0 left-0 h-full w-64 bg-white z-50 md:z-auto
+        fixed md:static top-0 left-0 h-screen md:h-auto md:self-stretch w-64 shrink-0 bg-white z-50 md:z-auto
         transform transition-transform duration-300 ease-in-out
         ${isOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}
-        flex flex-col p-6 border-r border-gray-200
+        flex flex-col overflow-hidden p-6 border-r border-gray-200
       `}>
         {/* Mobile Close Button */}
-        <div className="md:hidden flex justify-end mb-4">
+        <div className="md:hidden flex-shrink-0 flex justify-end mb-4">
           <Button
             variant="ghost"
             size="icon"
@@ -193,13 +193,13 @@ export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
         </div>
 
         {/* Logo */}
-        <div className="mb-4 flex items-center gap-3">
+        <div className="flex-shrink-0 mb-4 flex items-center gap-3">
           <Image src="/images/logo.jpg" alt="RukaPay" width={48} height={48} className='rounded-lg shadow-sm' />
           <span className="text-2xl font-bold text-[#08163d]">RukaPay</span>
         </div>
         {/* Current business / merchant name */}
         {businessName && (
-          <div className="mb-6 px-3 py-2.5 rounded-lg bg-main-50 border border-main-100">
+          <div className="flex-shrink-0 mb-6 px-3 py-2.5 rounded-lg bg-main-50 border border-main-100">
             <div className="flex items-center gap-2 mb-1">
               <Building2 className="w-4 h-4 text-main-600 flex-shrink-0" />
               <p className="text-xs font-medium text-main-600 uppercase tracking-wide">Current business</p>
@@ -213,8 +213,8 @@ export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
           </div>
         )}
 
-        {/* Navigation */}
-        <nav className="flex-1 space-y-6">
+        {/* Navigation — scrolls when viewport is short */}
+        <nav className="flex-1 min-h-0 overflow-y-auto overscroll-y-contain space-y-6 -mr-2 pr-2">
           {filteredNavLinks.map((section) => (
             <div key={section.section}>
               <div className="text-xs text-gray-400 font-semibold mb-2 uppercase tracking-wider">{section.section}</div>
@@ -248,7 +248,7 @@ export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
         </nav>
         
         {/* User Profile Section */}
-        <div className="mt-auto pt-6 border-t border-gray-200">
+        <div className="flex-shrink-0 mt-4 pt-6 border-t border-gray-200">
           <div className="flex items-center gap-3 p-3 rounded-lg bg-gray-50">
             <div className="w-8 h-8 rounded-full bg-main-600 flex items-center justify-center flex-shrink-0">
               <span className="text-white text-sm font-semibold uppercase">
