@@ -74,3 +74,49 @@ export async function setupMerchantPortalPin(
   }
   return data
 }
+
+export async function requestMerchantPortalPinResetOtp(
+  phoneNumber: string,
+): Promise<{ success: boolean; message?: string; expiresIn?: number }> {
+  const normalized = normalizeMerchantPortalPhone(phoneNumber)
+  const response = await fetch(`${API_URL}/auth/merchant/portal-pin/request-reset-otp`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ phoneNumber: normalized }),
+  })
+  const data = await response.json().catch(() => ({}))
+  if (!response.ok || !data.success) {
+    throw new Error(
+      (typeof data.message === 'string' && data.message) ||
+        'Failed to send reset OTP',
+    )
+  }
+  return data
+}
+
+export async function resetMerchantPortalPinWithOtp(
+  phoneNumber: string,
+  otp: string,
+  newPin: string,
+  confirmPin: string,
+): Promise<{ success: boolean; message?: string }> {
+  const normalized = normalizeMerchantPortalPhone(phoneNumber)
+  const response = await fetch(`${API_URL}/auth/merchant/portal-pin/reset-with-otp`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      phoneNumber: normalized,
+      otp: String(otp).replace(/\D/g, ''),
+      newPin,
+      confirmPin,
+    }),
+  })
+  const data = await response.json().catch(() => ({}))
+  if (!response.ok || !data.success) {
+    throw new Error(
+      (typeof data.message === 'string' && data.message) ||
+        'Failed to reset portal PIN',
+    )
+  }
+  return data
+}
