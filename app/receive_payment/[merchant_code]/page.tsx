@@ -53,6 +53,7 @@ export default function ReceivePaymentPage({ params }: PaymentPageProps) {
   const [merchantInfo, setMerchantInfo] = useState<MerchantInfo | null>(null)
   const [phoneNumber, setPhoneNumber] = useState('')
   const [amount, setAmount] = useState('')
+  const [paymentDescription, setPaymentDescription] = useState('')
   const [isLoading, setIsLoading] = useState(false)
   const [isMerchantLoading, setIsMerchantLoading] = useState(true)
   const [paymentStep, setPaymentStep] = useState<'form' | 'confirm' | 'processing' | 'success' | 'error'>('form')
@@ -154,7 +155,8 @@ export default function ReceivePaymentPage({ params }: PaymentPageProps) {
         body: JSON.stringify({
           merchantCode: merchantCode,
           phoneNumber: formattedPhone,
-          amount: numAmount
+          amount: numAmount,
+          ...(paymentDescription.trim() && { description: paymentDescription.trim() }),
         })
       })
 
@@ -298,6 +300,7 @@ export default function ReceivePaymentPage({ params }: PaymentPageProps) {
               setIsLoading(false)
               setPhoneNumber('')
               setAmount('')
+              setPaymentDescription('')
             }} 
             variant="outline" 
             className="w-full mt-6"
@@ -318,6 +321,11 @@ export default function ReceivePaymentPage({ params }: PaymentPageProps) {
           <p className="text-gray-600 mb-4">
             Your payment of <span className="font-semibold">{formatCurrency(amount)}</span> has been sent to {merchantInfo.displayName || merchantInfo.businessName}.
           </p>
+          {paymentDescription.trim() && (
+            <p className="text-sm text-gray-600 mb-4">
+              Reference: <span className="font-medium">{paymentDescription.trim()}</span>
+            </p>
+          )}
           {transactionRef && (
             <div className="bg-gray-50 rounded-lg p-3 mb-4">
               <p className="text-xs text-gray-500 mb-1">Transaction Reference</p>
@@ -336,6 +344,7 @@ export default function ReceivePaymentPage({ params }: PaymentPageProps) {
             setPaymentStep('form')
             setPhoneNumber('')
             setAmount('')
+            setPaymentDescription('')
             setTransactionRef('')
           }} className="w-full">
             Make Another Payment
@@ -461,6 +470,23 @@ export default function ReceivePaymentPage({ params }: PaymentPageProps) {
                 </div>
                 <p className="text-xs text-gray-500 mt-1">
                   Minimum payment: UGX 500
+                </p>
+              </div>
+
+              <div>
+                <label htmlFor="paymentDescription" className="text-sm font-medium text-gray-700 mb-2 block">
+                  Reference / Reason for Payment (Optional)
+                </label>
+                <Input
+                  id="paymentDescription"
+                  type="text"
+                  placeholder="e.g. Invoice #123, Order payment"
+                  value={paymentDescription}
+                  onChange={(e) => setPaymentDescription(e.target.value)}
+                  maxLength={100}
+                />
+                <p className="text-xs text-gray-500 mt-1">
+                  {paymentDescription.length}/100 characters
                 </p>
               </div>
 
