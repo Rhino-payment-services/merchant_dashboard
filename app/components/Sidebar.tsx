@@ -84,13 +84,24 @@ export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
   const displayMerchantCode = ownMerchant?.merchantCode;
   
   // Feature flags from the user's own session merchant (not child context)
-  const featureBulkPayments = currentMerchant?.featureBulkPayments === true;
-  const featureLiquidation = (currentMerchant as any)?.featureLiquidation === true;
-  const featurePayroll = currentMerchant?.featurePayroll === true;
-  const featurePayrollApprovals = currentMerchant?.featurePayrollApprovals === true;
+  const liveMerchant =
+    (profile as any)?.merchantData ||
+    (profile as any)?.businessWallet?.merchant ||
+    currentMerchant;
+  const featureBulkPayments =
+    (liveMerchant?.featureBulkPayments ?? currentMerchant?.featureBulkPayments) === true;
+  const featureLiquidation =
+    (liveMerchant?.featureLiquidation ?? (currentMerchant as any)?.featureLiquidation) === true;
+  const featurePayroll =
+    (liveMerchant?.featurePayroll ?? currentMerchant?.featurePayroll) === true;
+  const featurePayrollApprovals =
+    (liveMerchant?.featurePayrollApprovals ?? currentMerchant?.featurePayrollApprovals) === true;
+  const liquidationOnlyMode =
+    (liveMerchant?.liquidationOnlyMode ?? (currentMerchant as any)?.liquidationOnlyMode) === true;
 
   // Liquidate + payroll: require featureLiquidation or featureBulkPayments (Payment link is always shown).
-  const canLiquidate = featureLiquidation || featureBulkPayments;
+  // Liquidation-Only Mode forces Liquidate visible and hides Payment/Payroll.
+  const canLiquidate = liquidationOnlyMode || featureLiquidation || featureBulkPayments;
 
   // State for super merchant status
   const [isSuperMerchant, setIsSuperMerchant] = useState(false);
@@ -140,6 +151,13 @@ export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
   const filteredNavLinks = navLinks.map(section => ({
     ...section,
     links: section.links.filter(link => {
+      if (liquidationOnlyMode) {
+        if (link.path === '/bulk-payment') return false;
+        if (link.path === '/payroll') return false;
+        if (link.path === '/payroll/approvals') return false;
+        if (link.path === '/liquidate') return true;
+        return true;
+      }
       // Payment (single + bulk + bills) is available to all merchants; Liquidate stays gated.
       if (link.path === '/liquidate') return canLiquidate;
       if (link.path === '/payroll') return featurePayroll && canLiquidate;

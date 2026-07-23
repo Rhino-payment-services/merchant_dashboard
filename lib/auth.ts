@@ -97,7 +97,8 @@ export const authOptions: NextAuthOptions = {
           // Login with backend
           const response = await axios.post(`${getApiUrl()}/auth/login`, {
             email: credentials.email,
-            password: credentials.password
+            password: credentials.password,
+            // channel: "MERCHANT_PORTAL"
           })
 
           const { user, accessToken, refreshToken } = response.data
