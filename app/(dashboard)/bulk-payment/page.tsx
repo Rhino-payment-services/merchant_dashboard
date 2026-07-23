@@ -129,6 +129,9 @@ export default function BulkPaymentPage() {
 
   const { profile } = useUserProfile();
   const liveMerchantData = profile?.merchantData || (profile as any)?.businessWallet?.merchant;
+  const liquidationOnlyMode =
+    (liveMerchantData?.liquidationOnlyMode ??
+      (currentMerchant as any)?.liquidationOnlyMode) === true;
   const featureBulkPayments =
     (liveMerchantData?.featureBulkPayments ?? currentMerchant?.featureBulkPayments) === true;
   const featureLiquidation =
@@ -1590,7 +1593,24 @@ export default function BulkPaymentPage() {
   return (
     <div key={currentMerchantCode ?? 'default'} className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 p-6">
       <div className="max-w-7xl mx-auto space-y-6">
-        {session && currentMerchant && !canLiquidate ? (
+        {liquidationOnlyMode ? (
+          <div
+            className="flex gap-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950"
+            role="status"
+          >
+            <AlertTriangle className="h-5 w-5 shrink-0 text-amber-600" aria-hidden />
+            <div>
+              <p className="font-medium">Liquidation-Only Mode is enabled</p>
+              <p className="mt-1">
+                Payments, bills, airtime, and bulk transfers are disabled. Use{' '}
+                <a href="/liquidate" className="underline font-medium">
+                  Liquidate
+                </a>{' '}
+                to send funds to your administrator-configured destination.
+              </p>
+            </div>
+          </div>
+        ) : session && currentMerchant && !canLiquidate ? (
           <div
             className="flex gap-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950"
             role="status"
@@ -1603,6 +1623,8 @@ export default function BulkPaymentPage() {
             </p>
           </div>
         ) : null}
+        {!liquidationOnlyMode && (
+        <>
         {/* Page Header */}
         <div className="mb-8">
           <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
@@ -3065,6 +3087,9 @@ export default function BulkPaymentPage() {
         </div>
           </TabsContent>
         </Tabs>
+        </>
+        )}
+
       </div>
     </div>
   );

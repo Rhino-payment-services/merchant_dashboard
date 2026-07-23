@@ -79,11 +79,53 @@ export default function LiquidatePage() {
   }>({ status: "idle" });
 
   const merchantCode = (session?.user as any)?.merchantCode as string | undefined;
+  const merchants = (session?.user as any)?.merchants || [];
+  const sessionMerchant =
+    merchants.find((m: any) => m?.merchantCode === merchantCode) || merchants[0];
+  const liveMerchant =
+    (profile as any)?.merchantData ||
+    (profile as any)?.businessWallet?.merchant ||
+    sessionMerchant;
+  const liquidationOnlyMode =
+    (liveMerchant?.liquidationOnlyMode ?? sessionMerchant?.liquidationOnlyMode) === true;
+  const lockedDestination =
+    liveMerchant?.liquidationDestination || sessionMerchant?.liquidationDestination || null;
+  const lockedDestType =
+    lockedDestination?.type === 'BANK'
+      ? 'BANK'
+      : lockedDestination?.type === 'MOBILE_MONEY'
+        ? 'MOMO'
+        : null;
+
   const gross = parseFloat(sweepAmount) || 0;
   const canSweep =
+    !liquidationOnlyMode &&
     gross > 0 &&
     collectionBalance !== null &&
     gross <= collectionBalance;
+
+  useEffect(() => {
+    if (!liquidationOnlyMode || !lockedDestination) return;
+    if (lockedDestType === 'BANK') {
+      setPayoutType('BANK');
+      const bankFromList = UGANDAN_BANKS.find(
+        (b: any) =>
+          b.bankSortCode === lockedDestination.bankCode ||
+          b.bankName === lockedDestination.bankName,
+      );
+      setPayoutBankName(bankFromList?.bankName || lockedDestination.bankName || '');
+      setPayoutAccount(lockedDestination.bankAccountNumber || '');
+      setPayoutAccountName(lockedDestination.bankAccountName || '');
+    } else if (lockedDestType === 'MOMO') {
+      setPayoutType('MOMO');
+      setPayoutPhone(lockedDestination.momoPhone || '');
+      const provider = String(lockedDestination.momoProvider || 'MTN').toUpperCase();
+      setPayoutNetwork(provider === 'AIRTEL' ? 'Airtel' : 'MTN');
+      if (lockedDestination.momoAccountName) {
+        setPayoutAccountName(lockedDestination.momoAccountName);
+      }
+    }
+  }, [liquidationOnlyMode, lockedDestType, lockedDestination]);
 
   const fetchBalances = async () => {
     try {
@@ -142,6 +184,16 @@ export default function LiquidatePage() {
     if (payoutAmountNum <= 0) return false;
     if (payoutAmountNum > collectionBalance) return false;
 
+    if (liquidationOnlyMode) {
+      if (lockedDestType === 'BANK') {
+        return !!payoutAccount.trim() && !!payoutBankName;
+      }
+      if (lockedDestType === 'MOMO') {
+        return !!payoutPhone.trim() && Boolean(payoutNetwork);
+      }
+      return false;
+    }
+
     if (payoutType === "BANK") {
       const accountNumberClean = payoutAccount.trim();
       const isValidAccountNumber = /^\d{8,20}$/.test(accountNumberClean);
@@ -170,6 +222,9 @@ export default function LiquidatePage() {
     payoutBankName,
     payoutPhone,
     collectionWalletId,
+    liquidationOnlyMode,
+    lockedDestType,
+    payoutNetwork,
   ]);
 
   const payoutDisabledReason = useMemo(() => {
@@ -228,15 +283,38 @@ export default function LiquidatePage() {
 
   const resetPayoutForm = async () => {
     setPayoutAmount("");
-    setPayoutPhone("");
-    setPayoutAccount("");
-    setPayoutAccountName("");
-    setPayoutBankName("");
     setPayoutReason("");
-    setPayoutNetwork("MTN");
     setBankValidation({ status: "idle" });
     setMomoValidation({ status: "idle" });
     setWalletValidation({ status: "idle" });
+    if (liquidationOnlyMode && lockedDestination) {
+      if (lockedDestType === 'BANK') {
+        setPayoutType('BANK');
+        const bankFromList = UGANDAN_BANKS.find(
+          (b: any) =>
+            b.bankSortCode === lockedDestination.bankCode ||
+            b.bankName === lockedDestination.bankName,
+        );
+        setPayoutBankName(bankFromList?.bankName || lockedDestination.bankName || '');
+        setPayoutAccount(lockedDestination.bankAccountNumber || '');
+        setPayoutAccountName(lockedDestination.bankAccountName || '');
+        setPayoutPhone('');
+      } else if (lockedDestType === 'MOMO') {
+        setPayoutType('MOMO');
+        setPayoutPhone(lockedDestination.momoPhone || '');
+        const provider = String(lockedDestination.momoProvider || 'MTN').toUpperCase();
+        setPayoutNetwork(provider === 'AIRTEL' ? 'Airtel' : 'MTN');
+        setPayoutAccount('');
+        setPayoutAccountName(lockedDestination.momoAccountName || '');
+        setPayoutBankName('');
+      }
+    } else {
+      setPayoutPhone("");
+      setPayoutAccount("");
+      setPayoutAccountName("");
+      setPayoutBankName("");
+      setPayoutNetwork("MTN");
+    }
     await fetchBalances();
   };
 
@@ -327,13 +405,15 @@ export default function LiquidatePage() {
         walletType: "BUSINESS",
         accountNumber: payoutAccount.trim(),
         accountName: (bankValidation.accountName || payoutAccountName).trim(),
-        bankSortCode: bankValidation.bankSortCode,
+        bankSortCode: bankValidation.bankSortCode || lockedDestination?.bankCode,
+        bankCode: bankValidation.bankSortCode || lockedDestination?.bankCode,
         bankName: payoutBankName,
         description: payoutReason || "Merchant liquidation payout (bank)",
         metadata: {
           channel: "MERCHANT_PORTAL",
           merchantCode,
           payoutType: "BANK",
+          isMerchantLiquidation: true,
           walletId: collectionWalletId,
           walletType: "BUSINESS_COLLECTION",
           isExplicitWalletSelection: true,
@@ -407,6 +487,7 @@ export default function LiquidatePage() {
           channel: "MERCHANT_PORTAL",
           merchantCode,
           payoutType: "MOMO",
+          isMerchantLiquidation: true,
           walletId: collectionWalletId,
           walletType: "BUSINESS_COLLECTION",
           isExplicitWalletSelection: true,
@@ -511,11 +592,14 @@ export default function LiquidatePage() {
           Liquidate
         </h1>
         <p className="text-gray-600 mt-1">
-          Move funds from collection to disbursement, then send money to your bank account. Only the account owner can liquidate.
+          {liquidationOnlyMode
+            ? 'Liquidation-Only Mode is enabled. You can only liquidate to the destination configured by your administrator.'
+            : 'Move funds from collection to disbursement, then send money to your bank account. Only the account owner can liquidate.'}
         </p>
       </div>
 
       {/* Liquidate: Collection → Disbursement */}
+      {!liquidationOnlyMode && (
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-lg">
@@ -596,8 +680,9 @@ export default function LiquidatePage() {
           )}
         </CardContent>
       </Card>
+      )}
 
-      {/* Payout from disbursement */}
+      {/* Payout from collection */}
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-lg">
@@ -605,16 +690,41 @@ export default function LiquidatePage() {
             Self liquidate (payout)
           </CardTitle>
           <CardDescription>
-            Send from your disbursement wallet to bank, mobile money, or another RukaPay user. Standard payout tariffs apply (no extra liquidation transfer fee).
+            {liquidationOnlyMode
+              ? 'Funds are paid out only to the locked destination set by your administrator. You cannot change these details.'
+              : 'Send from your collection wallet to bank, mobile money, or another RukaPay user. Standard payout tariffs apply (no extra liquidation transfer fee).'}
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
+          {liquidationOnlyMode && (
+            <div className="rounded-lg border border-blue-200 bg-blue-50 p-3 text-sm text-blue-900">
+              <div className="font-semibold">Locked liquidation destination</div>
+              {lockedDestType === 'BANK' ? (
+                <div className="mt-1 space-y-0.5">
+                  <div>Bank: {lockedDestination?.bankName || payoutBankName}</div>
+                  <div>Account: {lockedDestination?.bankAccountNumberMasked || payoutAccount}</div>
+                  <div>Name: {lockedDestination?.bankAccountName || payoutAccountName}</div>
+                </div>
+              ) : lockedDestType === 'MOMO' ? (
+                <div className="mt-1 space-y-0.5">
+                  <div>Provider: {lockedDestination?.momoProvider || payoutNetwork}</div>
+                  <div>Phone: {lockedDestination?.momoPhoneMasked || payoutPhone}</div>
+                  {lockedDestination?.momoAccountName ? (
+                    <div>Name: {lockedDestination.momoAccountName}</div>
+                  ) : null}
+                </div>
+              ) : (
+                <div className="mt-1">No destination configured. Contact your administrator.</div>
+              )}
+            </div>
+          )}
           {!hasSplitWallets ? (
             <p className="text-sm text-gray-600">
               Disbursement wallet is not available for this business.
             </p>
           ) : (
             <>
+              {!liquidationOnlyMode && (
               <div className="flex gap-2 flex-wrap">
                 <Button
                   type="button"
@@ -638,6 +748,7 @@ export default function LiquidatePage() {
                   RukaPay wallet
                 </Button>
               </div>
+              )}
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 <div>
@@ -662,6 +773,7 @@ export default function LiquidatePage() {
                         value={payoutBankName}
                         onChange={(e) => setPayoutBankName(e.target.value)}
                         className="w-full mt-1.5 px-3 py-2 border rounded-md"
+                        disabled={liquidationOnlyMode}
                       >
                         <option value="">Choose bank</option>
                         {UGANDAN_BANKS.map((b: any, i: number) => (
@@ -677,6 +789,8 @@ export default function LiquidatePage() {
                         value={payoutAccount}
                         onChange={(e) => setPayoutAccount(e.target.value)}
                         placeholder="Enter account number"
+                        disabled={liquidationOnlyMode}
+                        readOnly={liquidationOnlyMode}
                       />
                     </div>
                     <div className="md:col-span-2">
@@ -685,6 +799,8 @@ export default function LiquidatePage() {
                         value={payoutAccountName}
                         onChange={(e) => setPayoutAccountName(e.target.value)}
                         placeholder="Enter account name"
+                        disabled={liquidationOnlyMode}
+                        readOnly={liquidationOnlyMode}
                       />
                     </div>
                   </>
@@ -696,6 +812,8 @@ export default function LiquidatePage() {
                         value={payoutPhone}
                         onChange={(e) => setPayoutPhone(e.target.value)}
                         placeholder="e.g. 2567XXXXXXXX or 07XXXXXXXX"
+                        disabled={liquidationOnlyMode}
+                        readOnly={liquidationOnlyMode}
                       />
                     </div>
                     {payoutType === "MOMO" ? (
@@ -705,6 +823,7 @@ export default function LiquidatePage() {
                           value={payoutNetwork}
                           onChange={(e) => setPayoutNetwork(e.target.value)}
                           className="w-full mt-1.5 px-3 py-2 border rounded-md"
+                          disabled={liquidationOnlyMode}
                         >
                           <option value="MTN">MTN</option>
                           <option value="Airtel">Airtel</option>
