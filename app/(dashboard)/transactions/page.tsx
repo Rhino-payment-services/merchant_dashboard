@@ -340,6 +340,21 @@ export default function TransactionsPage() {
     };
   }, [viewScopedSummaryTransactions, (summary as any).walletType]);
 
+  const summaryScopeLabel = useMemo(() => {
+    const parts: string[] = [];
+    if (from && to && from === to) parts.push(`on ${from}`);
+    else if (from && to) parts.push(`${from} to ${to}`);
+    else if (from) parts.push(`from ${from}`);
+    else if (to) parts.push(`until ${to}`);
+    else parts.push('all dates');
+
+    if (status) parts.push(`status: ${status}`);
+    if (walletView === 'collection') parts.push('Collection (Collection wallet)');
+    else if (walletView === 'disbursement') parts.push('Payout (Disbursement wallet)');
+
+    return parts.join(' · ');
+  }, [from, to, status, walletView]);
+
   // Filter transactions client-side by search within the current wallet view
   const filteredTransactions = useMemo(() => {
     const base = viewScopedTransactions;
@@ -662,7 +677,7 @@ export default function TransactionsPage() {
           </TabsList>
 
           <TabsContent value="transactions" className="space-y-6">
-            {/* Wallet view toggle: All / Collection / Disbursement */}
+            {/* Wallet view toggle */}
             <Card className="p-3 mb-4">
               <div className="flex flex-wrap items-center gap-2">
                 <span className="text-sm font-medium text-gray-700">Wallet view:</span>
@@ -676,7 +691,7 @@ export default function TransactionsPage() {
                         : 'text-gray-700 hover:bg-gray-100'
                     }`}
                   >
-                    All business wallets
+                    All wallets
                   </button>
                   <button
                     type="button"
@@ -687,7 +702,7 @@ export default function TransactionsPage() {
                         : 'text-gray-700 hover:bg-gray-100'
                     }`}
                   >
-                    Collection only
+                    Collection (Collection wallet)
                   </button>
                   <button
                     type="button"
@@ -698,7 +713,7 @@ export default function TransactionsPage() {
                         : 'text-gray-700 hover:bg-gray-100'
                     }`}
                   >
-                    Disbursement only
+                    Payout (Disbursement wallet)
                   </button>
                 </div>
               </div>
@@ -714,7 +729,9 @@ export default function TransactionsPage() {
                 currency: 'UGX' 
               }).format(calculatedSummary.totalAmount || 0)}
             </p>
-            <p className="text-xs text-gray-400 mt-1">Successful transactions · gross amount</p>
+            <p className="text-xs text-gray-400 mt-1">
+              Successful only · gross (before fees) · {summaryScopeLabel}
+            </p>
           </Card>
           <Card className="p-4">
             <h3 className="text-sm font-medium text-gray-500">Total Fees</h3>
@@ -724,26 +741,30 @@ export default function TransactionsPage() {
                 currency: 'UGX' 
               }).format(calculatedSummary.totalFee || 0)}
             </p>
-            <p className="text-xs text-gray-400 mt-1">Successful transactions only</p>
+            <p className="text-xs text-gray-400 mt-1">
+              Successful only · {summaryScopeLabel}
+            </p>
           </Card>
           <Card className="p-4">
-            <h3 className="text-sm font-medium text-gray-500">Successful</h3>
+            <h3 className="text-sm font-medium text-gray-500">Total Successful</h3>
             <p className="text-2xl font-bold text-green-600">
               {summaryLoading ? '...' : calculatedSummary.successfulCount || 0}
             </p>
-            <p className="text-xs text-gray-400 mt-1">All matching filters</p>
+            <p className="text-xs text-gray-400 mt-1">{summaryScopeLabel}</p>
           </Card>
           <Card className="p-4">
-            <h3 className="text-sm font-medium text-gray-500">Failed</h3>
+            <h3 className="text-sm font-medium text-gray-500">Total Failed</h3>
             <p className="text-2xl font-bold text-red-600">
               {summaryLoading ? '...' : calculatedSummary.failedCount || 0}
             </p>
-            <p className="text-xs text-gray-400 mt-1">Failed, cancelled, or refunded</p>
+            <p className="text-xs text-gray-400 mt-1">
+              Failed, cancelled, or refunded · {summaryScopeLabel}
+            </p>
           </Card>
         </div>
         <p className="text-xs text-gray-500 -mt-4 mb-6">
-          Summary totals include all transactions matching your date, status, and wallet filters — not just the current page.
-          Total Amount matches the <span className="font-medium">Amount</span> column (before fees), not Net Amount or wallet balance.
+          These totals include <span className="font-medium">all matching transactions</span> for your current filters
+          (date, status, wallet view) — not just this page. Total Amount is the gross Amount column, not Net Amount or wallet balance.
         </p>
 
         <Card className="mb-6 overflow-hidden border border-gray-200 shadow-sm p-4">

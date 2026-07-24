@@ -18,6 +18,7 @@ export type TransactionLike = {
   currency?: string;
   direction?: string;
   status?: string;
+  createdAt?: string | Date;
   counterpartyId?: string;
   counterpartyUser?: {
     phone?: string;
@@ -277,9 +278,9 @@ export function computeMerchantTransactionSummary(
 }
 
 /**
- * Merchant reporting P&L: successful external cash movement only.
- * Excludes pending/failed and internal collection↔disbursement sweeps so
- * Revenue / Expenses / Net Income match real business inflows and outflows.
+ * Merchant cash-movement summary: successful external inflows/outflows only.
+ * Excludes pending/failed and internal collection↔disbursement sweeps.
+ * (UI labels: Total received / Total sent / Net movement)
  */
 export function computeMerchantPnLSummary(transactions: TransactionLike[]): {
   totalRevenue: number;
@@ -314,6 +315,83 @@ export function computeMerchantPnLSummary(transactions: TransactionLike[]): {
     netIncome: totalRevenue - totalExpenses,
     creditCount,
     debitCount,
+  };
+}
+
+/** Last 30 days vs the 30 days before that (for real trend % on merchant cards). */
+export function getLastTwoThirtyDayWindows(now = new Date()): {
+  startCurrent: Date;
+  endCurrent: Date;
+  startPrevious: Date;
+  endPrevious: Date;
+} {
+  const endCurrent = new Date(now);
+  const startCurrent = new Date(now);
+  startCurrent.setDate(startCurrent.getDate() - 30);
+  const endPrevious = new Date(startCurrent);
+  const startPrevious = new Date(startCurrent);
+  startPrevious.setDate(startPrevious.getDate() - 30);
+  return { startCurrent, endCurrent, startPrevious, endPrevious };
+}
+
+export function filterTransactionsByCreatedAtRange(
+  transactions: TransactionLike[],
+  start: Date,
+  end: Date,
+): TransactionLike[] {
+  return transactions.filter((txn) => {
+    const raw = txn.createdAt;
+    if (!raw) return false;
+    const created = new Date(raw);
+    if (Number.isNaN(created.getTime())) return false;
+    return created >= start && created < end;
+  });
+}
+
+export type PeriodChangeDisplay = {
+  label: string;
+  changeType: 'up' | 'down' | 'neutral';
+};
+
+/**
+ * Format a real period-over-period percent change for merchant dashboard cards.
+ * When there is no prior-period baseline, show the current-period absolute instead
+ * of a vague "New activity" label.
+ */
+export function formatPeriodPercentChange(
+  current: number,
+  previous: number,
+  options?: {
+    periodLabel?: string;
+    /** Used when previous period is 0 but current has activity */
+    noBaselineLabel?: (current: number) => string;
+  },
+): PeriodChangeDisplay {
+  const periodLabel = options?.periodLabel ?? 'vs prior 30 days';
+
+  if (previous === 0 && current === 0) {
+    return { label: 'No activity in last 30 days', changeType: 'neutral' };
+  }
+
+  if (previous === 0) {
+    const fallback =
+      options?.noBaselineLabel?.(current) ??
+      `${current.toLocaleString()} in last 30 days`;
+    return {
+      label: fallback,
+      changeType: current > 0 ? 'up' : current < 0 ? 'down' : 'neutral',
+    };
+  }
+
+  const pct = ((current - previous) / Math.abs(previous)) * 100;
+  const rounded = Math.round(pct * 10) / 10;
+  if (rounded === 0) {
+    return { label: `0% ${periodLabel}`, changeType: 'neutral' };
+  }
+  const sign = rounded > 0 ? '+' : '';
+  return {
+    label: `${sign}${rounded}% ${periodLabel}`,
+    changeType: rounded > 0 ? 'up' : 'down',
   };
 }
 

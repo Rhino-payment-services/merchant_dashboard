@@ -7,11 +7,24 @@ import { useChildMerchantContext } from '@/lib/hooks/useChildMerchantContext';
 import { RefreshCw, ArrowRightLeft } from 'lucide-react';
 import { getWalletBalance, getMyTransactions } from '@/lib/api/wallet.api';
 import { fetchAllBusinessTransactions } from '@/lib/utils/merchant-transaction-export';
-import { computeMerchantTransactionSummary } from '@/lib/utils/transaction-display';
+import {
+  computeMerchantPnLSummary,
+  filterTransactionsByCreatedAtRange,
+  formatPeriodPercentChange,
+  getLastTwoThirtyDayWindows,
+} from '@/lib/utils/transaction-display';
 import SweepToDisbursementModal from './SweepToDisbursementModal';
 
+type StatCardItem = {
+  label: string;
+  value: string;
+  change: string;
+  changeType: 'up' | 'down' | 'neutral';
+  icon: string;
+};
+
 export default function StatCards() {
-  const {profile, loading} = useUserProfile()
+  const { profile } = useUserProfile();
   const { data: session } = useSession();
   const {
     childMerchantId,
@@ -19,7 +32,6 @@ export default function StatCards() {
     isViewingChild,
   } = useChildMerchantContext();
 
-  // Determine whether this merchant has bulk payments (disbursement wallet) enabled
   const merchants = (session?.user as any)?.merchants ?? [];
   const currentMerchantCode = (session?.user as any)?.merchantCode;
   const currentMerchant = Array.isArray(merchants)
@@ -28,16 +40,23 @@ export default function StatCards() {
   const liveMerchantData = profile?.merchantData || (profile as any)?.businessWallet?.merchant;
   const featureBulkPayments =
     (liveMerchantData?.featureBulkPayments ?? currentMerchant?.featureBulkPayments) === true;
+
   const [walletBalance, setWalletBalance] = useState<number>(0);
   const [collectionBalance, setCollectionBalance] = useState<number | null>(null);
   const [disbursementBalance, setDisbursementBalance] = useState<number | null>(null);
   const [walletLoading, setWalletLoading] = useState(true);
   const [totalTransactions, setTotalTransactions] = useState<number>(0);
-  const [totalCredit, setTotalCredit] = useState<number>(0);
-  const [totalDebit, setTotalDebit] = useState<number>(0);
+  const [totalReceived, setTotalReceived] = useState<number>(0);
+  const [totalSent, setTotalSent] = useState<number>(0);
+  const [txnCountChange, setTxnCountChange] = useState(
+    formatPeriodPercentChange(0, 0),
+  );
+  const [receivedChange, setReceivedChange] = useState(
+    formatPeriodPercentChange(0, 0),
+  );
+  const [sentChange, setSentChange] = useState(formatPeriodPercentChange(0, 0));
   const [sweepModalOpen, setSweepModalOpen] = useState(false);
 
-  // Fetch wallet balance and transactions
   const fetchWalletData = async () => {
     try {
       setWalletLoading(true);
@@ -45,8 +64,9 @@ export default function StatCards() {
       setCollectionBalance(null);
       setDisbursementBalance(null);
       setTotalTransactions(0);
-      setTotalCredit(0);
-      setTotalDebit(0);
+      setTotalReceived(0);
+      setTotalSent(0);
+
       const balanceData = await getWalletBalance(childMerchantId || undefined);
       setWalletBalance(balanceData.balance);
       setCollectionBalance(balanceData.collectionBalance ?? null);
@@ -65,15 +85,67 @@ export default function StatCards() {
         childMerchantId || undefined,
         merchantCodeForTx,
       );
-      const summary = computeMerchantTransactionSummary(allTransactions);
-      setTotalCredit(summary.totalCreditGross);
-      setTotalDebit(summary.totalDebitGross);
+
+      // All-time received/sent (exclude sweeps — same rules as Reports)
+      const lifetime = computeMerchantPnLSummary(allTransactions);
+      setTotalReceived(lifetime.totalRevenue);
+      setTotalSent(lifetime.totalExpenses);
+
+      // Real trends: last 30 days vs prior 30 days
+      const windows = getLastTwoThirtyDayWindows();
+      const currentPeriodTxs = filterTransactionsByCreatedAtRange(
+        allTransactions,
+        windows.startCurrent,
+        windows.endCurrent,
+      );
+      const previousPeriodTxs = filterTransactionsByCreatedAtRange(
+        allTransactions,
+        windows.startPrevious,
+        windows.endPrevious,
+      );
+
+      setTxnCountChange(
+        formatPeriodPercentChange(
+          currentPeriodTxs.length,
+          previousPeriodTxs.length,
+          {
+            noBaselineLabel: (n) =>
+              `${n.toLocaleString()} transaction${n === 1 ? '' : 's'} in last 30 days`,
+          },
+        ),
+      );
+
+      const currentPnL = computeMerchantPnLSummary(currentPeriodTxs);
+      const previousPnL = computeMerchantPnLSummary(previousPeriodTxs);
+      setReceivedChange(
+        formatPeriodPercentChange(
+          currentPnL.totalRevenue,
+          previousPnL.totalRevenue,
+          {
+            noBaselineLabel: (n) =>
+              `UGX ${n.toLocaleString()} received in last 30 days`,
+          },
+        ),
+      );
+      setSentChange(
+        formatPeriodPercentChange(
+          currentPnL.totalExpenses,
+          previousPnL.totalExpenses,
+          {
+            noBaselineLabel: (n) =>
+              `UGX ${n.toLocaleString()} sent in last 30 days`,
+          },
+        ),
+      );
     } catch (error) {
       console.error('Error fetching wallet data:', error);
       setWalletBalance(0);
       setTotalTransactions(0);
-      setTotalCredit(0);
-      setTotalDebit(0);
+      setTotalReceived(0);
+      setTotalSent(0);
+      setTxnCountChange(formatPeriodPercentChange(0, 0));
+      setReceivedChange(formatPeriodPercentChange(0, 0));
+      setSentChange(formatPeriodPercentChange(0, 0));
     } finally {
       setWalletLoading(false);
     }
@@ -105,80 +177,75 @@ export default function StatCards() {
     );
   }
 
-  // Only show separate collection/disbursement cards when:
-  // - bulk payments feature is enabled for this merchant (they have a disbursement wallet)
-  // - AND the backend returned both balances
   const hasSplitBalances =
     featureBulkPayments &&
     collectionBalance !== null &&
     disbursementBalance !== null;
 
-  // Always show wallet stats (for both owners and team members with access)
-  const stats = hasSplitBalances
+  const stats: StatCardItem[] = hasSplitBalances
     ? [
         {
           label: 'Collection balance',
-          value: walletLoading ? '...' : `${(collectionBalance ?? 0).toLocaleString()} UGX`,
-          change: 'Incoming payments',
+          value: `${(collectionBalance ?? 0).toLocaleString()} UGX`,
+          change: 'Incoming customer payments (Collection wallet)',
           changeType: 'neutral',
           icon: '📥',
         },
         {
-          label: 'Disbursement balance',
-          value: walletLoading ? '...' : `${(disbursementBalance ?? 0).toLocaleString()} UGX`,
-          change: 'Outgoing payments',
+          label: 'Payout balance',
+          value: `${(disbursementBalance ?? 0).toLocaleString()} UGX`,
+          change: 'Available for outgoing payments (Disbursement wallet)',
           changeType: 'neutral',
           icon: '📤',
         },
         {
           label: 'Total transactions',
-          value: walletLoading ? '....' : `${totalTransactions}`,
-          change: '+1,5%',
-          changeType: 'up',
+          value: `${totalTransactions}`,
+          change: txnCountChange.label,
+          changeType: txnCountChange.changeType,
           icon: '🛒',
         },
         {
-          label: 'Total Credit',
-          value: walletLoading ? '.....' : `${totalCredit.toLocaleString()} UGX`,
-          change: '-2,5%',
-          changeType: 'down',
+          label: 'Total received',
+          value: `${totalReceived.toLocaleString()} UGX`,
+          change: receivedChange.label,
+          changeType: receivedChange.changeType,
           icon: '📦',
         },
       ]
     : [
         {
           label: 'Current balance',
-          value: walletLoading ? '...' : `${walletBalance.toLocaleString()} UGX`,
-          change: '+15,7%',
-          changeType: 'up',
+          value: `${walletBalance.toLocaleString()} UGX`,
+          change: 'Available business wallet balance',
+          changeType: 'neutral',
           icon: '💰',
         },
         {
           label: 'Total transactions',
-          value: walletLoading ? '....' : `${totalTransactions}`,
-          change: '+1,5%',
-          changeType: 'up',
+          value: `${totalTransactions}`,
+          change: txnCountChange.label,
+          changeType: txnCountChange.changeType,
           icon: '🛒',
         },
         {
-          label: 'Total Credit',
-          value: walletLoading ? '.....' : `${totalCredit.toLocaleString()} UGX`,
-          change: '-2,5%',
-          changeType: 'down',
+          label: 'Total received',
+          value: `${totalReceived.toLocaleString()} UGX`,
+          change: receivedChange.label,
+          changeType: receivedChange.changeType,
           icon: '📦',
         },
         {
-          label: 'Total Debit',
-          value: walletLoading ? '....' : `${totalDebit.toLocaleString()} UGX`,
-          change: '+32,6%',
-          changeType: 'up',
+          label: 'Total sent',
+          value: `${totalSent.toLocaleString()} UGX`,
+          change: sentChange.label,
+          changeType: sentChange.changeType,
           icon: '👥',
         },
       ];
 
   return (
     <div className="space-y-4">
-      {/* Toolbar */}
       <div className="flex items-center justify-between gap-2">
         {hasSplitBalances && (
           <Button
@@ -188,7 +255,7 @@ export default function StatCards() {
             className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white"
           >
             <ArrowRightLeft className="h-4 w-4" />
-            Transfer to Disbursement
+            Move to payout balance
           </Button>
         )}
         <button
@@ -201,7 +268,13 @@ export default function StatCards() {
         </button>
       </div>
 
-      {/* Stats Cards */}
+      {hasSplitBalances && (
+        <p className="text-xs text-gray-500">
+          Customer payments are credited to your <span className="font-medium">Collection balance</span> (Collection wallet).
+          Transfer funds to your <span className="font-medium">Payout balance</span> (Disbursement wallet) for outgoing payments.
+        </p>
+      )}
+
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {stats.map((stat) => (
           <Card key={stat.label} className="flex flex-col gap-2 relative">
@@ -211,17 +284,22 @@ export default function StatCards() {
             </CardHeader>
             <CardContent className="flex flex-col gap-1 pt-0">
               <div className="text-2xl font-bold">{stat.value}</div>
-              <div className={`text-xs font-semibold ${
-                stat.changeType === 'up' ? 'text-green-500' :
-                stat.changeType === 'down' ? 'text-red-500' :
-                'text-gray-500'
-              }`}>{stat.change}</div>
+              <div
+                className={`text-xs font-semibold ${
+                  stat.changeType === 'up'
+                    ? 'text-green-500'
+                    : stat.changeType === 'down'
+                      ? 'text-red-500'
+                      : 'text-gray-500'
+                }`}
+              >
+                {stat.change}
+              </div>
             </CardContent>
           </Card>
         ))}
       </div>
 
-      {/* Sweep modal — only mounted for merchants with split wallets */}
       {hasSplitBalances && (
         <SweepToDisbursementModal
           open={sweepModalOpen}
@@ -234,4 +312,4 @@ export default function StatCards() {
       )}
     </div>
   );
-} 
+}
