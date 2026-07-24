@@ -195,7 +195,7 @@ export default function Home() {
 
   // Regular merchant dashboard content
   const RegularDashboard = () => (
-    <>
+    <div className="space-y-6">
       <div className="relative">
         {refreshing && (
           <div className="absolute top-2 right-2 z-10">
@@ -226,7 +226,7 @@ export default function Home() {
           )}
         </div>
       </div>
-    </>
+    </div>
   );
 
   return (

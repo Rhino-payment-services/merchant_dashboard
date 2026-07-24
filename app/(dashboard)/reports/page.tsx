@@ -7,6 +7,7 @@ import { DateRangePicker } from '@/components/ui/date-range-picker';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { useUserProfile } from '../UserProfileProvider';
 import { TransactionFilter } from '@/lib/api/transactions.api';
+import { getWalletBalance } from '@/lib/api/wallet.api';
 import { useQuery } from '@tanstack/react-query';
 import { 
   Download, 
@@ -24,7 +25,8 @@ import {
   ChevronLeft,
   ChevronRight,
   ChevronsLeft,
-  ChevronsRight
+  ChevronsRight,
+  Wallet,
 } from 'lucide-react';
 import { Chart } from '../../components/chart';
 import { writeWorkbookWithSheetsToFile } from '@/lib/excel-utils';
@@ -142,6 +144,27 @@ export default function ReportsPage() {
     retry: 3,
     refetchOnWindowFocus: false,
   });
+
+  const { data: walletBalances, refetch: refetchWalletBalances } = useQuery({
+    queryKey: ['reports', 'wallet-balance', childMerchantId],
+    queryFn: () => getWalletBalance(childMerchantId || undefined),
+    staleTime: 30000,
+    retry: 2,
+    refetchOnWindowFocus: false,
+  });
+
+  const merchants = (session?.user as { merchants?: { merchantCode?: string; featureBulkPayments?: boolean }[] })?.merchants ?? [];
+  const currentMerchant = Array.isArray(merchants)
+    ? merchants.find((m) => m?.merchantCode === currentMerchantCode)
+    : undefined;
+  const liveMerchantData =
+    (profile as { merchantData?: { featureBulkPayments?: boolean } } | null)?.merchantData;
+  const featureBulkPayments =
+    (liveMerchantData?.featureBulkPayments ?? currentMerchant?.featureBulkPayments) === true;
+  const hasSplitBalances =
+    featureBulkPayments &&
+    walletBalances?.collectionBalance != null &&
+    walletBalances?.disbursementBalance != null;
 
   // Transform API transactions to the format expected by the reports page
   const transformTransaction = (apiTxn: any): Transaction => {
@@ -415,12 +438,12 @@ export default function ReportsPage() {
 
       // Build summary data
       const summaryData = [
-        { 'Metric': 'Total Revenue', 'Value': summary.totalRevenue, 'Currency': 'UGX', 'Formatted': `UGX ${Number(summary.totalRevenue).toLocaleString()}` },
-        { 'Metric': 'Total Expenses', 'Value': summary.totalExpenses, 'Currency': 'UGX', 'Formatted': `UGX ${Number(summary.totalExpenses).toLocaleString()}` },
+        { 'Metric': 'Total received', 'Value': summary.totalRevenue, 'Currency': 'UGX', 'Formatted': `UGX ${Number(summary.totalRevenue).toLocaleString()}` },
+        { 'Metric': 'Total sent', 'Value': summary.totalExpenses, 'Currency': 'UGX', 'Formatted': `UGX ${Number(summary.totalExpenses).toLocaleString()}` },
         { 'Metric': 'Net Income', 'Value': summary.netIncome, 'Currency': 'UGX', 'Formatted': `UGX ${Number(summary.netIncome).toLocaleString()}` },
         { 'Metric': 'Total Transactions', 'Value': summary.totalTransactions, 'Currency': '', 'Formatted': summary.totalTransactions.toString() },
-        { 'Metric': 'Credit Transactions', 'Value': summary.creditTransactions, 'Currency': '', 'Formatted': summary.creditTransactions.toString() },
-        { 'Metric': 'Debit Transactions', 'Value': summary.debitTransactions, 'Currency': '', 'Formatted': summary.debitTransactions.toString() },
+        { 'Metric': 'Incoming payments', 'Value': summary.creditTransactions, 'Currency': '', 'Formatted': summary.creditTransactions.toString() },
+        { 'Metric': 'Outgoing payments', 'Value': summary.debitTransactions, 'Currency': '', 'Formatted': summary.debitTransactions.toString() },
         { 'Metric': 'Average Transaction', 'Value': summary.averageTransaction, 'Currency': 'UGX', 'Formatted': `UGX ${Number(summary.averageTransaction).toLocaleString()}` },
         { 'Metric': 'Success Rate', 'Value': summary.successRate, 'Currency': '%', 'Formatted': `${summary.successRate.toFixed(1)}%` }
       ];
@@ -531,17 +554,17 @@ export default function ReportsPage() {
       pdf.setFont('helvetica', 'normal');
       let yPosition = margin + 50;
       
-      pdf.text(`Total Revenue: UGX ${Number(summary.totalRevenue).toLocaleString()}`, margin, yPosition);
+      pdf.text(`Total received: UGX ${Number(summary.totalRevenue).toLocaleString()}`, margin, yPosition);
       yPosition += 8;
-      pdf.text(`Total Expenses: UGX ${Number(summary.totalExpenses).toLocaleString()}`, margin, yPosition);
+      pdf.text(`Total sent: UGX ${Number(summary.totalExpenses).toLocaleString()}`, margin, yPosition);
       yPosition += 8;
       pdf.text(`Net Income: UGX ${Number(summary.netIncome).toLocaleString()}`, margin, yPosition);
       yPosition += 8;
       pdf.text(`Total Transactions: ${summary.totalTransactions}`, margin, yPosition);
       yPosition += 8;
-      pdf.text(`Credit Transactions: ${summary.creditTransactions}`, margin, yPosition);
+      pdf.text(`Incoming payments: ${summary.creditTransactions}`, margin, yPosition);
       yPosition += 8;
-      pdf.text(`Debit Transactions: ${summary.debitTransactions}`, margin, yPosition);
+      pdf.text(`Outgoing payments: ${summary.debitTransactions}`, margin, yPosition);
       yPosition += 8;
       pdf.text(`Success Rate: ${summary.successRate.toFixed(1)}%`, margin, yPosition);
       
@@ -685,7 +708,7 @@ export default function ReportsPage() {
   // Refresh handler
   const handleRefresh = async () => {
     try {
-      await refetchTransactions();
+      await Promise.all([refetchTransactions(), refetchWalletBalances()]);
       toast.success('Reports refreshed');
     } catch (error) {
       toast.error('Failed to refresh reports');
@@ -719,8 +742,8 @@ export default function ReportsPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 py-6 px-4 md:px-8">
-      <div className="max-w-7xl mx-auto" id="report-content">
+    <div className="min-h-screen bg-gray-50 p-4 sm:p-6 min-w-0">
+      <div className="max-w-screen-2xl w-full min-w-0" id="report-content">
         {/* Page Header */}
         <div className="mb-8">
           <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
@@ -849,30 +872,85 @@ export default function ReportsPage() {
           </CardContent>
         </Card>
 
+        {/* Live wallet balances — same context as home dashboard */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
+          {hasSplitBalances ? (
+            <>
+              <Card>
+                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                  <CardTitle className="text-sm font-medium">Collection balance</CardTitle>
+                  <Wallet className="h-4 w-4 text-green-600" />
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold">
+                    UGX {Number(walletBalances?.collectionBalance ?? 0).toLocaleString()}
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Incoming customer payments (Collection wallet)
+                  </p>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                  <CardTitle className="text-sm font-medium">Payout balance</CardTitle>
+                  <Wallet className="h-4 w-4 text-blue-600" />
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold">
+                    UGX {Number(walletBalances?.disbursementBalance ?? 0).toLocaleString()}
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Available for outgoing payments (Disbursement wallet)
+                  </p>
+                </CardContent>
+              </Card>
+            </>
+          ) : (
+            <Card className="sm:col-span-2">
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">Current balance</CardTitle>
+                <Wallet className="h-4 w-4 text-blue-600" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold">
+                  UGX {Number(walletBalances?.balance ?? 0).toLocaleString()}
+                </div>
+                <p className="text-xs text-muted-foreground">Available business wallet balance</p>
+              </CardContent>
+            </Card>
+          )}
+        </div>
+
         {/* Summary Cards */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Total Revenue</CardTitle>
+              <CardTitle className="text-sm font-medium">Total received</CardTitle>
               <TrendingUp className="h-4 w-4 text-green-600" />
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold text-green-600">UGX {Number(summary.totalRevenue).toLocaleString()}</div>
               <p className="text-xs text-muted-foreground">
-                {summary.creditTransactions} credit transactions
+                {summary.creditTransactions} successful incoming payments
+                {dateRange.from || dateRange.to
+                  ? ` · filtered${dateRange.from ? ` from ${dateRange.from}` : ''}${dateRange.to ? ` to ${dateRange.to}` : ''}`
+                  : ' · all dates'}
               </p>
             </CardContent>
           </Card>
 
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Total Expenses</CardTitle>
+              <CardTitle className="text-sm font-medium">Total sent</CardTitle>
               <TrendingDown className="h-4 w-4 text-red-600" />
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold text-red-600">UGX {Number(summary.totalExpenses).toLocaleString()}</div>
               <p className="text-xs text-muted-foreground">
-                {summary.debitTransactions} debit transactions
+                {summary.debitTransactions} successful outgoing payments
+                {dateRange.from || dateRange.to
+                  ? ` · filtered${dateRange.from ? ` from ${dateRange.from}` : ''}${dateRange.to ? ` to ${dateRange.to}` : ''}`
+                  : ' · all dates'}
               </p>
             </CardContent>
           </Card>
@@ -887,7 +965,8 @@ export default function ReportsPage() {
                 UGX {Number(summary.netIncome).toLocaleString()}
               </div>
               <p className="text-xs text-muted-foreground">
-                Revenue - Expenses
+                Total received − Total sent
+                {dateRange.from || dateRange.to ? ' · based on filtered dates' : ' · all dates'}
               </p>
             </CardContent>
           </Card>
@@ -901,41 +980,44 @@ export default function ReportsPage() {
               <div className="text-2xl font-bold text-blue-600">{summary.successRate.toFixed(1)}%</div>
               <p className="text-xs text-muted-foreground">
                 {summary.totalTransactions} total transactions
+                {status !== 'all' ? ` · status: ${status}` : ''}
+                {dateRange.from || dateRange.to ? ' · filtered dates' : ' · all dates'}
               </p>
             </CardContent>
           </Card>
         </div>
 
-        {/* Charts */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
-          <Card>
+        {/* Charts — equal columns; min-w-0 stops the bar chart from stretching the grid */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8 items-stretch">
+          <Card className="min-w-0 overflow-hidden">
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <BarChart3 className="w-5 h-5" />
                 Transaction Volume
               </CardTitle>
             </CardHeader>
-            <CardContent>
+            <CardContent className="min-w-0 overflow-hidden">
               <Chart 
                 period="Monthly" 
                 from={dateRange.from} 
                 to={dateRange.to}
                 transactions={transactions}
+                heightClass="h-[220px]"
               />
             </CardContent>
           </Card>
 
-          <Card>
+          <Card className="min-w-0 overflow-hidden">
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <PieChart className="w-5 h-5" />
                 Transaction Distribution
               </CardTitle>
             </CardHeader>
-            <CardContent>
-              <div className="space-y-4">
+            <CardContent className="flex h-full min-h-[220px] items-center">
+              <div className="w-full space-y-4">
                 <div className="flex items-center justify-between">
-                  <span className="text-sm font-medium">Credit Transactions</span>
+                  <span className="text-sm font-medium">Incoming payments</span>
                   <span className="text-sm text-green-600 font-bold">
                     {summary.creditTransactions} ({summary.totalTransactions > 0 ? ((summary.creditTransactions / summary.totalTransactions) * 100).toFixed(1) : 0}%)
                   </span>
@@ -948,7 +1030,7 @@ export default function ReportsPage() {
                 </div>
                 
                 <div className="flex items-center justify-between">
-                  <span className="text-sm font-medium">Debit Transactions</span>
+                  <span className="text-sm font-medium">Outgoing payments</span>
                   <span className="text-sm text-red-600 font-bold">
                     {summary.debitTransactions} ({summary.totalTransactions > 0 ? ((summary.debitTransactions / summary.totalTransactions) * 100).toFixed(1) : 0}%)
                   </span>
