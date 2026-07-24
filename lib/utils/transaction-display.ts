@@ -276,6 +276,47 @@ export function computeMerchantTransactionSummary(
   };
 }
 
+/**
+ * Merchant reporting P&L: successful external cash movement only.
+ * Excludes pending/failed and internal collection↔disbursement sweeps so
+ * Revenue / Expenses / Net Income match real business inflows and outflows.
+ */
+export function computeMerchantPnLSummary(transactions: TransactionLike[]): {
+  totalRevenue: number;
+  totalExpenses: number;
+  netIncome: number;
+  creditCount: number;
+  debitCount: number;
+} {
+  let totalRevenue = 0;
+  let totalExpenses = 0;
+  let creditCount = 0;
+  let debitCount = 0;
+
+  for (const txn of transactions) {
+    const status = String(txn.status || '').toUpperCase();
+    if (!isSuccessfulTransactionStatus(status)) continue;
+    if (isSweepTransaction(txn)) continue;
+
+    const amount = Number(txn.amount) || 0;
+    if (isCreditLikeTransaction(txn)) {
+      totalRevenue += amount;
+      creditCount += 1;
+    } else if (isDebitLikeTransaction(txn)) {
+      totalExpenses += amount;
+      debitCount += 1;
+    }
+  }
+
+  return {
+    totalRevenue,
+    totalExpenses,
+    netIncome: totalRevenue - totalExpenses,
+    creditCount,
+    debitCount,
+  };
+}
+
 export function formatTransactionNetAmount(
   txn: TransactionLike | null | undefined,
 ): string {

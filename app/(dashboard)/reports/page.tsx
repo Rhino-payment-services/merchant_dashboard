@@ -6,7 +6,8 @@ import { Input } from '@/components/ui/input';
 import { DateRangePicker } from '@/components/ui/date-range-picker';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { useUserProfile } from '../UserProfileProvider';
-import { useMyTransactions, TransactionFilter } from '@/lib/api/transactions.api';
+import { TransactionFilter } from '@/lib/api/transactions.api';
+import { useQuery } from '@tanstack/react-query';
 import { 
   Download, 
   FileText, 
@@ -41,11 +42,15 @@ import {
   sanitizeMerchantFilenamePart,
 } from '@/lib/utils/merchant-transaction-export';
 import {
+  computeMerchantPnLSummary,
   getTransactionReceiverParty,
   getTransactionSenderParty,
+  isSweepTransaction,
 } from '@/lib/utils/transaction-display';
 
 interface Transaction {
+  /** Stable unique row id (DB transaction id) — references can repeat for sweep pairs */
+  rowKey: string;
   rdbs_transaction_id: string;
   rdbs_approval_date: string;
   rdbs_sender_name: string;
@@ -55,6 +60,10 @@ interface Transaction {
   rdbs_type: 'credit' | 'debit';
   rdbs_approval_status: 'success' | 'pending' | 'failed';
   rdbs_date?: string;
+  /** Internal collection↔disbursement transfer — exclude from P&L */
+  isSweep?: boolean;
+  /** Original API transaction for accurate P&L aggregation */
+  raw?: any;
 }
 
 interface ReportSummary {
@@ -100,40 +109,39 @@ export default function ReportsPage() {
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(10);
 
-  // Build filter for API - use date range if provided
-  const apiFilter: TransactionFilter = useMemo(() => {
-    const filter: TransactionFilter = {
-      page: 1,
-      limit: 1000, // Fetch a large number of transactions for reports
-    };
-
+  // Date range only for API fetch — paginate all pages (backend caps limit at 100).
+  // Status/direction filters are applied client-side after transform.
+  const reportApiFilter = useMemo(() => {
+    const filter: Omit<TransactionFilter, 'page' | 'limit'> = {};
     if (dateRange.from) filter.startDate = dateRange.from;
     if (dateRange.to) filter.endDate = dateRange.to;
     else if (dateRange.from) filter.endDate = dateRange.from;
-    if (status !== 'all') {
-      // Map status filter to API status
-      if (status === 'success') filter.status = 'COMPLETED';
-      else if (status === 'pending') filter.status = 'PENDING';
-      else if (status === 'failed') filter.status = 'FAILED';
-    }
-    if (transactionType !== 'all') {
-      filter.direction = transactionType === 'credit' ? 'CREDIT' : 'DEBIT';
-    }
-
     return filter;
-  }, [dateRange, status, transactionType]);
+  }, [dateRange]);
 
-  // Fetch transactions from API
-  const { 
-    data: transactionsData, 
-    isLoading: transactionsLoading, 
+  const {
+    data: apiTransactions = [],
+    isLoading: transactionsLoading,
     error: transactionsError,
-    refetch: refetchTransactions
-  } = useMyTransactions(
-    apiFilter,
-    childMerchantId || undefined,
-    effectiveMerchantCode,
-  );
+    refetch: refetchTransactions,
+  } = useQuery({
+    queryKey: [
+      'reports',
+      'all-transactions',
+      reportApiFilter,
+      childMerchantId,
+      effectiveMerchantCode,
+    ],
+    queryFn: () =>
+      fetchAllBusinessTransactions(
+        reportApiFilter,
+        childMerchantId || undefined,
+        effectiveMerchantCode,
+      ),
+    staleTime: 30000,
+    retry: 3,
+    refetchOnWindowFocus: false,
+  });
 
   // Transform API transactions to the format expected by the reports page
   const transformTransaction = (apiTxn: any): Transaction => {
@@ -235,6 +243,9 @@ export default function ReportsPage() {
                            (apiTxn.direction === 'CREDIT' && apiTxn.metadata?.fundedByAdmin);
     
     return {
+      rowKey:
+        String(apiTxn.id || '') ||
+        `${apiTxn.reference || 'txn'}-${apiTxn.direction || ''}-${apiTxn.walletId || ''}-${apiTxn.createdAt || ''}`,
       rdbs_transaction_id: apiTxn.reference || apiTxn.transactionId || apiTxn.id || '',
       rdbs_approval_date: apiTxn.createdAt || apiTxn.updatedAt || new Date().toISOString(),
       rdbs_sender_name: getSenderName(apiTxn),
@@ -244,15 +255,16 @@ export default function ReportsPage() {
       // Wallet Funding should always be credit to merchant wallet
       rdbs_type: isWalletFunding ? 'credit' : (apiTxn.direction === 'CREDIT' ? 'credit' : 'debit'),
       rdbs_approval_status: mapStatus(apiTxn.status || 'PENDING'),
-      rdbs_date: apiTxn.createdAt || apiTxn.updatedAt
+      rdbs_date: apiTxn.createdAt || apiTxn.updatedAt,
+      isSweep: isSweepTransaction(apiTxn),
+      raw: apiTxn,
     };
   };
 
   // Transform all API transactions
   const transactions: Transaction[] = useMemo(() => {
-    if (!transactionsData?.transactions) return [];
-    return transactionsData.transactions.map(transformTransaction);
-  }, [transactionsData, profile]);
+    return apiTransactions.map(transformTransaction);
+  }, [apiTransactions, profile]);
 
   // Filter transactions based on criteria
   const filteredTransactions = useMemo(() => {
@@ -281,28 +293,35 @@ export default function ReportsPage() {
     setCurrentPage(1);
   }, [dateRange, transactionType, status, searchTerm]);
 
-  // Calculate summary statistics
+  // P&L: successful external movements only (exclude pending/failed + internal sweeps)
   const summary: ReportSummary = useMemo(() => {
-    const creditTransactions = filteredTransactions.filter(t => t.rdbs_type === 'credit');
-    const debitTransactions = filteredTransactions.filter(t => t.rdbs_type === 'debit');
-    
-    const totalRevenue = creditTransactions.reduce((sum, t) => sum + Number(t.rdbs_amount), 0);
-    const totalExpenses = debitTransactions.reduce((sum, t) => sum + Number(t.rdbs_amount), 0);
-    const netIncome = totalRevenue - totalExpenses;
+    const rawForPnL = filteredTransactions
+      .map((t) => t.raw)
+      .filter(Boolean);
+    const pnl = computeMerchantPnLSummary(rawForPnL);
+
     const totalTransactions = filteredTransactions.length;
-    const averageTransaction = totalTransactions > 0 ? (totalRevenue + totalExpenses) / totalTransactions : 0;
-    const successRate = totalTransactions > 0 ? 
-      (filteredTransactions.filter(t => t.rdbs_approval_status === 'success').length / totalTransactions) * 100 : 0;
+    const averageTransaction =
+      totalTransactions > 0
+        ? (pnl.totalRevenue + pnl.totalExpenses) / totalTransactions
+        : 0;
+    const successRate =
+      totalTransactions > 0
+        ? (filteredTransactions.filter((t) => t.rdbs_approval_status === 'success')
+            .length /
+            totalTransactions) *
+          100
+        : 0;
 
     return {
-      totalRevenue,
-      totalExpenses,
-      netIncome,
+      totalRevenue: pnl.totalRevenue,
+      totalExpenses: pnl.totalExpenses,
+      netIncome: pnl.netIncome,
       totalTransactions,
-      creditTransactions: creditTransactions.length,
-      debitTransactions: debitTransactions.length,
+      creditTransactions: pnl.creditCount,
+      debitTransactions: pnl.debitCount,
       averageTransaction,
-      successRate
+      successRate,
     };
   }, [filteredTransactions]);
 
@@ -979,7 +998,7 @@ export default function ReportsPage() {
                     </TableRow>
                   ) : (
                     paginatedTransactions.map((txn) => (
-                      <TableRow key={txn.rdbs_transaction_id}>
+                      <TableRow key={txn.rowKey}>
                         <TableCell className="font-mono text-sm">
                           {txn.rdbs_transaction_id}
                         </TableCell>
