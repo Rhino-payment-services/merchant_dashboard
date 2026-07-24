@@ -605,8 +605,8 @@ export default function TransactionsPage() {
         <meta name="description" content="View and manage all your transaction history on RukaPay" />
         <link rel="icon" href="/favicon.ico" />
       </Head>
-      <div className="min-h-screen bg-gray-50 p-6">
-      <div className="max-w-screen-2xl">
+      <div className="min-h-screen bg-gray-50 p-4 sm:p-6 min-w-0">
+      <div className="max-w-screen-2xl w-full min-w-0">
         {/* Page Header */}
         <div className="mb-8">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
@@ -881,8 +881,8 @@ export default function TransactionsPage() {
         </Card>
 
         {/* Transactions Table */}
-        <Card>
-          <div className="overflow-x-auto">
+        <Card className="overflow-hidden min-w-0">
+          <div className="overflow-x-auto max-w-full">
             <Table className="min-w-[900px]">
               <TableHeader>
                 <TableRow>
@@ -1190,10 +1190,10 @@ export default function TransactionsPage() {
             </Card>
 
             {/* Bulk Transactions Table */}
-            <Card>
+            <Card className="overflow-hidden min-w-0">
               <div className="p-4">
                 <h3 className="text-lg font-semibold text-gray-900 mb-4">Bulk Transactions</h3>
-                <div className="overflow-x-auto">
+                <div className="overflow-x-auto max-w-full">
                 <Table className="min-w-[800px]">
                   <TableHeader>
                     <TableRow>
