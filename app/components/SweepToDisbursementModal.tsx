@@ -76,7 +76,7 @@ export default function SweepToDisbursementModal({
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2 text-lg">
             <ArrowRightLeft className="h-5 w-5 text-blue-600" />
-            Transfer to Disbursement
+            Move to payout balance
           </DialogTitle>
         </DialogHeader>
 
@@ -85,15 +85,17 @@ export default function SweepToDisbursementModal({
             <div className="rounded-lg border bg-gray-50 p-3">
               <p className="text-xs text-gray-500 mb-0.5">Collection balance</p>
               <p className="font-semibold text-green-600 text-sm">{fmt(collectionBalance, currency)}</p>
+              <p className="text-[11px] text-gray-400 mt-1">Incoming customer payments (Collection wallet)</p>
             </div>
             <div className="rounded-lg border bg-gray-50 p-3">
-              <p className="text-xs text-gray-500 mb-0.5">Disbursement balance</p>
+              <p className="text-xs text-gray-500 mb-0.5">Payout balance</p>
               <p className="font-semibold text-blue-600 text-sm">{fmt(disbursementBalance, currency)}</p>
+              <p className="text-[11px] text-gray-400 mt-1">Available for outgoing payments (Disbursement wallet)</p>
             </div>
           </div>
 
           <p className="text-xs text-gray-600">
-            No fee to move funds to disbursement. Collection fees were already applied when customers paid you.
+            No fee to transfer funds to your payout balance. Collection fees were already applied when customers paid you.
           </p>
 
           <div>
@@ -121,7 +123,7 @@ export default function SweepToDisbursementModal({
           {amount > 0 && (
             <div className="rounded-lg border border-emerald-100 bg-emerald-50 p-3 text-sm text-emerald-900">
               <div className="flex justify-between font-semibold">
-                <span>To disbursement</span>
+                <span>To payout balance</span>
                 <span>{fmt(amount, currency)}</span>
               </div>
             </div>
