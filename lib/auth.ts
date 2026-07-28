@@ -98,7 +98,7 @@ export const authOptions: NextAuthOptions = {
           const response = await axios.post(`${getApiUrl()}/auth/login`, {
             email: credentials.email,
             password: credentials.password,
-            channel: "MERCHANT_PORTAL"
+            // channel: "MERCHANT_PORTAL"
           })
 
           const { user, accessToken, refreshToken } = response.data
