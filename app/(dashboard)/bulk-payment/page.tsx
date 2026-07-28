@@ -12,10 +12,17 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { 
   Upload, Download, Plus, Trash2, Users, CheckCircle2, 
   XCircle, Clock, Send, AlertCircle, Info, Loader2,
   Wallet, Phone, Building2, Zap, Edit, RefreshCw, AlertTriangle,
+  CircleHelp,
 } from "lucide-react";
 import { useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
@@ -29,6 +36,11 @@ import {
   normalizePhoneToUganda,
   resolveAirtimeMnoProvider,
 } from "@/lib/utils";
+import {
+  getAreaFieldConfig,
+  validateBillArea,
+  NWSC_AREAS,
+} from "@/lib/utils/bill-area-field";
 
 const TRANSACTION_TYPES = [
   { value: 'WALLET_TO_MNO', label: 'Mobile Money', icon: Phone, color: 'text-blue-600', bg: 'bg-blue-50' },
@@ -45,6 +57,25 @@ const URA_UTILITY_PROVIDER = 'URA';
 /** Radix Select cannot use empty string as `SelectItem` value; maps to cleared `utilityProvider`. */
 const BILLER_SELECT_NONE = '__none__';
 const URA_PRN_MIN_LENGTH = 8;
+
+function FieldHint({ children }: { children: React.ReactNode }) {
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <button
+          type="button"
+          className="inline-flex cursor-pointer shrink-0 rounded-sm text-gray-400 hover:text-gray-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-400"
+          aria-label="More information"
+        >
+          <CircleHelp className="h-3.5 w-3.5" />
+        </button>
+      </TooltipTrigger>
+      <TooltipContent side="top" className="max-w-xs text-sm leading-snug">
+        {children}
+      </TooltipContent>
+    </Tooltip>
+  );
+}
 
 const isAirtimeOrDataUtility = (provider: string | undefined) =>
   provider === 'AIRTIME' || provider === 'DATA_BUNDLES';
@@ -201,6 +232,15 @@ export default function BulkPaymentPage() {
     if (formData.mode !== 'UTILITIES') setBulkBillSubTab('utilities');
   }, [formData.mode]);
 
+  const singleAreaConfig = useMemo(
+    () => getAreaFieldConfig(singlePayment.utilityProvider),
+    [singlePayment.utilityProvider],
+  );
+  const bulkAreaConfig = useMemo(
+    () => getAreaFieldConfig(formData.utilityProvider),
+    [formData.utilityProvider],
+  );
+
   // Session loading: show neutral loading so we don't run logic that assumes session
   if (sessionStatus === 'loading' || session === undefined) {
     return (
@@ -231,10 +271,24 @@ export default function BulkPaymentPage() {
 
   // Single Payment Functions
   const handleSinglePaymentChange = (field: keyof SinglePaymentDto, value: any) => {
-    setSinglePayment(prev => ({
-      ...prev,
-      [field]: value
-    }));
+    setSinglePayment((prev) => {
+      if (field === 'utilityProvider') {
+        const nextConfig = getAreaFieldConfig(value);
+        const keepArea =
+          nextConfig.visible &&
+          (nextConfig.mode !== 'select' ||
+            (prev.area && nextConfig.options?.includes(prev.area)));
+        return {
+          ...prev,
+          utilityProvider: value,
+          area: keepArea ? prev.area : undefined,
+        };
+      }
+      return {
+        ...prev,
+        [field]: value,
+      };
+    });
   };
 
   const handleSinglePaymentModeChange = (mode: SinglePaymentDto['mode']) => {
@@ -296,6 +350,11 @@ export default function BulkPaymentPage() {
           toast.error(prnErr);
           return;
         }
+      }
+      const areaErr = validateBillArea(up, singlePayment.area);
+      if (areaErr) {
+        toast.error(areaErr);
+        return;
       }
     }
 
@@ -433,6 +492,11 @@ export default function BulkPaymentPage() {
           return;
         }
       }
+      const areaErr = validateBillArea(up, singlePayment.area);
+      if (areaErr) {
+        toast.error(areaErr);
+        return;
+      }
     }
 
     setSinglePaymentLoading(true);
@@ -557,6 +621,11 @@ export default function BulkPaymentPage() {
         return;
       }
     }
+    const areaErr = validateBillArea(up, formData.area);
+    if (areaErr) {
+      toast.error(areaErr);
+      return;
+    }
   }
 
     if (editingId) {
@@ -670,6 +739,33 @@ export default function BulkPaymentPage() {
   const handleValidateAll = async () => {
     if (payments.length === 0) {
       toast.error('No payments to validate');
+      return;
+    }
+
+    const areaInvalid = payments.filter(
+      (p) =>
+        p.mode === 'UTILITIES' &&
+        validateBillArea(normalizeUtilityProvider(p.utilityProvider), p.area),
+    );
+    if (areaInvalid.length > 0) {
+      setPayments((prev) =>
+        prev.map((p) => {
+          const err =
+            p.mode === 'UTILITIES'
+              ? validateBillArea(normalizeUtilityProvider(p.utilityProvider), p.area)
+              : null;
+          if (!err) return p;
+          return {
+            ...p,
+            status: 'failed' as const,
+            error: err,
+            validated: true,
+          };
+        }),
+      );
+      toast.error(
+        `${areaInvalid.length} NWSC payment(s) need a valid Area (e.g. Kampala). Fix them before validating.`,
+      );
       return;
     }
 
@@ -1537,6 +1633,20 @@ export default function BulkPaymentPage() {
       },
       {
         'Transaction Mode': 'UTILITIES',
+        'Phone Number / Account Number': '',
+        'Name': '',
+        'Amount': 25000,
+        'Network': '',
+        'Bank Name': '',
+        'Bank Sort Code': '',
+        'Description': 'NWSC water bill — Area must be exact (e.g. Kampala)',
+        'Currency': 'UGX',
+        'Utility Provider': 'NWSC',
+        'Customer Ref': 'REPLACE_WITH_NWSC_ACCOUNT',
+        'Area': 'Kampala',
+      },
+      {
+        'Transaction Mode': 'UTILITIES',
         'Phone Number / Account Number': '256701234567',
         'Name': 'Airtime Recipient',
         'Amount': 15000,
@@ -1591,6 +1701,7 @@ export default function BulkPaymentPage() {
   const pendingCount = payments.filter(p => p.status === 'pending').length;
 
   return (
+    <TooltipProvider delayDuration={300}>
     <div key={currentMerchantCode ?? 'default'} className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 p-6">
       <div className="max-w-7xl mx-auto space-y-6">
         {liquidationOnlyMode ? (
@@ -1914,6 +2025,7 @@ export default function BulkPaymentPage() {
                           handleSinglePaymentChange('utilityProvider', '');
                           handleSinglePaymentChange('phoneNumber', '');
                           handleSinglePaymentChange('metadata', undefined);
+                          handleSinglePaymentChange('area', undefined);
                         } else {
                           setSinglePayment((prev) => ({
                             ...prev,
@@ -1921,6 +2033,7 @@ export default function BulkPaymentPage() {
                             customerRef: '',
                             metadata: undefined,
                             mnoProvider: undefined,
+                            area: undefined,
                           }));
                         }
                       }}
@@ -1983,17 +2096,46 @@ export default function BulkPaymentPage() {
                           </div>
                         </div>
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                          <div>
-                            <label className="block text-sm font-semibold text-gray-700 mb-2">
-                              Area / Region (Optional)
-                            </label>
-                            <Input
-                              value={singlePayment.area || ''}
-                              onChange={(e) => handleSinglePaymentChange('area', e.target.value)}
-                              placeholder="e.g., Kampala"
-                              className="w-full"
-                            />
-                          </div>
+                          {singleAreaConfig.visible && (
+                            <div>
+                              <label className="flex items-center gap-1.5 text-sm font-semibold text-gray-700 mb-2">
+                                {singleAreaConfig.label}
+                                {singleAreaConfig.required ? (
+                                  <span className="text-red-500">*</span>
+                                ) : (
+                                  <span className="font-normal text-gray-500">(optional)</span>
+                                )}
+                                <FieldHint>{singleAreaConfig.helpText}</FieldHint>
+                              </label>
+                              {singleAreaConfig.mode === 'select' ? (
+                                <Select
+                                  value={singlePayment.area || undefined}
+                                  onValueChange={(v) => handleSinglePaymentChange('area', v)}
+                                >
+                                  <SelectTrigger className="w-full">
+                                    <SelectValue placeholder={singleAreaConfig.placeholder} />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    {(singleAreaConfig.options ?? NWSC_AREAS).map((area) => (
+                                      <SelectItem key={area} value={area}>
+                                        {area}
+                                      </SelectItem>
+                                    ))}
+                                  </SelectContent>
+                                </Select>
+                              ) : (
+                                <Input
+                                  value={singlePayment.area || ''}
+                                  onChange={(e) => handleSinglePaymentChange('area', e.target.value)}
+                                  placeholder={singleAreaConfig.placeholder}
+                                  className="w-full"
+                                />
+                              )}
+                              {singleAreaConfig.helperLine && (
+                                <p className="text-xs text-gray-600 mt-1">{singleAreaConfig.helperLine}</p>
+                              )}
+                            </div>
+                          )}
                           <div>
                             <label className="block text-sm font-semibold text-gray-700 mb-2">
                               Customer Phone (Optional)
@@ -2284,6 +2426,7 @@ export default function BulkPaymentPage() {
         </Card>
 
         {/* Action Buttons */}
+        <div className="space-y-2">
         <div className="flex flex-wrap gap-3">
           <Button
             onClick={() => setShowAddForm(!showAddForm)}
@@ -2425,6 +2568,14 @@ export default function BulkPaymentPage() {
               )}
             </Button>
           </div>
+        </div>
+        <p className="text-xs text-gray-600 flex items-start gap-1.5 max-w-3xl">
+          <Info className="h-3.5 w-3.5 mt-0.5 shrink-0 text-gray-400" aria-hidden />
+          <span>
+            For NWSC (water) rows in CSV/Excel, fill the <span className="font-medium">Area</span> column with one of:{' '}
+            {NWSC_AREAS.join(', ')}. Spelling and capitalisation must match exactly. Leave Area blank for URA and most other billers.
+          </span>
+        </p>
         </div>
 
         {/* Add Payment Form */}
@@ -2596,6 +2747,7 @@ export default function BulkPaymentPage() {
                             utilityProvider: '',
                             phoneNumber: '',
                             metadata: undefined,
+                            area: undefined,
                           }));
                         } else {
                           setFormData((prev) => ({
@@ -2605,6 +2757,7 @@ export default function BulkPaymentPage() {
                             utilityAccountNumber: '',
                             metadata: undefined,
                             mnoProvider: undefined,
+                            area: undefined,
                           }));
                         }
                       }}
@@ -2618,20 +2771,38 @@ export default function BulkPaymentPage() {
                           <label className="block text-sm font-semibold text-gray-700 mb-2">
                             Biller / Provider <span className="text-red-500">*</span>
                           </label>
-                          <select
-                            value={formData.utilityProvider || ''}
-                            onChange={(e) => setFormData((prev) => ({ ...prev, utilityProvider: e.target.value }))}
-                            className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                          <Select
+                            value={formData.utilityProvider || undefined}
+                            onValueChange={(v) => {
+                              const nextProvider = v === BILLER_SELECT_NONE ? '' : v;
+                              const nextConfig = getAreaFieldConfig(nextProvider);
+                              setFormData((prev) => {
+                                const keepArea =
+                                  nextConfig.visible &&
+                                  (nextConfig.mode !== 'select' ||
+                                    (prev.area && nextConfig.options?.includes(prev.area)));
+                                return {
+                                  ...prev,
+                                  utilityProvider: nextProvider,
+                                  area: keepArea ? prev.area : undefined,
+                                };
+                              });
+                            }}
                           >
-                            <option value="">Select biller</option>
-                            <option value="NWSC">NWSC (Water)</option>
-                            <option value="UMEME">UMEME (Electricity)</option>
-                            <option value="DSTV">DStv</option>
-                            <option value="GOTV">GOtv</option>
-                            <option value="YAKALAST">Yaka Last</option>
-                            <option value="SCHOOL-FEES">School Fees</option>
-                            <option value={URA_UTILITY_PROVIDER}>URA (Tax / e-services)</option>
-                          </select>
+                            <SelectTrigger className="w-full">
+                              <SelectValue placeholder="Select biller" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value={BILLER_SELECT_NONE}>Select biller</SelectItem>
+                              <SelectItem value="NWSC">NWSC (Water)</SelectItem>
+                              <SelectItem value="UMEME">UMEME (Electricity)</SelectItem>
+                              <SelectItem value="DSTV">DStv</SelectItem>
+                              <SelectItem value="GOTV">GOtv</SelectItem>
+                              <SelectItem value="YAKALAST">Yaka Last</SelectItem>
+                              <SelectItem value="SCHOOL-FEES">School Fees</SelectItem>
+                              <SelectItem value={URA_UTILITY_PROVIDER}>URA (Tax / e-services)</SelectItem>
+                            </SelectContent>
+                          </Select>
                         </div>
                         <div>
                           <label className="block text-sm font-semibold text-gray-700 mb-2">
@@ -2661,16 +2832,49 @@ export default function BulkPaymentPage() {
                             </p>
                           )}
                         </div>
-                        <div>
-                          <label className="block text-sm font-semibold text-gray-700 mb-2">
-                            Area / Region (Optional)
-                          </label>
-                          <Input
-                            value={formData.area || ''}
-                            onChange={(e) => setFormData((prev) => ({ ...prev, area: e.target.value }))}
-                            placeholder="e.g., Kampala"
-                          />
-                        </div>
+                        {bulkAreaConfig.visible && (
+                          <div>
+                            <label className="flex items-center gap-1.5 text-sm font-semibold text-gray-700 mb-2">
+                              {bulkAreaConfig.label}
+                              {bulkAreaConfig.required ? (
+                                <span className="text-red-500">*</span>
+                              ) : (
+                                <span className="font-normal text-gray-500">(optional)</span>
+                              )}
+                              <FieldHint>{bulkAreaConfig.helpText}</FieldHint>
+                            </label>
+                            {bulkAreaConfig.mode === 'select' ? (
+                              <Select
+                                value={formData.area || undefined}
+                                onValueChange={(v) =>
+                                  setFormData((prev) => ({ ...prev, area: v }))
+                                }
+                              >
+                                <SelectTrigger className="w-full">
+                                  <SelectValue placeholder={bulkAreaConfig.placeholder} />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {(bulkAreaConfig.options ?? NWSC_AREAS).map((area) => (
+                                    <SelectItem key={area} value={area}>
+                                      {area}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            ) : (
+                              <Input
+                                value={formData.area || ''}
+                                onChange={(e) =>
+                                  setFormData((prev) => ({ ...prev, area: e.target.value }))
+                                }
+                                placeholder={bulkAreaConfig.placeholder}
+                              />
+                            )}
+                            {bulkAreaConfig.helperLine && (
+                              <p className="text-xs text-gray-600 mt-1">{bulkAreaConfig.helperLine}</p>
+                            )}
+                          </div>
+                        )}
                         <div>
                           <label className="block text-sm font-semibold text-gray-700 mb-2">
                             Customer Phone (Optional)
@@ -3092,6 +3296,7 @@ export default function BulkPaymentPage() {
 
       </div>
     </div>
+    </TooltipProvider>
   );
 }
 
