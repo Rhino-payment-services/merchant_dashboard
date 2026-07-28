@@ -90,9 +90,17 @@ interface ChartProps {
   from?: string;
   to?: string;
   transactions?: any[]; // Optional prop to pass transactions directly
+  /** Tailwind height class for the chart area (default keeps home overview taller). */
+  heightClass?: string;
 }
 
-export function Chart({ period = "Monthly", from, to, transactions: propTransactions }: ChartProps) {
+export function Chart({
+  period = "Monthly",
+  from,
+  to,
+  transactions: propTransactions,
+  heightClass = "h-[320px]",
+}: ChartProps) {
   const { profile } = useUserProfile();
   // Use prop transactions if provided, otherwise fall back to profile transactions
   const transactions = propTransactions || profile?.merchant_transactions || [];
@@ -156,8 +164,11 @@ export function Chart({ period = "Monthly", from, to, transactions: propTransact
   }, [filteredTransactions, period, from, to]);
 
   return (
-    <div className="relative w-full h-full">
-      <ChartContainer config={chartConfig} className="h-[400px] w-full">
+    <div className="relative w-full min-w-0 max-w-full overflow-hidden">
+      <ChartContainer
+        config={chartConfig}
+        className={`aspect-auto w-full max-w-full ${heightClass}`}
+      >
         <BarChart accessibilityLayer data={chartData}>
           <CartesianGrid vertical={false} />
           <XAxis

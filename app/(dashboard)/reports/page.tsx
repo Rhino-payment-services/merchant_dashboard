@@ -6,7 +6,9 @@ import { Input } from '@/components/ui/input';
 import { DateRangePicker } from '@/components/ui/date-range-picker';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { useUserProfile } from '../UserProfileProvider';
-import { useMyTransactions, TransactionFilter } from '@/lib/api/transactions.api';
+import { TransactionFilter } from '@/lib/api/transactions.api';
+import { getWalletBalance } from '@/lib/api/wallet.api';
+import { useQuery } from '@tanstack/react-query';
 import { 
   Download, 
   FileText, 
@@ -23,7 +25,8 @@ import {
   ChevronLeft,
   ChevronRight,
   ChevronsLeft,
-  ChevronsRight
+  ChevronsRight,
+  Wallet,
 } from 'lucide-react';
 import { Chart } from '../../components/chart';
 import { writeWorkbookWithSheetsToFile } from '@/lib/excel-utils';
@@ -41,11 +44,15 @@ import {
   sanitizeMerchantFilenamePart,
 } from '@/lib/utils/merchant-transaction-export';
 import {
+  computeMerchantPnLSummary,
   getTransactionReceiverParty,
   getTransactionSenderParty,
+  isSweepTransaction,
 } from '@/lib/utils/transaction-display';
 
 interface Transaction {
+  /** Stable unique row id (DB transaction id) — references can repeat for sweep pairs */
+  rowKey: string;
   rdbs_transaction_id: string;
   rdbs_approval_date: string;
   rdbs_sender_name: string;
@@ -55,6 +62,10 @@ interface Transaction {
   rdbs_type: 'credit' | 'debit';
   rdbs_approval_status: 'success' | 'pending' | 'failed';
   rdbs_date?: string;
+  /** Internal collection↔disbursement transfer — exclude from P&L */
+  isSweep?: boolean;
+  /** Original API transaction for accurate P&L aggregation */
+  raw?: any;
 }
 
 interface ReportSummary {
@@ -100,40 +111,60 @@ export default function ReportsPage() {
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(10);
 
-  // Build filter for API - use date range if provided
-  const apiFilter: TransactionFilter = useMemo(() => {
-    const filter: TransactionFilter = {
-      page: 1,
-      limit: 1000, // Fetch a large number of transactions for reports
-    };
-
+  // Date range only for API fetch — paginate all pages (backend caps limit at 100).
+  // Status/direction filters are applied client-side after transform.
+  const reportApiFilter = useMemo(() => {
+    const filter: Omit<TransactionFilter, 'page' | 'limit'> = {};
     if (dateRange.from) filter.startDate = dateRange.from;
     if (dateRange.to) filter.endDate = dateRange.to;
     else if (dateRange.from) filter.endDate = dateRange.from;
-    if (status !== 'all') {
-      // Map status filter to API status
-      if (status === 'success') filter.status = 'COMPLETED';
-      else if (status === 'pending') filter.status = 'PENDING';
-      else if (status === 'failed') filter.status = 'FAILED';
-    }
-    if (transactionType !== 'all') {
-      filter.direction = transactionType === 'credit' ? 'CREDIT' : 'DEBIT';
-    }
-
     return filter;
-  }, [dateRange, status, transactionType]);
+  }, [dateRange]);
 
-  // Fetch transactions from API
-  const { 
-    data: transactionsData, 
-    isLoading: transactionsLoading, 
+  const {
+    data: apiTransactions = [],
+    isLoading: transactionsLoading,
     error: transactionsError,
-    refetch: refetchTransactions
-  } = useMyTransactions(
-    apiFilter,
-    childMerchantId || undefined,
-    effectiveMerchantCode,
-  );
+    refetch: refetchTransactions,
+  } = useQuery({
+    queryKey: [
+      'reports',
+      'all-transactions',
+      reportApiFilter,
+      childMerchantId,
+      effectiveMerchantCode,
+    ],
+    queryFn: () =>
+      fetchAllBusinessTransactions(
+        reportApiFilter,
+        childMerchantId || undefined,
+        effectiveMerchantCode,
+      ),
+    staleTime: 30000,
+    retry: 3,
+    refetchOnWindowFocus: false,
+  });
+
+  const { data: walletBalances, refetch: refetchWalletBalances } = useQuery({
+    queryKey: ['reports', 'wallet-balance', childMerchantId],
+    queryFn: () => getWalletBalance(childMerchantId || undefined),
+    staleTime: 30000,
+    retry: 2,
+    refetchOnWindowFocus: false,
+  });
+
+  const merchants = (session?.user as { merchants?: { merchantCode?: string; featureBulkPayments?: boolean }[] })?.merchants ?? [];
+  const currentMerchant = Array.isArray(merchants)
+    ? merchants.find((m) => m?.merchantCode === currentMerchantCode)
+    : undefined;
+  const liveMerchantData =
+    (profile as { merchantData?: { featureBulkPayments?: boolean } } | null)?.merchantData;
+  const featureBulkPayments =
+    (liveMerchantData?.featureBulkPayments ?? currentMerchant?.featureBulkPayments) === true;
+  const hasSplitBalances =
+    featureBulkPayments &&
+    walletBalances?.collectionBalance != null &&
+    walletBalances?.disbursementBalance != null;
 
   // Transform API transactions to the format expected by the reports page
   const transformTransaction = (apiTxn: any): Transaction => {
@@ -235,6 +266,9 @@ export default function ReportsPage() {
                            (apiTxn.direction === 'CREDIT' && apiTxn.metadata?.fundedByAdmin);
     
     return {
+      rowKey:
+        String(apiTxn.id || '') ||
+        `${apiTxn.reference || 'txn'}-${apiTxn.direction || ''}-${apiTxn.walletId || ''}-${apiTxn.createdAt || ''}`,
       rdbs_transaction_id: apiTxn.reference || apiTxn.transactionId || apiTxn.id || '',
       rdbs_approval_date: apiTxn.createdAt || apiTxn.updatedAt || new Date().toISOString(),
       rdbs_sender_name: getSenderName(apiTxn),
@@ -244,15 +278,16 @@ export default function ReportsPage() {
       // Wallet Funding should always be credit to merchant wallet
       rdbs_type: isWalletFunding ? 'credit' : (apiTxn.direction === 'CREDIT' ? 'credit' : 'debit'),
       rdbs_approval_status: mapStatus(apiTxn.status || 'PENDING'),
-      rdbs_date: apiTxn.createdAt || apiTxn.updatedAt
+      rdbs_date: apiTxn.createdAt || apiTxn.updatedAt,
+      isSweep: isSweepTransaction(apiTxn),
+      raw: apiTxn,
     };
   };
 
   // Transform all API transactions
   const transactions: Transaction[] = useMemo(() => {
-    if (!transactionsData?.transactions) return [];
-    return transactionsData.transactions.map(transformTransaction);
-  }, [transactionsData, profile]);
+    return apiTransactions.map(transformTransaction);
+  }, [apiTransactions, profile]);
 
   // Filter transactions based on criteria
   const filteredTransactions = useMemo(() => {
@@ -281,28 +316,35 @@ export default function ReportsPage() {
     setCurrentPage(1);
   }, [dateRange, transactionType, status, searchTerm]);
 
-  // Calculate summary statistics
+  // P&L: successful external movements only (exclude pending/failed + internal sweeps)
   const summary: ReportSummary = useMemo(() => {
-    const creditTransactions = filteredTransactions.filter(t => t.rdbs_type === 'credit');
-    const debitTransactions = filteredTransactions.filter(t => t.rdbs_type === 'debit');
-    
-    const totalRevenue = creditTransactions.reduce((sum, t) => sum + Number(t.rdbs_amount), 0);
-    const totalExpenses = debitTransactions.reduce((sum, t) => sum + Number(t.rdbs_amount), 0);
-    const netIncome = totalRevenue - totalExpenses;
+    const rawForPnL = filteredTransactions
+      .map((t) => t.raw)
+      .filter(Boolean);
+    const pnl = computeMerchantPnLSummary(rawForPnL);
+
     const totalTransactions = filteredTransactions.length;
-    const averageTransaction = totalTransactions > 0 ? (totalRevenue + totalExpenses) / totalTransactions : 0;
-    const successRate = totalTransactions > 0 ? 
-      (filteredTransactions.filter(t => t.rdbs_approval_status === 'success').length / totalTransactions) * 100 : 0;
+    const averageTransaction =
+      totalTransactions > 0
+        ? (pnl.totalRevenue + pnl.totalExpenses) / totalTransactions
+        : 0;
+    const successRate =
+      totalTransactions > 0
+        ? (filteredTransactions.filter((t) => t.rdbs_approval_status === 'success')
+            .length /
+            totalTransactions) *
+          100
+        : 0;
 
     return {
-      totalRevenue,
-      totalExpenses,
-      netIncome,
+      totalRevenue: pnl.totalRevenue,
+      totalExpenses: pnl.totalExpenses,
+      netIncome: pnl.netIncome,
       totalTransactions,
-      creditTransactions: creditTransactions.length,
-      debitTransactions: debitTransactions.length,
+      creditTransactions: pnl.creditCount,
+      debitTransactions: pnl.debitCount,
       averageTransaction,
-      successRate
+      successRate,
     };
   }, [filteredTransactions]);
 
@@ -396,12 +438,12 @@ export default function ReportsPage() {
 
       // Build summary data
       const summaryData = [
-        { 'Metric': 'Total Revenue', 'Value': summary.totalRevenue, 'Currency': 'UGX', 'Formatted': `UGX ${Number(summary.totalRevenue).toLocaleString()}` },
-        { 'Metric': 'Total Expenses', 'Value': summary.totalExpenses, 'Currency': 'UGX', 'Formatted': `UGX ${Number(summary.totalExpenses).toLocaleString()}` },
+        { 'Metric': 'Total received', 'Value': summary.totalRevenue, 'Currency': 'UGX', 'Formatted': `UGX ${Number(summary.totalRevenue).toLocaleString()}` },
+        { 'Metric': 'Total sent', 'Value': summary.totalExpenses, 'Currency': 'UGX', 'Formatted': `UGX ${Number(summary.totalExpenses).toLocaleString()}` },
         { 'Metric': 'Net Income', 'Value': summary.netIncome, 'Currency': 'UGX', 'Formatted': `UGX ${Number(summary.netIncome).toLocaleString()}` },
         { 'Metric': 'Total Transactions', 'Value': summary.totalTransactions, 'Currency': '', 'Formatted': summary.totalTransactions.toString() },
-        { 'Metric': 'Credit Transactions', 'Value': summary.creditTransactions, 'Currency': '', 'Formatted': summary.creditTransactions.toString() },
-        { 'Metric': 'Debit Transactions', 'Value': summary.debitTransactions, 'Currency': '', 'Formatted': summary.debitTransactions.toString() },
+        { 'Metric': 'Incoming payments', 'Value': summary.creditTransactions, 'Currency': '', 'Formatted': summary.creditTransactions.toString() },
+        { 'Metric': 'Outgoing payments', 'Value': summary.debitTransactions, 'Currency': '', 'Formatted': summary.debitTransactions.toString() },
         { 'Metric': 'Average Transaction', 'Value': summary.averageTransaction, 'Currency': 'UGX', 'Formatted': `UGX ${Number(summary.averageTransaction).toLocaleString()}` },
         { 'Metric': 'Success Rate', 'Value': summary.successRate, 'Currency': '%', 'Formatted': `${summary.successRate.toFixed(1)}%` }
       ];
@@ -512,17 +554,17 @@ export default function ReportsPage() {
       pdf.setFont('helvetica', 'normal');
       let yPosition = margin + 50;
       
-      pdf.text(`Total Revenue: UGX ${Number(summary.totalRevenue).toLocaleString()}`, margin, yPosition);
+      pdf.text(`Total received: UGX ${Number(summary.totalRevenue).toLocaleString()}`, margin, yPosition);
       yPosition += 8;
-      pdf.text(`Total Expenses: UGX ${Number(summary.totalExpenses).toLocaleString()}`, margin, yPosition);
+      pdf.text(`Total sent: UGX ${Number(summary.totalExpenses).toLocaleString()}`, margin, yPosition);
       yPosition += 8;
       pdf.text(`Net Income: UGX ${Number(summary.netIncome).toLocaleString()}`, margin, yPosition);
       yPosition += 8;
       pdf.text(`Total Transactions: ${summary.totalTransactions}`, margin, yPosition);
       yPosition += 8;
-      pdf.text(`Credit Transactions: ${summary.creditTransactions}`, margin, yPosition);
+      pdf.text(`Incoming payments: ${summary.creditTransactions}`, margin, yPosition);
       yPosition += 8;
-      pdf.text(`Debit Transactions: ${summary.debitTransactions}`, margin, yPosition);
+      pdf.text(`Outgoing payments: ${summary.debitTransactions}`, margin, yPosition);
       yPosition += 8;
       pdf.text(`Success Rate: ${summary.successRate.toFixed(1)}%`, margin, yPosition);
       
@@ -666,7 +708,7 @@ export default function ReportsPage() {
   // Refresh handler
   const handleRefresh = async () => {
     try {
-      await refetchTransactions();
+      await Promise.all([refetchTransactions(), refetchWalletBalances()]);
       toast.success('Reports refreshed');
     } catch (error) {
       toast.error('Failed to refresh reports');
@@ -700,8 +742,8 @@ export default function ReportsPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 py-6 px-4 md:px-8">
-      <div className="max-w-7xl mx-auto" id="report-content">
+    <div className="min-h-screen bg-gray-50 p-4 sm:p-6 min-w-0">
+      <div className="max-w-screen-2xl w-full min-w-0" id="report-content">
         {/* Page Header */}
         <div className="mb-8">
           <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
@@ -830,30 +872,85 @@ export default function ReportsPage() {
           </CardContent>
         </Card>
 
+        {/* Live wallet balances — same context as home dashboard */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
+          {hasSplitBalances ? (
+            <>
+              <Card>
+                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                  <CardTitle className="text-sm font-medium">Collection balance</CardTitle>
+                  <Wallet className="h-4 w-4 text-green-600" />
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold">
+                    UGX {Number(walletBalances?.collectionBalance ?? 0).toLocaleString()}
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Incoming customer payments (Collection wallet)
+                  </p>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                  <CardTitle className="text-sm font-medium">Payout balance</CardTitle>
+                  <Wallet className="h-4 w-4 text-blue-600" />
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold">
+                    UGX {Number(walletBalances?.disbursementBalance ?? 0).toLocaleString()}
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Available for outgoing payments (Disbursement wallet)
+                  </p>
+                </CardContent>
+              </Card>
+            </>
+          ) : (
+            <Card className="sm:col-span-2">
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">Current balance</CardTitle>
+                <Wallet className="h-4 w-4 text-blue-600" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold">
+                  UGX {Number(walletBalances?.balance ?? 0).toLocaleString()}
+                </div>
+                <p className="text-xs text-muted-foreground">Available business wallet balance</p>
+              </CardContent>
+            </Card>
+          )}
+        </div>
+
         {/* Summary Cards */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Total Revenue</CardTitle>
+              <CardTitle className="text-sm font-medium">Total received</CardTitle>
               <TrendingUp className="h-4 w-4 text-green-600" />
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold text-green-600">UGX {Number(summary.totalRevenue).toLocaleString()}</div>
               <p className="text-xs text-muted-foreground">
-                {summary.creditTransactions} credit transactions
+                {summary.creditTransactions} successful incoming payments
+                {dateRange.from || dateRange.to
+                  ? ` · filtered${dateRange.from ? ` from ${dateRange.from}` : ''}${dateRange.to ? ` to ${dateRange.to}` : ''}`
+                  : ' · all dates'}
               </p>
             </CardContent>
           </Card>
 
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Total Expenses</CardTitle>
+              <CardTitle className="text-sm font-medium">Total sent</CardTitle>
               <TrendingDown className="h-4 w-4 text-red-600" />
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold text-red-600">UGX {Number(summary.totalExpenses).toLocaleString()}</div>
               <p className="text-xs text-muted-foreground">
-                {summary.debitTransactions} debit transactions
+                {summary.debitTransactions} successful outgoing payments
+                {dateRange.from || dateRange.to
+                  ? ` · filtered${dateRange.from ? ` from ${dateRange.from}` : ''}${dateRange.to ? ` to ${dateRange.to}` : ''}`
+                  : ' · all dates'}
               </p>
             </CardContent>
           </Card>
@@ -868,7 +965,8 @@ export default function ReportsPage() {
                 UGX {Number(summary.netIncome).toLocaleString()}
               </div>
               <p className="text-xs text-muted-foreground">
-                Revenue - Expenses
+                Total received − Total sent
+                {dateRange.from || dateRange.to ? ' · based on filtered dates' : ' · all dates'}
               </p>
             </CardContent>
           </Card>
@@ -882,41 +980,44 @@ export default function ReportsPage() {
               <div className="text-2xl font-bold text-blue-600">{summary.successRate.toFixed(1)}%</div>
               <p className="text-xs text-muted-foreground">
                 {summary.totalTransactions} total transactions
+                {status !== 'all' ? ` · status: ${status}` : ''}
+                {dateRange.from || dateRange.to ? ' · filtered dates' : ' · all dates'}
               </p>
             </CardContent>
           </Card>
         </div>
 
-        {/* Charts */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
-          <Card>
+        {/* Charts — equal columns; min-w-0 stops the bar chart from stretching the grid */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8 items-stretch">
+          <Card className="min-w-0 overflow-hidden">
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <BarChart3 className="w-5 h-5" />
                 Transaction Volume
               </CardTitle>
             </CardHeader>
-            <CardContent>
+            <CardContent className="min-w-0 overflow-hidden">
               <Chart 
                 period="Monthly" 
                 from={dateRange.from} 
                 to={dateRange.to}
                 transactions={transactions}
+                heightClass="h-[220px]"
               />
             </CardContent>
           </Card>
 
-          <Card>
+          <Card className="min-w-0 overflow-hidden">
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <PieChart className="w-5 h-5" />
                 Transaction Distribution
               </CardTitle>
             </CardHeader>
-            <CardContent>
-              <div className="space-y-4">
+            <CardContent className="flex h-full min-h-[220px] items-center">
+              <div className="w-full space-y-4">
                 <div className="flex items-center justify-between">
-                  <span className="text-sm font-medium">Credit Transactions</span>
+                  <span className="text-sm font-medium">Incoming payments</span>
                   <span className="text-sm text-green-600 font-bold">
                     {summary.creditTransactions} ({summary.totalTransactions > 0 ? ((summary.creditTransactions / summary.totalTransactions) * 100).toFixed(1) : 0}%)
                   </span>
@@ -929,7 +1030,7 @@ export default function ReportsPage() {
                 </div>
                 
                 <div className="flex items-center justify-between">
-                  <span className="text-sm font-medium">Debit Transactions</span>
+                  <span className="text-sm font-medium">Outgoing payments</span>
                   <span className="text-sm text-red-600 font-bold">
                     {summary.debitTransactions} ({summary.totalTransactions > 0 ? ((summary.debitTransactions / summary.totalTransactions) * 100).toFixed(1) : 0}%)
                   </span>
@@ -979,7 +1080,7 @@ export default function ReportsPage() {
                     </TableRow>
                   ) : (
                     paginatedTransactions.map((txn) => (
-                      <TableRow key={txn.rdbs_transaction_id}>
+                      <TableRow key={txn.rowKey}>
                         <TableCell className="font-mono text-sm">
                           {txn.rdbs_transaction_id}
                         </TableCell>
