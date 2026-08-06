@@ -593,7 +593,7 @@ export default function LiquidatePage() {
         </h1>
         <p className="text-gray-600 mt-1">
           {liquidationOnlyMode
-            ? 'Liquidation-Only Mode is enabled. You can only liquidate to the destination configured by your administrator.'
+            ? 'Liquidation-Only Mode is enabled. You can only liquidate to your locked destination. Contact an administrator to change it.'
             : 'Move funds from collection to disbursement, then send money to your bank account. Only the account owner can liquidate.'}
         </p>
       </div>
@@ -607,7 +607,7 @@ export default function LiquidatePage() {
             Liquidate to disbursement
           </CardTitle>
           <CardDescription>
-            Move collected funds into your disbursement wallet at no transfer fee. RukaPay collection fees are already deducted when customers pay you. Standard tariffs apply when you send to bank or mobile money below.
+            Move collected funds into your disbursement wallet at no transfer fee. RukaPay collection fees are already deducted when customers pay you. Bank and mobile money payouts below use Merchant Portal tariffs.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -691,8 +691,8 @@ export default function LiquidatePage() {
           </CardTitle>
           <CardDescription>
             {liquidationOnlyMode
-              ? 'Funds are paid out only to the locked destination set by your administrator. You cannot change these details.'
-              : 'Send from your collection wallet to bank, mobile money, or another RukaPay user. Standard payout tariffs apply (no extra liquidation transfer fee).'}
+              ? 'Funds are paid out only to your locked destination. You cannot change these details here — contact an administrator if you need an update. Bank and mobile money fees use Merchant Portal tariffs.'
+              : 'Send from your collection wallet to bank, mobile money, or another RukaPay user. Bank and MoMo fees come from Merchant Portal tariffs (not a separate liquidation fee). RukaPay wallet payouts have no payout tariff fee.'}
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -714,7 +714,7 @@ export default function LiquidatePage() {
                   ) : null}
                 </div>
               ) : (
-                <div className="mt-1">No destination configured. Contact your administrator.</div>
+                <div className="mt-1">No destination configured. Set one in Settings, or contact an administrator.</div>
               )}
             </div>
           )}
@@ -846,7 +846,9 @@ export default function LiquidatePage() {
               {payoutAmountNum > 0 && (
                 <div className="rounded-lg border border-amber-100 bg-amber-50 p-3 text-sm text-amber-900">
                   Payout amount: <span className="font-semibold">{fmt(payoutAmountNum)}</span>.
-                  Fees are calculated from your standard bank / mobile money tariffs when you confirm the transfer.
+                  {payoutType === "RUKAPAY"
+                    ? " RukaPay wallet liquidation has no payout tariff fee."
+                    : " Fees are calculated from Merchant Portal bank / mobile money tariffs when you confirm."}
                 </div>
               )}
 
