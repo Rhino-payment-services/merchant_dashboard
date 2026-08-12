@@ -168,15 +168,20 @@ export const processSinglePayment = async (paymentData: SinglePaymentDto, userId
       
       metadata: (() => {
         const m = paymentData.metadata ? { ...paymentData.metadata } : undefined;
+        if (!m) return undefined;
+        if (typeof m.referralCode === 'string') {
+          const trimmed = m.referralCode.trim();
+          if (trimmed) m.referralCode = trimmed;
+          else delete m.referralCode;
+        }
         if (
           paymentData.mode === 'UTILITIES' &&
-          paymentData.utilityProvider === 'DATA_BUNDLES' &&
-          m
+          paymentData.utilityProvider === 'DATA_BUNDLES'
         ) {
           const q = Number(m.dataQuantity);
           if (!Number.isNaN(q)) m.dataQuantity = q;
         }
-        return m;
+        return Object.keys(m).length > 0 ? m : undefined;
       })(),
     };
 

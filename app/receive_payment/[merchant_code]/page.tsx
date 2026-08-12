@@ -224,6 +224,7 @@ export default function ReceivePaymentPage({ params }: PaymentPageProps) {
   const [phoneNumber, setPhoneNumber] = useState('')
   const [amount, setAmount] = useState('')
   const [paymentDescription, setPaymentDescription] = useState('')
+  const [referralCode, setReferralCode] = useState('')
   const [isLoading, setIsLoading] = useState(false)
   const [isMerchantLoading, setIsMerchantLoading] = useState(true)
   const [paymentStep, setPaymentStep] = useState<'form' | 'confirm' | 'processing' | 'success' | 'error'>('form')
@@ -331,6 +332,7 @@ export default function ReceivePaymentPage({ params }: PaymentPageProps) {
           phoneNumber: formattedPhone,
           amount: numAmount,
           ...(paymentDescription.trim() && { description: paymentDescription.trim() }),
+          ...(referralCode.trim() && { referralCode: referralCode.trim() }),
         }),
       })
 
@@ -471,6 +473,7 @@ export default function ReceivePaymentPage({ params }: PaymentPageProps) {
             setPhoneNumber('')
             setAmount('')
             setPaymentDescription('')
+            setReferralCode('')
           }}
         >
           Cancel
@@ -499,6 +502,9 @@ export default function ReceivePaymentPage({ params }: PaymentPageProps) {
             ...(paymentDescription.trim()
               ? [{ label: 'Description', value: paymentDescription.trim() }]
               : []),
+            ...(referralCode.trim()
+              ? [{ label: 'Referral code', value: referralCode.trim() }]
+              : []),
             ...(transactionRef
               ? [{ label: 'Reference', value: <span className="font-mono text-xs">{transactionRef}</span> }]
               : []),
@@ -512,6 +518,7 @@ export default function ReceivePaymentPage({ params }: PaymentPageProps) {
             setPhoneNumber('')
             setAmount('')
             setPaymentDescription('')
+            setReferralCode('')
             setTransactionRef('')
           }}
         >
@@ -642,6 +649,26 @@ export default function ReceivePaymentPage({ params }: PaymentPageProps) {
               onChange={(e) => setPaymentDescription(e.target.value)}
               maxLength={100}
               className="h-12"
+            />
+          </div>
+
+          {/* Referral code */}
+          <div className="space-y-2">
+            <div className="flex items-center justify-between gap-2">
+              <Label htmlFor="referralCode">
+                Referral code <span className="font-normal text-muted-foreground">(optional)</span>
+              </Label>
+              <span className="text-xs text-muted-foreground">{referralCode.length}/50</span>
+            </div>
+            <Input
+              id="referralCode"
+              type="text"
+              placeholder="Enter referral code"
+              value={referralCode}
+              onChange={(e) => setReferralCode(e.target.value)}
+              maxLength={50}
+              className="h-12"
+              autoComplete="off"
             />
           </div>
         </div>

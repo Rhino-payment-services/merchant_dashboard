@@ -519,6 +519,17 @@ export default function BulkPaymentPage() {
           ? resolveAirtimeMnoProvider(singlePayment.mnoProvider, singlePayment.phoneNumber)
           : undefined;
 
+      const cleanedMetadata = (() => {
+        if (!singlePayment.metadata) return undefined;
+        const m = { ...singlePayment.metadata };
+        if (typeof m.referralCode === 'string') {
+          const trimmed = m.referralCode.trim();
+          if (trimmed) m.referralCode = trimmed;
+          else delete m.referralCode;
+        }
+        return Object.keys(m).length > 0 ? m : undefined;
+      })();
+
       const payload: SinglePaymentDto = {
         ...singlePayment,
         ...(airtimeNetwork ? { mnoProvider: airtimeNetwork } : {}),
@@ -536,7 +547,7 @@ export default function BulkPaymentPage() {
           singlePayment.mode === 'UTILITIES' && isAirtimeOrDataUtility(singlePayment.utilityProvider) && normalizedUtilPhone
             ? normalizedUtilPhone
             : singlePayment.utilityAccountNumber,
-        metadata: singlePayment.metadata,
+        metadata: cleanedMetadata,
         recipientPhoneNumber: singlePayment.mode === 'MERCHANT_TO_WALLET' && singlePayment.recipientPhoneNumber
           ? normalizePhoneToUganda(singlePayment.recipientPhoneNumber)
           : singlePayment.recipientPhoneNumber,
@@ -2284,6 +2295,36 @@ export default function BulkPaymentPage() {
                     value={singlePayment.description || ''}
                     onChange={(e) => handleSinglePaymentChange('description', e.target.value)}
                     placeholder="Enter transaction description"
+                    className="w-full"
+                  />
+                </div>
+
+                {/* Referral Code */}
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">
+                    Referral Code (Optional)
+                  </label>
+                  <Input
+                    value={singlePayment.metadata?.referralCode || ''}
+                    onChange={(e) => {
+                      const value = e.target.value.slice(0, 50);
+                      setSinglePayment((prev) => {
+                        const nextMetadata = { ...(prev.metadata || {}) };
+                        if (value.trim()) {
+                          nextMetadata.referralCode = value;
+                        } else {
+                          delete nextMetadata.referralCode;
+                        }
+                        const hasKeys = Object.keys(nextMetadata).length > 0;
+                        return {
+                          ...prev,
+                          metadata: hasKeys ? nextMetadata : undefined,
+                        };
+                      });
+                    }}
+                    placeholder="Enter referral code"
+                    maxLength={50}
+                    autoComplete="off"
                     className="w-full"
                   />
                 </div>

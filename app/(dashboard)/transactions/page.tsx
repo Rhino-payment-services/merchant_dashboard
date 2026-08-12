@@ -1023,10 +1023,19 @@ export default function TransactionsPage() {
                           </span>
                         </TableCell>
                         <TableCell
-                          className="max-w-xs truncate"
-                          title={getTransactionDescriptionDisplay(transaction)}
+                          className="max-w-xs"
+                          title={
+                            transaction.metadata?.referralCode
+                              ? `${getTransactionDescriptionDisplay(transaction)} · Referral: ${transaction.metadata.referralCode}`
+                              : getTransactionDescriptionDisplay(transaction)
+                          }
                         >
-                          {getTransactionDescriptionDisplay(transaction)}
+                          <div className="truncate">{getTransactionDescriptionDisplay(transaction)}</div>
+                          {transaction.metadata?.referralCode ? (
+                            <div className="truncate text-xs text-muted-foreground mt-0.5">
+                              Ref: {transaction.metadata.referralCode}
+                            </div>
+                          ) : null}
                         </TableCell>
                         <TableCell className="text-sm">
                           {new Date(transaction.createdAt).toLocaleString('en-UG', {
@@ -1730,6 +1739,15 @@ export default function TransactionsPage() {
                     {getTransactionDescriptionDisplay(txn)}
                   </p>
                 </div>
+
+                {txn.metadata?.referralCode ? (
+                  <div className="p-4 bg-gray-50 rounded-lg border border-gray-200">
+                    <h4 className="font-semibold text-gray-900 mb-2">Referral Code</h4>
+                    <p className="text-sm text-gray-700 font-mono">
+                      {txn.metadata.referralCode}
+                    </p>
+                  </div>
+                ) : null}
               </div>
             );
           })()}
