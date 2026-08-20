@@ -62,10 +62,23 @@ import {
   addTeamMemberDirect,
   removeTeamMember,
   transferOwnership,
-  requestTransferOwnershipOtp
+  requestTransferOwnershipOtp,
+  updateTeamMember,
 } from '@/lib/api/team.api';
 import type { TeamMember } from '@/lib/api/team.api';
 import { useUserProfile } from '../UserProfileProvider';
+import {
+  TeamPermissionCheckboxes,
+  type PermissionFormState,
+} from '@/app/components/TeamPermissionCheckboxes';
+import {
+  canManageTeam,
+  getDefaultPermissionsForRole,
+  type UserSession,
+} from '@/lib/utils/permissions';
+
+const emptyPerms = (): PermissionFormState =>
+  getDefaultPermissionsForRole('MEMBER');
 
 export default function TeamManagementPage() {
   const { data: session } = useSession();
@@ -73,14 +86,17 @@ export default function TeamManagementPage() {
   const [showInviteDialog, setShowInviteDialog] = useState(false);
   const [showAddDirectDialog, setShowAddDirectDialog] = useState(false);
   const [showTransferDialog, setShowTransferDialog] = useState(false);
+  const [showEditDialog, setShowEditDialog] = useState(false);
   const [editingMember, setEditingMember] = useState<TeamMember | null>(null);
-  
+  const [savingEdit, setSavingEdit] = useState(false);
+
   const [inviteForm, setInviteForm] = useState({
     email: '',
     firstName: '',
     lastName: '',
     phoneNumber: '',
-    role: 'MEMBER' as 'ADMIN' | 'ACCOUNTANT' | 'MEMBER' | 'VIEWER'
+    role: 'MEMBER' as 'ADMIN' | 'ACCOUNTANT' | 'MEMBER' | 'VIEWER',
+    permissions: emptyPerms(),
   });
 
   const [addDirectForm, setAddDirectForm] = useState<{
@@ -90,26 +106,64 @@ export default function TeamManagementPage() {
     phoneNumber: string;
     role: 'ADMIN' | 'ACCOUNTANT' | 'MEMBER' | 'VIEWER';
     password: string;
+    permissions: PermissionFormState;
   }>({
     email: '',
     firstName: '',
     lastName: '',
     phoneNumber: '',
     role: 'MEMBER',
-    password: '' // Temporary password - user will change via email
+    password: '',
+    permissions: emptyPerms(),
+  });
+
+  const [editForm, setEditForm] = useState<{
+    role: 'ADMIN' | 'ACCOUNTANT' | 'MEMBER' | 'VIEWER';
+    permissions: PermissionFormState;
+  }>({
+    role: 'MEMBER',
+    permissions: emptyPerms(),
   });
 
   const [transferForm, setTransferForm] = useState({
     newOwnerUserId: '',
     password: '',
-    otp: ''
+    otp: '',
   });
   const [isRequestingOtp, setIsRequestingOtp] = useState(false);
   const [otpSent, setOtpSent] = useState(false);
-  
-  // Get user profile to check if user is a merchant
+
   const { profile } = useUserProfile();
   const isMerchant = !!(profile?.merchantCode || profile?.merchant_code);
+  const featureCeiling = {
+    featureLiquidation: !!(
+      (profile as any)?.merchantData?.featureLiquidation ??
+      (profile as any)?.businessWallet?.merchant?.featureLiquidation
+    ),
+    featureBulkPayments: !!(
+      (profile as any)?.merchantData?.featureBulkPayments ??
+      (profile as any)?.businessWallet?.merchant?.featureBulkPayments
+    ),
+    featurePayroll: !!(
+      (profile as any)?.merchantData?.featurePayroll ??
+      (profile as any)?.businessWallet?.merchant?.featurePayroll
+    ),
+    featurePayrollApprovals: !!(
+      (profile as any)?.merchantData?.featurePayrollApprovals ??
+      (profile as any)?.businessWallet?.merchant?.featurePayrollApprovals
+    ),
+    liquidationOnlyMode: !!(
+      (profile as any)?.merchantData?.liquidationOnlyMode ??
+      (profile as any)?.businessWallet?.merchant?.liquidationOnlyMode
+    ),
+  };
+
+  const userSession: UserSession = {
+    role: (profile as any)?.role,
+    isWalletOwner: !!(profile as any)?.isWalletOwner,
+    userData: (profile as any)?.walletPermissions,
+  };
+  const canManage = canManageTeam(userSession);
 
   // Get merchant's business wallet directly
   const { data: businessWallet, isLoading: walletLoading, error: walletError } = useMyBusinessWallet();
@@ -177,11 +231,25 @@ export default function TeamManagementPage() {
 
     try {
       console.log('Inviting team member to wallet:', businessWalletId, inviteForm);
-      await inviteTeamMember(businessWalletId, inviteForm);
+      await inviteTeamMember(businessWalletId, {
+        email: inviteForm.email,
+        firstName: inviteForm.firstName,
+        lastName: inviteForm.lastName,
+        phoneNumber: inviteForm.phoneNumber || undefined,
+        role: inviteForm.role,
+        ...inviteForm.permissions,
+      });
       queryClient.invalidateQueries({ queryKey: teamQueryKeys.walletTeam(businessWalletId) });
       toast.success('Team member invited successfully! They will receive an email with instructions to set up their account.');
       setShowInviteDialog(false);
-      setInviteForm({ email: '', firstName: '', lastName: '', phoneNumber: '', role: 'MEMBER' });
+      setInviteForm({
+        email: '',
+        firstName: '',
+        lastName: '',
+        phoneNumber: '',
+        role: 'MEMBER',
+        permissions: emptyPerms(),
+      });
     } catch (error: any) {
       console.error('Error inviting team member:', error);
       toast.error(error.response?.data?.message || 'Failed to invite team member');
@@ -213,8 +281,13 @@ export default function TeamManagementPage() {
     // Generate a temporary secure password (user will change it via email)
     const tempPassword = Math.random().toString(36).slice(-12) + Math.random().toString(36).slice(-12);
     const formData = {
-      ...addDirectForm,
-      password: tempPassword
+      email: addDirectForm.email,
+      firstName: addDirectForm.firstName,
+      lastName: addDirectForm.lastName,
+      phoneNumber: addDirectForm.phoneNumber || undefined,
+      role: addDirectForm.role,
+      password: tempPassword,
+      permissions: addDirectForm.permissions,
     };
 
     try {
@@ -223,10 +296,65 @@ export default function TeamManagementPage() {
       queryClient.invalidateQueries({ queryKey: teamQueryKeys.walletTeam(businessWalletId) });
       toast.success('Team member added successfully! Login credentials have been sent to their email.');
       setShowAddDirectDialog(false);
-      setAddDirectForm({ email: '', firstName: '', lastName: '', phoneNumber: '', role: 'MEMBER', password: '' });
+      setAddDirectForm({
+        email: '',
+        firstName: '',
+        lastName: '',
+        phoneNumber: '',
+        role: 'MEMBER',
+        password: '',
+        permissions: emptyPerms(),
+      });
     } catch (error: any) {
       console.error('Error adding team member:', error);
       toast.error(error.response?.data?.message || 'Failed to add team member');
+    }
+  };
+
+  const openEditMember = (member: TeamMember) => {
+    if (member.role === 'OWNER') {
+      toast.error('The OWNER membership cannot be edited');
+      return;
+    }
+    setEditingMember(member);
+    setEditForm({
+      role: member.role,
+      permissions: {
+        canViewBalance: !!member.canViewBalance,
+        canViewTransactions: !!member.canViewTransactions,
+        canViewReports: member.canViewReports ?? true,
+        canCollectPayments: !!member.canCollectPayments,
+        canInitiatePayments: !!member.canInitiatePayments,
+        canLiquidate: !!member.canLiquidate,
+        canApprovePayments: !!member.canApprovePayments,
+        canManagePayroll: !!member.canManagePayroll,
+        canManageEvents: !!member.canManageEvents,
+        canManageTeam: !!member.canManageTeam,
+        canManageSettings: !!member.canManageSettings,
+      },
+    });
+    setShowEditDialog(true);
+  };
+
+  const handleEditMember = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingMember) return;
+    try {
+      setSavingEdit(true);
+      await updateTeamMember(editingMember.id, {
+        role: editForm.role,
+        ...editForm.permissions,
+      });
+      queryClient.invalidateQueries({
+        queryKey: teamQueryKeys.walletTeam(businessWalletId),
+      });
+      toast.success('Member permissions updated');
+      setShowEditDialog(false);
+      setEditingMember(null);
+    } catch (error: any) {
+      toast.error(error.response?.data?.message || 'Failed to update member');
+    } finally {
+      setSavingEdit(false);
     }
   };
 
@@ -368,6 +496,17 @@ export default function TeamManagementPage() {
 
   return (
     <div className="container mx-auto py-8 px-4">
+      {!canManage ? (
+        <Card>
+          <CardHeader>
+            <CardTitle>Access denied</CardTitle>
+            <CardDescription>
+              You do not have permission to manage team members.
+            </CardDescription>
+          </CardHeader>
+        </Card>
+      ) : (
+      <>
       <div className="mb-8 flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold text-gray-900">Team Management</h1>
@@ -450,7 +589,13 @@ export default function TeamManagementPage() {
                   <Label htmlFor="add-role">Role *</Label>
                   <Select 
                     value={addDirectForm.role} 
-                    onValueChange={(value: any) => setAddDirectForm({ ...addDirectForm, role: value })}
+                    onValueChange={(value: any) =>
+                      setAddDirectForm({
+                        ...addDirectForm,
+                        role: value,
+                        permissions: getDefaultPermissionsForRole(value),
+                      })
+                    }
                   >
                     <SelectTrigger>
                       <SelectValue />
@@ -463,6 +608,14 @@ export default function TeamManagementPage() {
                     </SelectContent>
                   </Select>
                 </div>
+
+                <TeamPermissionCheckboxes
+                  value={addDirectForm.permissions}
+                  onChange={(permissions) =>
+                    setAddDirectForm({ ...addDirectForm, permissions })
+                  }
+                  features={featureCeiling}
+                />
 
                 <div className="flex justify-end gap-3 pt-4">
                   <Button
@@ -549,9 +702,15 @@ export default function TeamManagementPage() {
 
                 <div>
                   <Label htmlFor="role">Role *</Label>
-                  <Select 
-                    value={inviteForm.role} 
-                    onValueChange={(value: any) => setInviteForm({ ...inviteForm, role: value })}
+                    <Select
+                    value={inviteForm.role}
+                    onValueChange={(value: any) =>
+                      setInviteForm({
+                        ...inviteForm,
+                        role: value,
+                        permissions: getDefaultPermissionsForRole(value),
+                      })
+                    }
                   >
                     <SelectTrigger>
                       <SelectValue />
@@ -564,6 +723,14 @@ export default function TeamManagementPage() {
                     </SelectContent>
                   </Select>
                 </div>
+
+                <TeamPermissionCheckboxes
+                  value={inviteForm.permissions}
+                  onChange={(permissions) =>
+                    setInviteForm({ ...inviteForm, permissions })
+                  }
+                  features={featureCeiling}
+                />
 
                 <div className="flex justify-end gap-3 pt-4">
                   <Button
@@ -720,9 +887,29 @@ export default function TeamManagementPage() {
                             View Balance
                           </Badge>
                         )}
+                        {member.canViewTransactions && (
+                          <Badge variant="outline" className="text-xs">
+                            View Tx
+                          </Badge>
+                        )}
+                        {member.canViewReports && (
+                          <Badge variant="outline" className="text-xs">
+                            Reports
+                          </Badge>
+                        )}
+                        {member.canCollectPayments && (
+                          <Badge variant="outline" className="text-xs">
+                            Collect
+                          </Badge>
+                        )}
                         {member.canInitiatePayments && (
                           <Badge variant="outline" className="text-xs">
                             Initiate Payments
+                          </Badge>
+                        )}
+                        {member.canLiquidate && (
+                          <Badge variant="outline" className="text-xs">
+                            Liquidate
                           </Badge>
                         )}
                         {member.canApprovePayments && (
@@ -730,9 +917,24 @@ export default function TeamManagementPage() {
                             Approve Payments
                           </Badge>
                         )}
+                        {member.canManagePayroll && (
+                          <Badge variant="outline" className="text-xs">
+                            Payroll
+                          </Badge>
+                        )}
+                        {member.canManageEvents && (
+                          <Badge variant="outline" className="text-xs">
+                            Events
+                          </Badge>
+                        )}
                         {member.canManageTeam && (
                           <Badge variant="outline" className="text-xs">
                             Manage Team
+                          </Badge>
+                        )}
+                        {member.canManageSettings && (
+                          <Badge variant="outline" className="text-xs">
+                            Settings
                           </Badge>
                         )}
                       </div>
@@ -759,7 +961,7 @@ export default function TeamManagementPage() {
                         <Button
                           variant="ghost"
                           size="sm"
-                          onClick={() => {/* Edit member */}}
+                          onClick={() => openEditMember(member)}
                         >
                           <Edit className="h-4 w-4" />
                         </Button>
@@ -921,6 +1123,72 @@ export default function TeamManagementPage() {
         </DialogContent>
       </Dialog>
 
+      {/* Edit member permissions */}
+      <Dialog
+        open={showEditDialog}
+        onOpenChange={(open) => {
+          setShowEditDialog(open);
+          if (!open) setEditingMember(null);
+        }}
+      >
+        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Edit team member</DialogTitle>
+            <DialogDescription>
+              Update role and permissions for {editingMember?.email}. OWNER cannot
+              be edited here.
+            </DialogDescription>
+          </DialogHeader>
+          <form onSubmit={handleEditMember} className="space-y-4">
+            <div>
+              <Label>Role</Label>
+              <Select
+                value={editForm.role}
+                onValueChange={(value: any) =>
+                  setEditForm({
+                    ...editForm,
+                    role: value,
+                  })
+                }
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="ADMIN">Admin</SelectItem>
+                  <SelectItem value="ACCOUNTANT">Accountant</SelectItem>
+                  <SelectItem value="MEMBER">Member</SelectItem>
+                  <SelectItem value="VIEWER">Viewer</SelectItem>
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-gray-500 mt-1">
+                Role is a label; checkboxes below are the source of truth.
+              </p>
+            </div>
+            <TeamPermissionCheckboxes
+              value={editForm.permissions}
+              onChange={(permissions) =>
+                setEditForm({ ...editForm, permissions })
+              }
+              features={featureCeiling}
+              disabled={savingEdit}
+            />
+            <div className="flex justify-end gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setShowEditDialog(false)}
+              >
+                Cancel
+              </Button>
+              <Button type="submit" disabled={savingEdit}>
+                {savingEdit ? 'Saving...' : 'Save permissions'}
+              </Button>
+            </div>
+          </form>
+        </DialogContent>
+      </Dialog>
+
       {/* Info Card */}
       <Card className="mt-6 bg-blue-50 border-blue-200">
         <CardContent className="pt-6">
@@ -938,6 +1206,8 @@ export default function TeamManagementPage() {
           </div>
         </CardContent>
       </Card>
+      </>
+      )}
     </div>
   );
 }
