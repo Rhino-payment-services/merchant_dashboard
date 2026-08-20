@@ -28,6 +28,8 @@ export interface TeamMember extends UserPermissions {
   lastAccessAt?: string;
   createdAt: string;
   updatedAt: string;
+  /** True when an existing account was linked (no new password). */
+  linkedExistingUser?: boolean;
 }
 
 export interface TeamListResponse {

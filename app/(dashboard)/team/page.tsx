@@ -231,7 +231,7 @@ export default function TeamManagementPage() {
 
     try {
       console.log('Inviting team member to wallet:', businessWalletId, inviteForm);
-      await inviteTeamMember(businessWalletId, {
+      const result = await inviteTeamMember(businessWalletId, {
         email: inviteForm.email,
         firstName: inviteForm.firstName,
         lastName: inviteForm.lastName,
@@ -240,7 +240,15 @@ export default function TeamManagementPage() {
         ...inviteForm.permissions,
       });
       queryClient.invalidateQueries({ queryKey: teamQueryKeys.walletTeam(businessWalletId) });
-      toast.success('Team member invited successfully! They will receive an email with instructions to set up their account.');
+      if (result.linkedExistingUser) {
+        toast.success(
+          'Added as a team member. They can sign in with their existing RukaPay login.',
+        );
+      } else {
+        toast.success(
+          'Team member invited successfully! They will receive an email with instructions to set up their account.',
+        );
+      }
       setShowInviteDialog(false);
       setInviteForm({
         email: '',
@@ -292,9 +300,17 @@ export default function TeamManagementPage() {
 
     try {
       console.log('Adding team member to wallet:', businessWalletId, { ...formData, password: '[HIDDEN]' });
-      await addTeamMemberDirect(businessWalletId, formData);
+      const result = await addTeamMemberDirect(businessWalletId, formData);
       queryClient.invalidateQueries({ queryKey: teamQueryKeys.walletTeam(businessWalletId) });
-      toast.success('Team member added successfully! Login credentials have been sent to their email.');
+      if (result.linkedExistingUser) {
+        toast.success(
+          'Added as a team member. They can sign in with their existing RukaPay login.',
+        );
+      } else {
+        toast.success(
+          'Team member added successfully! Login credentials have been sent to their email.',
+        );
+      }
       setShowAddDirectDialog(false);
       setAddDirectForm({
         email: '',
