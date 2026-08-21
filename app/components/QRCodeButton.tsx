@@ -4,7 +4,6 @@ import React, { useRef, useState } from 'react';
 import QRCode from 'qrcode';
 import html2canvas from 'html2canvas';
 import { useMerchantAuth } from "@/lib/context/MerchantAuthContext";
-import { useUserProfile } from '../(dashboard)/UserProfileProvider';
 import { 
   Dialog, 
   DialogContent, 
@@ -30,6 +29,7 @@ import {
   Smartphone,
   MessageSquare
 } from 'lucide-react';
+import { API_CONFIG } from '@/lib/config';
 
 interface QRCodeButtonProps {
   merchantCode: string;
@@ -37,19 +37,27 @@ interface QRCodeButtonProps {
   variant?: "default" | "compact";
 }
 
+function getPaymentPageUrl(merchantCodeValue: string): string {
+  const base =
+    API_CONFIG.PAYMENT_PAGE_URL ||
+    (typeof window !== 'undefined' ? window.location.origin : '');
+  return `${base.replace(/\/+$/, '')}/receive_payment/${merchantCodeValue}`;
+}
+
 export default function QRCodeButton({ merchantCode, merchantName, variant = "default" }: QRCodeButtonProps) {
   const [qrCodeUrl, setQrCodeUrl] = useState<string>('');
   const [isLoading, setIsLoading] = useState(false);
   const qrCodeRef = useRef<HTMLDivElement>(null);
   const { user } = useMerchantAuth();
-  const merchantCodeValue2 = user?.merchantCode || "";
+  const merchantCodeValue2 = user?.merchantCode || merchantCode || "";
 
   // Generate QR code when component mounts
   React.useEffect(() => {
     const generateQR = async () => {
       try {
-        const merchantCodeValue = user?.merchantCode || "";
-        const qrData = `http://10.10.10.26:7220/receive_payment/${merchantCodeValue}`;
+        const merchantCodeValue = user?.merchantCode || merchantCode || "";
+        if (!merchantCodeValue) return;
+        const qrData = getPaymentPageUrl(merchantCodeValue);
         const qrUrl = await QRCode.toDataURL(qrData, {
           width: 200,
           margin: 2,
@@ -65,7 +73,7 @@ export default function QRCodeButton({ merchantCode, merchantName, variant = "de
     };
 
     generateQR();
-  }, [user?.merchantCode]);
+  }, [user?.merchantCode, merchantCode]);
 
   const handlePrint = async () => {
     if (!qrCodeRef.current) return;
@@ -198,8 +206,8 @@ export default function QRCodeButton({ merchantCode, merchantName, variant = "de
   const handleShare = async () => {
     if (navigator.share) {
       try {
-        const merchantId = user?.merchantCode || "";
-        const merchantLink = `http://10.10.10.26:7220/receive_payment/${merchantId}`;
+        const merchantId = user?.merchantCode || merchantCode || "";
+        const merchantLink = getPaymentPageUrl(merchantId);
         await navigator.share({
           title: `${merchantName} - QR Code`,
           text: ` Scan this QR code to pay ${merchantName}`,
@@ -216,8 +224,8 @@ export default function QRCodeButton({ merchantCode, merchantName, variant = "de
 
   const handleCopyToClipboard = async () => {
     try {
-      const merchantId = user?.merchantCode || "";
-      const merchantLink = `http://10.10.10.26:7220/receive_payment/${merchantId}`;
+      const merchantId = user?.merchantCode || merchantCode || "";
+      const merchantLink = getPaymentPageUrl(merchantId);
       await navigator.clipboard.writeText(merchantLink);
       // You could add a toast notification here
       alert('Merchant link copied to clipboard!');
@@ -227,12 +235,14 @@ export default function QRCodeButton({ merchantCode, merchantName, variant = "de
   };
 
   const handleShareViaWhatsApp = () => {
-    const text = encodeURIComponent(`Scan this QR code to pay ${merchantName}: http://10.10.10.26:7220/receive_payment/?merchant_code=${user?.merchantCode || ""}`);
+    const code = user?.merchantCode || merchantCode || "";
+    const text = encodeURIComponent(`Scan this QR code to pay ${merchantName}: ${getPaymentPageUrl(code)}`);
     window.open(`https://wa.me/?text=${text}`, '_blank');
   };
 
   const handleShareViaSMS = () => {
-    const text = encodeURIComponent(`Scan this QR code to pay ${merchantName}: http://10.10.10.26:7220/receive_payment/?merchant_code=${user?.merchantCode || merchantCode || ""}`);
+    const code = user?.merchantCode || merchantCode || "";
+    const text = encodeURIComponent(`Scan this QR code to pay ${merchantName}: ${getPaymentPageUrl(code)}`);
     window.open(`sms:?body=${text}`, '_blank');
   };
 
