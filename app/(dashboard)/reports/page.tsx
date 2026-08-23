@@ -6,6 +6,9 @@ import { Input } from '@/components/ui/input';
 import { DateRangePicker } from '@/components/ui/date-range-picker';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { useUserProfile } from '../UserProfileProvider';
+import { AccessDenied } from '@/app/components/AccessDenied';
+import { useTeamPermissionSession } from '@/lib/hooks/useTeamPermissionSession';
+import { canViewReports } from '@/lib/utils/permissions';
 import { TransactionFilter } from '@/lib/api/transactions.api';
 import { getWalletBalance } from '@/lib/api/wallet.api';
 import { useQuery } from '@tanstack/react-query';
@@ -82,6 +85,7 @@ interface ReportSummary {
 export default function ReportsPage() {
   const { data: session } = useSession();
   const { profile, loading: profileLoading } = useUserProfile();
+  const teamSession = useTeamPermissionSession();
   const sessionMerchantCode = (session?.user as { merchantCode?: string })?.merchantCode;
   const firstSessionMerchantCode = (session?.user as { merchants?: { merchantCode?: string }[] })?.merchants?.[0]?.merchantCode;
   const currentMerchantCode =
@@ -739,6 +743,10 @@ export default function ReportsPage() {
         </Card>
       </div>
     );
+  }
+
+  if (!canViewReports(teamSession)) {
+    return <AccessDenied description="You do not have permission to view reports." />;
   }
 
   return (

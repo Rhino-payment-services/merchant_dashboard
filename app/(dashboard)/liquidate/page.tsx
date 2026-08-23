@@ -12,6 +12,9 @@ import { sweepToDisbursement } from "@/lib/api/wallet.api";
 import { toast } from "sonner";
 import { useSession } from "next-auth/react";
 import { useUserProfile } from "../UserProfileProvider";
+import { AccessDenied } from "@/app/components/AccessDenied";
+import { useTeamPermissionSession } from "@/lib/hooks/useTeamPermissionSession";
+import { canLiquidate } from "@/lib/utils/permissions";
 import {
   useProcessTransaction,
   useValidateBankAccount,
@@ -30,6 +33,7 @@ const fmt = (n: number, currency = "UGX") =>
 
 export default function LiquidatePage() {
   const { profile } = useUserProfile();
+  const teamSession = useTeamPermissionSession();
   const { data: session } = useSession();
   const [collectionBalance, setCollectionBalance] = useState<number | null>(null);
   const [disbursementBalance, setDisbursementBalance] = useState<number | null>(null);
@@ -583,6 +587,12 @@ export default function LiquidatePage() {
       toast.error(err?.message || "Failed to initiate payout");
     }
   };
+
+  if (!canLiquidate(teamSession)) {
+    return (
+      <AccessDenied description="You do not have permission to liquidate." />
+    );
+  }
 
   return (
     <div className="p-4 md:p-6 max-w-4xl mx-auto space-y-6">

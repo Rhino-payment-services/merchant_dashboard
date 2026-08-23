@@ -31,6 +31,19 @@ import Image from 'next/image';
 import { useSession } from 'next-auth/react';
 import { useUserProfile } from '../(dashboard)/UserProfileProvider';
 import { checkMerchantIsSuperMerchant } from '@/lib/api/super-merchant.api';
+import {
+  canViewTransactions,
+  canCollectPayments,
+  canInitiatePayments,
+  canLiquidate as canLiquidatePermission,
+  canViewReports,
+  canManageTeam,
+  canManagePayroll,
+  canApprovePayments,
+  canManageEvents,
+  canManageSettings,
+  type UserSession,
+} from '@/lib/utils/permissions';
 
 const navLinks = [
   { section: 'GENERAL', links: [
@@ -101,7 +114,14 @@ export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
 
   // Liquidate + payroll: require featureLiquidation or featureBulkPayments (Payment link is always shown).
   // Liquidation-Only Mode forces Liquidate visible and hides Payment/Payroll.
-  const canLiquidate = liquidationOnlyMode || featureLiquidation || featureBulkPayments;
+  const merchantCanLiquidate =
+    liquidationOnlyMode || featureLiquidation || featureBulkPayments;
+
+  const userSession: UserSession = {
+    role: (profile as any)?.role,
+    isWalletOwner: !!(profile as any)?.isWalletOwner,
+    userData: (profile as any)?.walletPermissions,
+  };
 
   // State for super merchant status
   const [isSuperMerchant, setIsSuperMerchant] = useState(false);
@@ -147,7 +167,7 @@ export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
     }
   }, [session, currentMerchant, merchants, profile?.merchantId]);
   
-  // Filter navLinks based on feature flags
+  // Filter navLinks based on feature flags + team member permissions
   const filteredNavLinks = navLinks.map(section => ({
     ...section,
     links: section.links.filter(link => {
@@ -155,13 +175,41 @@ export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
         if (link.path === '/bulk-payment') return false;
         if (link.path === '/payroll') return false;
         if (link.path === '/payroll/approvals') return false;
-        if (link.path === '/liquidate') return true;
-        return true;
+        if (link.path === '/liquidate') {
+          return merchantCanLiquidate && canLiquidatePermission(userSession);
+        }
+        // still apply team perms for other items
       }
-      // Payment (single + bulk + bills) is available to all merchants; Liquidate stays gated.
-      if (link.path === '/liquidate') return canLiquidate;
-      if (link.path === '/payroll') return featurePayroll && canLiquidate;
-      if (link.path === '/payroll/approvals') return featurePayrollApprovals && canLiquidate;
+      if (link.path === '/transactions') return canViewTransactions(userSession);
+      if (link.path === '/top-up' || link.path === '/qr-code') {
+        return canCollectPayments(userSession);
+      }
+      if (link.path === '/bulk-payment') {
+        return !liquidationOnlyMode && canInitiatePayments(userSession);
+      }
+      if (link.path === '/events') return canManageEvents(userSession);
+      if (link.path === '/liquidate') {
+        return merchantCanLiquidate && canLiquidatePermission(userSession);
+      }
+      if (link.path === '/reports') return canViewReports(userSession);
+      if (link.path === '/team') return canManageTeam(userSession);
+      if (link.path === '/payroll') {
+        return (
+          featurePayroll &&
+          merchantCanLiquidate &&
+          canManagePayroll(userSession)
+        );
+      }
+      if (link.path === '/payroll/approvals') {
+        return (
+          featurePayrollApprovals &&
+          merchantCanLiquidate &&
+          canApprovePayments(userSession)
+        );
+      }
+      if (link.path === '/kyc' || link.path === '/settings') {
+        return canManageSettings(userSession);
+      }
       return true;
     })
   })).filter(section => section.links.length > 0); // Remove empty sections
