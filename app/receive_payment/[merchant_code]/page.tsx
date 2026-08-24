@@ -503,7 +503,9 @@ export default function ReceivePaymentPage({ params }: PaymentPageProps) {
           <h2 className="mb-2 text-xl font-semibold">Approve on *289#</h2>
           <p className="mb-6 text-sm text-muted-foreground">
             Use the RukaPay wallet on{' '}
-            <span className="font-medium text-foreground">{displayPhone}</span>. This is not Mobile Money and not LimboPay.
+            <span className="font-medium text-foreground">{displayPhone}</span>. Dial{' '}
+            <span className="font-medium text-foreground">*289#</span>
+            {' '}→ My Account → Pending payments → PIN.
           </p>
         </div>
 
@@ -730,8 +732,9 @@ export default function ReceivePaymentPage({ params }: PaymentPageProps) {
       <div className="mb-5 rounded-lg border border-border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
         {paymentChannel === 'rukapay' ? (
           <>
-            Paying with <span className="font-medium text-foreground">RukaPay wallet</span>. You will dial{' '}
-            <span className="font-medium text-foreground">*289#</span> to approve — not LimboPay, not MoMo STK.
+            Paying with <span className="font-medium text-foreground">RukaPay wallet</span>. Dial{' '}
+            <span className="font-medium text-foreground">*289#</span>
+            {' '}→ My Account → Pending payments → PIN.
           </>
         ) : (
           <>
