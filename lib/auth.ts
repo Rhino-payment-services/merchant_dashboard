@@ -7,6 +7,10 @@ import {
   type MerchantVerifyOtpResponse,
 } from "./auth/merchantOtpUser"
 import { normalizeMerchantPortalPhone } from "./auth/merchantOtpPhone"
+import {
+  slimSessionMerchants,
+  slimSessionUser,
+} from "./auth/sessionPayload"
 
 function buildMerchantAuthUserFromPayload(payload: string) {
   const data = JSON.parse(payload) as MerchantVerifyOtpResponse
@@ -103,14 +107,6 @@ export const authOptions: NextAuthOptions = {
 
           const { user, accessToken, refreshToken } = response.data
 
-          console.log('📊 [Auth] Email login - Backend response:', {
-            userId: user.id,
-            email: user.email,
-            merchantCode: user.merchantCode,
-            merchants: user.merchants,
-            merchantsLength: user.merchants?.length || 0
-          })
-
           if (!accessToken || !refreshToken) {
             throw new Error("Login failed")
           }
@@ -125,18 +121,17 @@ export const authOptions: NextAuthOptions = {
             userType: user.userType,
             subscriberType: user.subscriberType,
             merchantCode: user.merchantCode,
-            merchants: user.merchants || [],
+            merchants: slimSessionMerchants(user.merchants || []),
             hasPassword: user.hasPassword ?? !!user.password,
             hasPendingMerchant: user.hasPendingMerchant || false,
             accessToken,
             refreshToken,
-            user: {
+            user: slimSessionUser({
               ...user,
               mustChangePassword: user.mustChangePassword || user.isFirstLogin || false,
               isFirstLogin: user.isFirstLogin || false
-            }
+            }),
           }
-          console.log('📊 [Auth] Email login - Returning:', { merchants: authResult.merchants, merchantCode: authResult.merchantCode })
           return authResult
         } catch (error: any) {
           console.error("Authorization error:", error)
@@ -150,20 +145,15 @@ export const authOptions: NextAuthOptions = {
       // Initial sign in
       if (user) {
         const u = user as any
-        console.log('📊 [Auth JWT] Initial sign in - storing merchants:', {
-          merchantsCount: u.merchants?.length || 0,
-          merchants: u.merchants,
-          merchantCode: u.merchantCode
-        })
         token.accessToken = u.accessToken
         token.refreshToken = u.refreshToken
-        token.user = u.user
+        token.user = slimSessionUser(u.user)
         token.id = u.id
         token.role = u.role
         token.userType = u.userType
         token.subscriberType = u.subscriberType
         token.merchantCode = u.merchantCode
-        token.merchants = u.merchants || []
+        token.merchants = slimSessionMerchants(u.merchants || [])
         token.viewingChildMerchantId = u.viewingChildMerchantId ?? null
         token.viewingChildMerchantName = u.viewingChildMerchantName ?? null
         token.hasPendingMerchant = u.hasPendingMerchant || false
@@ -172,8 +162,13 @@ export const authOptions: NextAuthOptions = {
 
       // Handle session update (e.g. merchant selection)
       if (trigger === "update" && session) {
-        console.log('📊 [Auth JWT] Session update:', session)
         token = { ...token, ...session }
+        if (token.merchants) {
+          token.merchants = slimSessionMerchants(token.merchants)
+        }
+        if (token.user) {
+          token.user = slimSessionUser(token.user as Record<string, unknown>)
+        }
       }
 
       return token

@@ -17,6 +17,9 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { API_CONFIG } from '@/lib/config';
+import { AccessDenied } from '@/app/components/AccessDenied';
+import { useTeamPermissionSession } from '@/lib/hooks/useTeamPermissionSession';
+import { canCollectPayments } from '@/lib/utils/permissions';
 
 export default function QRCodePage() {
   const [qrCodeUrl, setQrCodeUrl] = useState<string>('');
@@ -27,32 +30,23 @@ export default function QRCodePage() {
   const qrCodeRef = useRef<HTMLDivElement>(null);
   const { data: session, status } = useSession();
   const { profile } = useUserProfile();
+  const teamSession = useTeamPermissionSession();
 
   const merchantCode = profile?.merchant_code || profile?.merchantCode || (session?.user as any)?.merchantCode || "";
   const merchantName = profile?.merchant_names || profile?.merchantBusinessTradeName || profile?.businessTradeName || "Your Business";
   const baseUrl = API_CONFIG.PAYMENT_PAGE_URL || (typeof window !== 'undefined' ? window.location.origin : '');
   const paymentUrl = `${baseUrl}/receive_payment/${merchantCode}`;
   const loading = status === "loading";
-
-  // Debug logging
-  console.log('QR Code Debug:', {
-    session,
-    profile,
-    merchantCode,
-    merchantName,
-    paymentUrl,
-    merchantCodeFromProfile: profile?.merchant_code || profile?.merchantCode,
-    merchantCodeFromSession: (session?.user as any)?.merchantCode,
-    API_CONFIG: API_CONFIG
-  });
+  const allowed = canCollectPayments(teamSession);
 
   // Generate QR code with logo overlay
   useEffect(() => {
+    if (!allowed) {
+      setQrLoading(false);
+      return;
+    }
     const generateQRWithLogo = async () => {
-      console.log('Generating QR code with:', { merchantCode, paymentUrl });
-      
       if (!merchantCode) {
-        console.log('No merchant code available');
         setError('Merchant code not found. Please check your profile.');
         setQrLoading(false);
         return;
@@ -126,14 +120,12 @@ export default function QRCodePage() {
             // Draw logo
             ctx.drawImage(logoImage, logoX, logoY, logoSize, logoSize);
           }
-        } catch (logoError) {
-          console.log('Logo not loaded, continuing without logo:', logoError);
+        } catch {
           // Continue without logo if it fails to load
         }
 
         // Convert canvas to data URL
         const finalQrUrl = canvas.toDataURL('image/png');
-        console.log('QR code generated successfully with logo');
         setQrCodeUrl(finalQrUrl);
       } catch (error) {
         console.error('Error generating QR code:', error);
@@ -147,7 +139,7 @@ export default function QRCodePage() {
     if (!loading && session) {
       generateQRWithLogo();
     }
-  }, [merchantCode, paymentUrl, loading, session]);
+  }, [merchantCode, paymentUrl, loading, session, allowed]);
 
   const handlePrint = async () => {
     if (!qrCodeUrl) {
@@ -277,8 +269,6 @@ export default function QRCodePage() {
       return;
     }
 
-    console.log("start loading=====>")
-    
     setIsLoading(true);
     try {
       // Create a temporary link element to download the QR code
@@ -324,6 +314,12 @@ export default function QRCodePage() {
       console.error('Error sharing:', error);
     }
   };
+
+  if (!allowed) {
+    return (
+      <AccessDenied description="You do not have permission to collect payments." />
+    );
+  }
 
   if (loading) {
     return (

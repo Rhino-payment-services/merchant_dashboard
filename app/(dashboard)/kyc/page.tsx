@@ -28,6 +28,9 @@ import { toast } from 'sonner'
 import { useUserProfile } from '../UserProfileProvider'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import apiClient from '@/lib/api/client'
+import { AccessDenied } from '@/app/components/AccessDenied'
+import { useTeamPermissionSession } from '@/lib/hooks/useTeamPermissionSession'
+import { canManageSettings } from '@/lib/utils/permissions'
 
 interface KycDocument {
   id: string
@@ -86,6 +89,7 @@ const DOCUMENT_TYPES = [
 
 export default function KycPage() {
   const { profile, loading: profileLoading } = useUserProfile()
+  const teamSession = useTeamPermissionSession()
   const queryClient = useQueryClient()
   const [activeTab, setActiveTab] = useState('documents')
   const [uploadingDocument, setUploadingDocument] = useState<string | null>(null)
@@ -97,8 +101,6 @@ export default function KycPage() {
     queryFn: async () => {
       try {
         const response = await apiClient.get('/merchant-kyc/status')
-        console.log('KYC Status API Response:', response.data)
-        console.log('Documents from API:', response.data?.documents)
         return response.data
       } catch (error: any) {
         console.error('KYC Status API Error:', error)
@@ -224,49 +226,24 @@ export default function KycPage() {
   const getDocumentForType = (type: string) => {
     // Only return documents that are actually uploaded (have a documentUrl)
     const doc = kycStatus?.documents?.find(doc => doc.documentType === type)
-    
-    // Debug logging for ALL documents, not just Bank Statement
-    if (doc) {
-      console.log(`Document ${type} found in API response:`, {
-        id: doc.id,
-        documentType: doc.documentType,
-        documentUrl: doc.documentUrl,
-        documentUrlType: typeof doc.documentUrl,
-        documentUrlValue: JSON.stringify(doc.documentUrl),
-        status: doc.status,
-        uploadedAt: doc.uploadedAt,
-        hasUrl: !!doc.documentUrl,
-        urlLength: doc.documentUrl?.length,
-        isEmpty: doc.documentUrl === '' || doc.documentUrl === null || doc.documentUrl === undefined,
-        isTrimmedEmpty: typeof doc.documentUrl === 'string' && doc.documentUrl.trim() === ''
-      })
-    }
-    
-    // Filter out documents without a valid documentUrl - these are not actually uploaded
-    // Check for null, undefined, or empty string
+
     if (!doc) {
-      console.log(`Document ${type} - not found in API response`)
       return undefined
     }
-    
-    // CRITICAL: If status is missing or undefined, treat it as if there's no document
-    // (This handles cases where backend returns placeholder records)
+
+    // If status is missing, treat as no document (placeholder records)
     if (!doc.status) {
-      console.log(`Document ${type} filtered out - status is missing`)
       return undefined
     }
-    
-    // Ensure documentUrl exists and is not empty
-    // This is the primary check - if there's no valid URL, the document isn't actually uploaded
-    if (!doc.documentUrl || 
-        doc.documentUrl === null || 
+
+    // Primary check: no valid URL means the document isn't actually uploaded
+    if (!doc.documentUrl ||
+        doc.documentUrl === null ||
         doc.documentUrl === undefined ||
         (typeof doc.documentUrl === 'string' && doc.documentUrl.trim() === '')) {
-      console.log(`Document ${type} filtered out - no valid documentUrl (documentUrl: ${JSON.stringify(doc.documentUrl)}, status: ${doc.status})`)
       return undefined
     }
-    
-    console.log(`Document ${type} passed filter - returning document`)
+
     return doc
   }
 
@@ -316,6 +293,12 @@ export default function KycPage() {
       <div className="flex items-center justify-center h-screen">
         <Loader2 className="w-8 h-8 animate-spin text-main-600" />
       </div>
+    )
+  }
+
+  if (!canManageSettings(teamSession)) {
+    return (
+      <AccessDenied description="You do not have permission to manage KYC / settings." />
     )
   }
 
@@ -420,18 +403,7 @@ export default function KycPage() {
                                                       profile?.merchantData?.nationalId ||
                                                       profile?.userProfile?.nationalId ||
                                                       profile?.nationalId;
-                              
-                              console.log('National ID check:', {
-                                hasProfile: !!profile,
-                                ownerNationalId: ownerNationalId,
-                                fromOwnerNationalId: profile?.ownerNationalId,
-                                fromMerchantDataOwner: profile?.merchantData?.ownerNationalId,
-                                fromMerchantDataNational: profile?.merchantData?.nationalId,
-                                fromUserProfile: profile?.userProfile?.nationalId,
-                                fromDirectProfile: profile?.nationalId,
-                                isVerified: profile?.merchantData?.isVerified || profile?.isVerified
-                              })
-                              
+
                               return ownerNationalId ? (
                                 <div className="mt-2 p-2 bg-blue-50 border border-blue-200 rounded-md">
                                   <p className="text-xs font-medium text-blue-900 mb-1">
