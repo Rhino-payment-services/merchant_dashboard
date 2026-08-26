@@ -28,6 +28,9 @@ import { useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import { useUserProfile } from "../UserProfileProvider";
 import { toast } from 'sonner';
+import { AccessDenied } from '@/app/components/AccessDenied';
+import { useTeamPermissionSession } from '@/lib/hooks/useTeamPermissionSession';
+import { canInitiatePayments } from '@/lib/utils/permissions';
 import { readSheetFromBinaryString, writeWorkbookToFile } from "@/lib/excel-utils";
 import { processBulkTransactionAsync, validateBulkRecipients, getBulkTransactionStatus, BulkTransactionItem, BulkTransactionItemResult } from "@/lib/api/bulk-payment.api";
 import { SinglePaymentDto, FeePreviewResponseDto, processSinglePayment, validateTransaction } from "@/lib/api/single-payment.api";
@@ -146,6 +149,7 @@ interface PaymentItem extends Partial<BulkTransactionItem> {
 export default function BulkPaymentPage() {
   const { data: session, status: sessionStatus } = useSession();
   const router = useRouter();
+  const teamSession = useTeamPermissionSession();
   const [payments, setPayments] = useState<PaymentItem[]>([]);
   const [bulkDescription, setBulkDescription] = useState('');
   const [bulkReference, setBulkReference] = useState('');
@@ -266,6 +270,12 @@ export default function BulkPaymentPage() {
           </CardContent>
         </Card>
       </div>
+    );
+  }
+
+  if (!canInitiatePayments(teamSession)) {
+    return (
+      <AccessDenied description="You do not have permission to initiate payments." />
     );
   }
 

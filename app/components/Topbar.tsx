@@ -182,20 +182,24 @@ export default function Topbar({ onMenuToggle, isMenuOpen }: TopbarProps) {
             </DropdownMenuItem>
           ) : merchants.length > 0 ? (
             <>
-              {merchants.filter((m: AccessibleMerchant) => m.isOwnAccount).map((m: AccessibleMerchant) => {
+              {merchants.filter((m: AccessibleMerchant) => !m.isChildMerchant).map((m: AccessibleMerchant) => {
                 const isActive = merchantCodesMatch(m.merchantCode, displayedMerchantCode);
+                const isTeamAccess = !m.isOwnAccount && !m.isChildMerchant;
                 return (
                   <DropdownMenuItem
                     key={m.id}
                     onClick={() => handleSwitchMerchant(m)}
                     className={merchantMenuItemClass(isActive)}
                   >
-                    {m.isSuperMerchant ? (
+                    {m.isSuperMerchant && m.isOwnAccount ? (
                       <Crown className={`w-4 h-4 mr-2 ${isActive ? 'text-yellow-600' : 'text-yellow-500'}`} />
                     ) : (
                       <Building2 className={`w-4 h-4 mr-2 ${isActive ? 'text-main-600' : 'text-gray-400'}`} />
                     )}
-                    <span className="truncate">{m.businessTradeName || m.merchantCode || 'Merchant'}</span>
+                    <span className="truncate flex-1">{m.businessTradeName || m.merchantCode || 'Merchant'}</span>
+                    {isTeamAccess && (
+                      <span className="ml-2 text-[10px] font-medium text-violet-600 flex-shrink-0">Team</span>
+                    )}
                     {isActive && (
                       <span className="merchant-active-dot ml-auto w-2 h-2 rounded-full bg-main-600 flex-shrink-0" />
                     )}

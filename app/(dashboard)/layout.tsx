@@ -14,6 +14,20 @@ export default function RootLayout({
 }>) {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
+  // Prevent document/body scroll — only <main> should scroll inside the shell
+  useEffect(() => {
+    const html = document.documentElement;
+    const body = document.body;
+    const prevHtmlOverflow = html.style.overflow;
+    const prevBodyOverflow = body.style.overflow;
+    html.style.overflow = "hidden";
+    body.style.overflow = "hidden";
+    return () => {
+      html.style.overflow = prevHtmlOverflow;
+      body.style.overflow = prevBodyOverflow;
+    };
+  }, []);
+
   // Start token refresh when layout mounts
   useEffect(() => {
     startTokenRefresh();
@@ -35,7 +49,7 @@ export default function RootLayout({
   return (
     <MerchantAuthGuard>
       <UserProfileProvider>
-        <div className="w-full h-screen flex bg-gray-50 overflow-hidden min-h-0">
+        <div className="w-full h-screen max-h-screen flex bg-gray-50 overflow-hidden min-h-0">
           {/* Sidebar */}
           <Sidebar 
             isOpen={isMobileMenuOpen} 
@@ -43,9 +57,9 @@ export default function RootLayout({
           />
           
           {/* Main Content Area — min-w-0 lets wide tables scroll instead of clipping */}
-          <div className="flex-1 flex flex-col min-h-0 min-w-0">
+          <div className="flex-1 flex flex-col min-h-0 min-w-0 overflow-hidden">
             {/* Fixed Topbar */}
-            <div className="fixed top-0 left-0 md:left-56 right-0 z-20">
+            <div className="fixed top-0 left-0 md:left-64 right-0 z-20">
               <Topbar 
                 onMenuToggle={toggleMobileMenu}
                 isMenuOpen={isMobileMenuOpen}

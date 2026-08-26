@@ -76,6 +76,7 @@ import {
   getDefaultPermissionsForRole,
   type UserSession,
 } from '@/lib/utils/permissions';
+import { AccessDenied } from '@/app/components/AccessDenied';
 
 const emptyPerms = (): PermissionFormState =>
   getDefaultPermissionsForRole('MEMBER');
@@ -171,9 +172,8 @@ export default function TeamManagementPage() {
   useEffect(() => {
     if (businessWallet?.id) {
       setBusinessWalletId(businessWallet.id);
-      console.log('✅ Business wallet found:', businessWallet.id);
     } else if (walletError) {
-      console.error('❌ Error fetching business wallet:', walletError);
+      console.error('Error fetching business wallet:', walletError);
     }
   }, [businessWallet, walletError]);
 
@@ -465,6 +465,12 @@ export default function TeamManagementPage() {
     );
   }
 
+  if (!canManage) {
+    return (
+      <AccessDenied description="You do not have permission to manage team members." />
+    );
+  }
+
   // Show error if wallet fetch failed
   if (walletError && !businessWalletId) {
     return (
@@ -512,17 +518,6 @@ export default function TeamManagementPage() {
 
   return (
     <div className="container mx-auto py-8 px-4">
-      {!canManage ? (
-        <Card>
-          <CardHeader>
-            <CardTitle>Access denied</CardTitle>
-            <CardDescription>
-              You do not have permission to manage team members.
-            </CardDescription>
-          </CardHeader>
-        </Card>
-      ) : (
-      <>
       <div className="mb-8 flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold text-gray-900">Team Management</h1>
@@ -1222,8 +1217,6 @@ export default function TeamManagementPage() {
           </div>
         </CardContent>
       </Card>
-      </>
-      )}
     </div>
   );
 }

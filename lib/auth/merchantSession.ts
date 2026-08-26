@@ -1,6 +1,7 @@
 import { encode } from 'next-auth/jwt'
 import type { MerchantVerifyOtpResponse } from './merchantOtpUser'
 import { mapMerchantVerifyResponseToAuthUser } from './merchantOtpUser'
+import { slimSessionMerchants, slimSessionUser } from './sessionPayload'
 
 export const MERCHANT_SESSION_MAX_AGE = 4 * 60 * 60
 
@@ -73,10 +74,10 @@ export async function createMerchantSessionToken(data: MerchantVerifyOtpResponse
       userType: authUser.userType,
       subscriberType: authUser.subscriberType,
       merchantCode: authUser.merchantCode,
-      merchants: authUser.merchants,
+      merchants: slimSessionMerchants(authUser.merchants),
       hasPendingMerchant: authUser.hasPendingMerchant,
       hasPassword: authUser.hasPassword,
-      user: authUser.user,
+      user: slimSessionUser(authUser.user),
     },
     secret,
     maxAge: MERCHANT_SESSION_MAX_AGE,

@@ -21,14 +21,7 @@ export const getApiUrl = (): string => {
   
   // Safety check - if still empty/undefined, use fallback
   if (!apiUrl || apiUrl === 'undefined') {
-    console.error('⚠️ API_URL is undefined! Check your environment variables.');
-    console.log('Environment variables:', {
-      NEXT_PUBLIC_APP_ENV: process.env.NEXT_PUBLIC_APP_ENV,
-      NEXT_PUBLIC_PRODUCTION_API_URL: process.env.NEXT_PUBLIC_PRODUCTION_API_URL,
-      NEXT_PUBLIC_STAGING_API_URL: process.env.NEXT_PUBLIC_STAGING_API_URL,
-      NEXT_PUBLIC_DEV_API_URL: process.env.NEXT_PUBLIC_DEV_API_URL,
-      NEXT_PUBLIC_API_URL: process.env.NEXT_PUBLIC_API_URL,
-    });
+    console.error('API_URL is undefined! Check your environment variables.');
     // Fallback to localhost for development
     return 'http://localhost:8000';
   }
@@ -53,13 +46,6 @@ export const API_CONFIG = {
   PAYMENT_PAGE_URL: getBaseUrl(),
   ENVIRONMENT: process.env.NEXT_PUBLIC_APP_ENV || 'development',
 };
-
-// Log environment configuration (only in browser)
-if (typeof window !== 'undefined') {
-  console.log(`🌍 App Environment: ${process.env.NEXT_PUBLIC_APP_ENV || 'development'}`);
-  console.log(`🔗 API URL: ${API_URL}`);
-  console.log(`💳 Payment Page URL: ${API_CONFIG.PAYMENT_PAGE_URL}`);
-}
 
 export default {
   apiUrl: API_URL,

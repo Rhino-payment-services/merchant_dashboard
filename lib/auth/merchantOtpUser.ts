@@ -1,3 +1,5 @@
+import { slimSessionMerchants, slimSessionUser } from './sessionPayload'
+
 export type MerchantVerifyOtpResponse = {
   success?: boolean
   message?: string
@@ -46,19 +48,19 @@ export function mapMerchantVerifyResponseToAuthUser(data: MerchantVerifyOtpRespo
     userType: user.userType,
     subscriberType: user.subscriberType,
     merchantCode: user.merchantCode ?? undefined,
-    merchants: user.merchants || [],
+    merchants: slimSessionMerchants(user.merchants || []),
     hasPendingMerchant: user.hasPendingMerchant || false,
     hasPassword: user.hasPassword ?? !!user.password,
     accessToken: data.accessToken,
     refreshToken: data.refreshToken,
-    user: {
+    user: slimSessionUser({
       ...user,
       mustChangePassword: user.mustChangePassword || user.isFirstLogin || false,
       isFirstLogin: user.isFirstLogin || false,
       mustSetupMerchantPortalPin: user.mustSetupMerchantPortalPin || false,
       merchantPortalPinSet: user.merchantPortalPinSet || false,
       pinLoginEnabled: user.pinLoginEnabled || false,
-    },
+    }),
   }
 }
 

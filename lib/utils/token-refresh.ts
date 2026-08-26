@@ -75,12 +75,11 @@ async function refreshAccessToken(): Promise<boolean> {
     if (newRefreshToken) {
       localStorage.setItem('refreshToken', newRefreshToken)
     }
-    
-    console.log('✅ Token refreshed successfully')
+
     return true
   } catch (error) {
-    console.error('❌ Token refresh failed:', error)
-    
+    console.error('Token refresh failed:', error)
+
     // If refresh fails, clear tokens and redirect to login
     localStorage.clear()
     window.location.href = '/auth/login'
@@ -96,31 +95,27 @@ export function startTokenRefresh() {
   if (refreshTimer) {
     clearInterval(refreshTimer)
   }
-  
+
   // Check token immediately
   const accessToken = localStorage.getItem('accessToken')
   if (accessToken && isTokenExpiringSoon(accessToken)) {
     refreshAccessToken()
   }
-  
+
   // Set up periodic refresh
   refreshTimer = setInterval(async () => {
     const token = localStorage.getItem('accessToken')
-    
+
     if (!token) {
-      console.warn('No access token found, stopping refresh timer')
       stopTokenRefresh()
       return
     }
-    
+
     // Check if token needs refresh
     if (isTokenExpiringSoon(token)) {
-      console.log('🔄 Token expiring soon, refreshing...')
       await refreshAccessToken()
     }
   }, REFRESH_INTERVAL) // Check every 3.5 hours
-  
-  console.log('✅ Token refresh timer started')
 }
 
 /**
@@ -130,7 +125,6 @@ export function stopTokenRefresh() {
   if (refreshTimer) {
     clearInterval(refreshTimer)
     refreshTimer = null
-    console.log('⏹️ Token refresh timer stopped')
   }
 }
 
