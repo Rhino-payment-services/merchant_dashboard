@@ -385,6 +385,7 @@ export default function ReceivePaymentPage({ params }: PaymentPageProps) {
           merchantCode,
           phoneNumber: formattedPhone,
           amount: numAmount,
+          channel: 'MERCHANT_PORTAL',
           ...(paymentDescription.trim() && { description: paymentDescription.trim() }),
         }),
       })
