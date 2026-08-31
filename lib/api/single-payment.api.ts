@@ -79,6 +79,8 @@ export interface ValidateTransactionRequestDto {
   merchantCode?: string
   userId?: string
   currency?: string
+  channel?: string
+  walletType?: string
 }
 
 // Transaction Response DTO
@@ -221,6 +223,8 @@ export const validateTransaction = async (paymentData: SinglePaymentDto): Promis
       currency: paymentData.currency || 'UGX',
       geographicRegion: 'UG',
       userId: paymentData.userId,
+      channel: 'MERCHANT_PORTAL',
+      walletType: paymentData.walletType || 'BUSINESS',
     };
 
   // Map transaction-specific fields
