@@ -13,6 +13,7 @@ export interface BulkTransactionItem {
   phoneNumber?: string
   mnoProvider?: string
   recipientName?: string
+  customerName?: string
   
   // Bank fields
   accountNumber?: string

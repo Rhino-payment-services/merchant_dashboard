@@ -31,6 +31,8 @@ export interface SinglePaymentDto {
   phoneNumber?: string
   mnoProvider?: string
   recipientName?: string
+  /** Bill customer name from validation (UMEME, NWSC, etc.) */
+  customerName?: string
   
   // Bank fields
   accountNumber?: string
@@ -120,6 +122,11 @@ export interface FeePreviewResponseDto {
  */
 export const processSinglePayment = async (paymentData: SinglePaymentDto, userId?: string): Promise<TransactionResponseDto> => {
   try {
+    const resolvedCustomerName =
+      paymentData.customerName?.trim() ||
+      paymentData.recipientName?.trim() ||
+      undefined;
+
     // Transform SinglePaymentDto to match backend UnifiedTransactionDto
     const processData = {
       mode: paymentData.mode,
@@ -139,7 +146,8 @@ export const processSinglePayment = async (paymentData: SinglePaymentDto, userId
             ? getValidMnoProvider(paymentData.mnoProvider)
             : undefined
           : getValidMnoProvider(paymentData.mnoProvider),
-      recipientName: paymentData.recipientName,
+      recipientName: paymentData.recipientName || resolvedCustomerName,
+      customerName: resolvedCustomerName,
       
       // Bank fields
       accountNumber: paymentData.accountNumber,
@@ -169,16 +177,18 @@ export const processSinglePayment = async (paymentData: SinglePaymentDto, userId
       invoiceNumber: paymentData.invoiceNumber,
       
       metadata: (() => {
-        const m = paymentData.metadata ? { ...paymentData.metadata } : undefined;
+        const m = paymentData.metadata ? { ...paymentData.metadata } : {};
         if (
           paymentData.mode === 'UTILITIES' &&
-          paymentData.utilityProvider === 'DATA_BUNDLES' &&
-          m
+          paymentData.utilityProvider === 'DATA_BUNDLES'
         ) {
           const q = Number(m.dataQuantity);
           if (!Number.isNaN(q)) m.dataQuantity = q;
         }
-        return m;
+        if (resolvedCustomerName && paymentData.mode === 'UTILITIES') {
+          m.customerName = resolvedCustomerName;
+        }
+        return Object.keys(m).length > 0 ? m : undefined;
       })(),
     };
 
