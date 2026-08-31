@@ -19,6 +19,100 @@ export type BillPaymentFields = {
   customerName?: string
   recipientName?: string
   accountName?: string
+  area?: string
+  meterNumber?: string
+  customerType?: string
+  metadata?: Record<string, any>
+}
+
+export function isElectricityMeterType(value?: string | null): boolean {
+  const v = (value ?? '').trim().toUpperCase()
+  return v === 'PREPAID' || v === 'POSTPAID'
+}
+
+export function isElectricityUtility(provider?: string | null): boolean {
+  const p = (provider ?? '').trim().toUpperCase().replace(/_/g, '-')
+  return p === 'UMEME' || p === 'YAKALAST'
+}
+
+export function extractValidatedBillArea(validation: {
+  billArea?: string
+  customerType?: string
+  validationResult?: {
+    area?: string
+    customerType?: string
+    data?: { customerType?: string; area?: string }
+  }
+}): string | undefined {
+  const raw =
+    validation.billArea ||
+    validation.customerType ||
+    validation.validationResult?.data?.customerType ||
+    validation.validationResult?.customerType ||
+    validation.validationResult?.data?.area ||
+    validation.validationResult?.area
+  const trimmed = raw?.trim()
+  if (!trimmed) return undefined
+  if (isElectricityMeterType(trimmed)) return trimmed.toUpperCase()
+  return trimmed
+}
+
+/** Merge validated customer name + PREPAID/POSTPAID (or NWSC area) onto bill payment state. */
+export function applyValidationToBillPayment<T extends BillPaymentFields>(
+  item: T,
+  validation: {
+    recipientName?: string
+    billArea?: string
+    customerType?: string
+  },
+): T {
+  let next: T = { ...item }
+  const name = validation.recipientName?.trim()
+  if (name) {
+    next = { ...next, recipientName: name, customerName: name }
+  }
+  const billArea = validation.billArea || validation.customerType
+  if (billArea) {
+    next = applyValidatedBillArea(next, billArea)
+  }
+  return next
+}
+
+/** Apply PREPAID/POSTPAID (UMEME/YAKALAST) or NWSC area from validation onto a bill item. */
+export function applyValidatedBillArea<T extends BillPaymentFields>(
+  item: T,
+  billArea: string | undefined,
+): T {
+  if (!billArea?.trim()) return item
+
+  const area = isElectricityMeterType(billArea)
+    ? billArea.trim().toUpperCase()
+    : billArea.trim()
+
+  if (isElectricityUtility(item.utilityProvider)) {
+    if (!isElectricityMeterType(area)) return item
+    return {
+      ...item,
+      area,
+      meterNumber: area,
+      customerType: area,
+      metadata: {
+        ...(item.metadata || {}),
+        customerType: area,
+        meterNumber: area,
+      },
+    }
+  }
+
+  // NWSC and other billers that use geographic area
+  return {
+    ...item,
+    area,
+    metadata: {
+      ...(item.metadata || {}),
+      ...(area ? { area } : {}),
+    },
+  }
 }
 
 export function enrichUtilityBillFields<T extends BillPaymentFields>(item: T): T {
