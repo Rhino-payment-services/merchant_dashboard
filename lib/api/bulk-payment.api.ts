@@ -1,8 +1,12 @@
 import apiClient from './client'
 import { validateTransaction, SinglePaymentDto } from './single-payment.api'
 import {
+  applyValidatedBillArea,
   enrichUtilityBillFields,
+  extractValidatedBillArea,
   extractValidatedCustomerName,
+  isElectricityMeterType,
+  isElectricityUtility,
   isUtilityBillPayment,
   resolveBillCustomerName,
 } from '@/lib/utils/bill-payment-enrichment'
@@ -39,6 +43,9 @@ export interface BulkTransactionItem {
   utilityAccountNumber?: string
   customerRef?: string
   area?: string
+  /** UMEME/YAKALAST: PREPAID or POSTPAID from validation */
+  meterNumber?: string
+  customerType?: string
   
   // Merchant fields
   merchantCode?: string
@@ -153,9 +160,14 @@ export const processBulkTransactionAsync = async (
         }
 
         let customerName = resolveBillCustomerName(item)
-        if (!customerName && request.userId) {
+        const needsElectricityMeterType =
+          isElectricityUtility(item.utilityProvider) &&
+          !isElectricityMeterType(item.area) &&
+          !isElectricityMeterType(item.meterNumber)
+
+        if ((!customerName || needsElectricityMeterType) && request.userId) {
           console.log(
-            `API: Bulk bill ${item.itemId} missing customerName — validating account first`,
+            `API: Bulk bill ${item.itemId} missing customerName or meter type — validating account first`,
           )
           const validation = await validateTransaction({
             mode: 'UTILITIES',
@@ -178,9 +190,28 @@ export const processBulkTransactionAsync = async (
               }`,
             )
           }
+
+          const billArea = extractValidatedBillArea(validation)
+          if (!billArea && needsElectricityMeterType) {
+            throw new Error(
+              `Bill payment ${item.itemId}: Could not detect PREPAID or POSTPAID for this UMEME meter.`,
+            )
+          }
+          item = applyValidatedBillArea(
+            {
+              ...item,
+              customerName,
+              recipientName: customerName,
+            },
+            billArea,
+          )
+        } else if (customerName && needsElectricityMeterType) {
+          throw new Error(
+            `Bill payment ${item.itemId}: PREPAID/POSTPAID meter type is required. Validate the UMEME account first.`,
+          )
         }
 
-        if (customerName) {
+        if (customerName && !item.customerName) {
           item = {
             ...item,
             customerName,
