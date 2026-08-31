@@ -620,11 +620,17 @@ export default function BulkPaymentPage() {
             }
           : {}),
         ...(singlePayment.mode === 'UTILITIES' &&
-        (validationInfo?.billArea || singlePayment.meterNumber || singlePayment.area)
+        (validationInfo?.billArea ||
+          validationInfo?.customerType ||
+          singlePayment.meterNumber ||
+          singlePayment.customerType ||
+          singlePayment.area)
           ? (() => {
               const meterType =
                 validationInfo?.billArea ||
+                validationInfo?.customerType ||
                 singlePayment.meterNumber ||
+                singlePayment.customerType ||
                 singlePayment.area;
               return {
                 area: meterType,
