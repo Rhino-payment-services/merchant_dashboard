@@ -930,11 +930,11 @@ export default function BulkPaymentPage() {
                   )
                 : p.phoneNumber,
           ...(resolvedMno ? { mnoProvider: resolvedMno } : {}),
-          recipientName: p.recipientName,
+          recipientName: p.recipientName || p.customerName,
           customerName: p.customerName || p.recipientName,
           accountNumber: p.accountNumber,
           bankSortCode: p.bankSortCode,
-          accountName: p.accountName,
+          accountName: p.accountName || (p.mode === 'WALLET_TO_BANK' ? p.customerName : undefined),
           bankName: p.bankName,
           recipientPhone: p.recipientPhone
             ? normalizePhoneToUganda(p.recipientPhone)
@@ -956,7 +956,8 @@ export default function BulkPaymentPage() {
               : p.phoneNumber;
           base.customerRef = p.customerRef || p.utilityAccountNumber || utilPhone;
           base.utilityAccountNumber = p.utilityAccountNumber || p.customerRef || utilPhone;
-          base.area = p.area;
+          base.area = p.area || p.meterNumber || p.customerType;
+          base.meterNumber = p.meterNumber || p.customerType || p.area;
           base.phoneNumber = utilPhone;
           base.metadata = p.metadata;
         }
@@ -985,6 +986,13 @@ export default function BulkPaymentPage() {
             recipientName: itemResult.accountName || payment.recipientName,
             customerName: itemResult.accountName || payment.customerName,
             accountName: itemResult.accountName || payment.accountName,
+            ...(itemResult.area
+              ? {
+                  area: itemResult.area,
+                  meterNumber: itemResult.area,
+                  customerType: itemResult.area,
+                }
+              : {}),
           };
         }
         return payment;
@@ -1357,7 +1365,6 @@ export default function BulkPaymentPage() {
             if (billArea) {
               transaction.area = billArea;
               transaction.meterNumber = billArea;
-              transaction.customerType = billArea;
               transaction.metadata = {
                 ...(transaction.metadata || {}),
                 customerType: billArea,

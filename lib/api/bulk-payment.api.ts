@@ -11,6 +11,57 @@ import {
   resolveBillCustomerName,
 } from '@/lib/utils/bill-payment-enrichment'
 
+/**
+ * Bulk validate/process DTOs only allow whitelisted fields (forbidNonWhitelisted).
+ * For UTILITIES (UMEME): keep customerName + meterNumber at top level (backend whitelisted).
+ * For bank/MNO: map customerName into recipientName / accountName only.
+ */
+export function sanitizeBulkTransactionItemForBackend(
+  item: BulkTransactionItem,
+): BulkTransactionItem {
+  const customerName = item.customerName?.trim()
+  const meterNumber = item.meterNumber?.trim()
+  const customerType = item.customerType?.trim()
+  const billArea = item.area?.trim() || meterNumber || customerType
+
+  const metadata: Record<string, any> = { ...(item.metadata || {}) }
+  if (customerName) metadata.customerName = customerName
+  if (meterNumber) metadata.meterNumber = meterNumber
+  if (customerType) metadata.customerType = customerType
+
+  const { swiftCode: _swiftCode, ...rest } = item
+
+  if (rest.mode === 'UTILITIES') {
+    const billName = rest.recipientName || customerName || rest.accountName
+    return {
+      ...rest,
+      recipientName: billName,
+      customerName: billName,
+      area: billArea || rest.area,
+      meterNumber: billArea || rest.meterNumber,
+      metadata: Object.keys(metadata).length > 0 ? metadata : rest.metadata,
+    }
+  }
+
+  const {
+    customerName: _customerName,
+    meterNumber: _meterNumber,
+    customerType: _customerType,
+    ...allowed
+  } = rest
+
+  return {
+    ...allowed,
+    recipientName: allowed.recipientName || customerName || allowed.accountName,
+    accountName:
+      allowed.mode === 'WALLET_TO_BANK'
+        ? allowed.accountName || customerName
+        : allowed.accountName,
+    area: billArea || allowed.area,
+    metadata: Object.keys(metadata).length > 0 ? metadata : allowed.metadata,
+  }
+}
+
 export interface BulkTransactionItem {
   itemId: string
   mode: 'WALLET_TO_MNO' | 'WALLET_TO_BANK' | 'WALLET_TO_WALLET' | 'UTILITIES' | 'WALLET_TO_MERCHANT' | 'WALLET_TO_INTERNAL_MERCHANT' | 'WALLET_TO_EXTERNAL_MERCHANT' | 'MERCHANT_TO_WALLET'
@@ -130,13 +181,17 @@ export const validateBulkRecipients = async (
     mnoProvider?: string
     accountNumber?: string
     bankName?: string
+    area?: string
     error?: string
     validatedAt: string
   }>
   validatedAt: string
 }> => {
   try {
-    const response = await apiClient.post('/transactions/bulk/validate', { items })
+    const sanitizedItems = items.map(sanitizeBulkTransactionItemForBackend)
+    const response = await apiClient.post('/transactions/bulk/validate', {
+      items: sanitizedItems,
+    })
     return response.data
   } catch (error: any) {
     console.error('Error validating bulk recipients:', error)
@@ -220,7 +275,7 @@ export const processBulkTransactionAsync = async (
           }
         }
 
-        return item
+        return sanitizeBulkTransactionItemForBackend(item)
       }),
     )
 
