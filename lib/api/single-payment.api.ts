@@ -152,7 +152,7 @@ export const processSinglePayment = async (paymentData: SinglePaymentDto, userId
     ) {
       if (!effectiveUserId) {
         throw new Error(
-          'Customer name is required for bill payment. Validate the account first.',
+          'Customer name and meter type are required for bill payment. Validate the account first.',
         )
       }
       console.log(
@@ -162,17 +162,18 @@ export const processSinglePayment = async (paymentData: SinglePaymentDto, userId
         ...enriched,
         userId: effectiveUserId,
       })
-      resolvedCustomerName = extractValidatedCustomerName(validation)
 
       if (!resolvedCustomerName) {
-        throw new Error(
-          validation.errors?.[0] ||
-            'Could not load customer name. Validate the bill account and customer phone, then try again.',
-        )
+        resolvedCustomerName = extractValidatedCustomerName(validation)
+        if (!resolvedCustomerName) {
+          throw new Error(
+            validation.errors?.[0] ||
+              'Could not load customer name. Validate the bill account and customer phone, then try again.',
+          )
+        }
+        enriched.customerName = resolvedCustomerName
+        enriched.recipientName = resolvedCustomerName
       }
-
-      enriched.customerName = resolvedCustomerName
-      enriched.recipientName = resolvedCustomerName
 
       const billArea = extractValidatedBillArea(validation)
       if (!billArea && needsElectricityMeterType) {
@@ -180,7 +181,9 @@ export const processSinglePayment = async (paymentData: SinglePaymentDto, userId
           'Could not detect PREPAID or POSTPAID for this UMEME meter. Validate the account first.',
         )
       }
-      Object.assign(enriched, applyValidatedBillArea(enriched, billArea))
+      if (billArea) {
+        Object.assign(enriched, applyValidatedBillArea(enriched, billArea))
+      }
     }
 
     if (
