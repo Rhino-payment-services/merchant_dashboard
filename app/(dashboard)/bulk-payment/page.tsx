@@ -407,6 +407,7 @@ export default function BulkPaymentPage() {
         ...singlePayment,
         ...(airtimeNetwork ? { mnoProvider: airtimeNetwork } : {}),
         userId: (session?.user as any)?.id,
+        merchantCode: merchantCodeForRequest,
         phoneNumber:
           singlePayment.mode === 'WALLET_TO_MNO' && singlePayment.phoneNumber
             ? normalizePhoneToUganda(singlePayment.phoneNumber)
@@ -587,6 +588,7 @@ export default function BulkPaymentPage() {
 
       const payload: SinglePaymentDto = {
         ...singlePayment,
+        merchantCode: merchantCodeForRequest,
         ...(airtimeNetwork ? { mnoProvider: airtimeNetwork } : {}),
         phoneNumber:
           singlePayment.mode === 'WALLET_TO_MNO' && singlePayment.phoneNumber
@@ -1024,6 +1026,7 @@ export default function BulkPaymentPage() {
               currency: p.currency || 'UGX',
               walletType: 'BUSINESS',
               userId: (session?.user as any)?.id,
+              merchantCode: merchantCodeForRequest,
               phoneNumber: utilPh,
               ...(feeAirtimeMno ? { mnoProvider: feeAirtimeMno } : {}),
               recipientName: p.recipientName,
