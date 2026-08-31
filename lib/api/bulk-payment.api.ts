@@ -1,4 +1,11 @@
 import apiClient from './client'
+import { validateTransaction, SinglePaymentDto } from './single-payment.api'
+import {
+  enrichUtilityBillFields,
+  extractValidatedCustomerName,
+  isUtilityBillPayment,
+  resolveBillCustomerName,
+} from '@/lib/utils/bill-payment-enrichment'
 
 export interface BulkTransactionItem {
   itemId: string
@@ -13,6 +20,7 @@ export interface BulkTransactionItem {
   phoneNumber?: string
   mnoProvider?: string
   recipientName?: string
+  customerName?: string
   
   // Bank fields
   accountNumber?: string
@@ -136,11 +144,63 @@ export const processBulkTransactionAsync = async (
   request: CreateBulkTransactionRequest
 ): Promise<BulkTransactionResponse> => {
   try {
-    const response = await apiClient.post('/transactions/bulk/async', request)
+    const enrichedTransactions = await Promise.all(
+      request.transactions.map(async (tx) => {
+        let item = enrichUtilityBillFields({ ...tx })
+
+        if (!isUtilityBillPayment(item.mode, item.utilityProvider)) {
+          return item
+        }
+
+        let customerName = resolveBillCustomerName(item)
+        if (!customerName && request.userId) {
+          console.log(
+            `API: Bulk bill ${item.itemId} missing customerName — validating account first`,
+          )
+          const validation = await validateTransaction({
+            mode: 'UTILITIES',
+            amount: item.amount,
+            currency: item.currency || 'UGX',
+            walletType: item.walletType || 'BUSINESS',
+            userId: request.userId,
+            utilityProvider: item.utilityProvider,
+            customerRef: item.customerRef,
+            utilityAccountNumber: item.utilityAccountNumber,
+            phoneNumber: item.phoneNumber,
+            area: item.area,
+          } satisfies SinglePaymentDto)
+          customerName = extractValidatedCustomerName(validation)
+          if (!customerName) {
+            throw new Error(
+              `Bill payment ${item.itemId}: ${
+                validation.errors?.[0] ||
+                'Could not load customer name. Validate the account and customer phone first.'
+              }`,
+            )
+          }
+        }
+
+        if (customerName) {
+          item = {
+            ...item,
+            customerName,
+            recipientName: customerName,
+            metadata: { ...(item.metadata || {}), customerName },
+          }
+        }
+
+        return item
+      }),
+    )
+
+    const response = await apiClient.post('/transactions/bulk/async', {
+      ...request,
+      transactions: enrichedTransactions,
+    })
     return response.data
   } catch (error: any) {
     console.error('Error processing bulk transaction async:', error)
-    throw new Error(error.response?.data?.message || 'Failed to process bulk transaction')
+    throw new Error(error.response?.data?.message || error.message || 'Failed to process bulk transaction')
   }
 }
 
