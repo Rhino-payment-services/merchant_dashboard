@@ -207,6 +207,10 @@ export const processSinglePayment = async (paymentData: SinglePaymentDto, userId
       userId: effectiveUserId,
       channel: 'MERCHANT_PORTAL', // ✅ Set channel for metrics tracking
       
+      // Merchant context for tariff lookup (header is backup via apiClient)
+      merchantCode: enriched.merchantCode,
+      merchantId: enriched.merchantId,
+      
       // Map transaction-specific fields
       phoneNumber: enriched.phoneNumber,
       mnoProvider:
@@ -246,14 +250,15 @@ export const processSinglePayment = async (paymentData: SinglePaymentDto, userId
       area: enriched.area,
       meterNumber: enriched.meterNumber,
       
-      // Merchant fields
-      merchantCode: enriched.merchantCode,
-      merchantId: enriched.merchantId,
+      // Merchant fields (orderId / invoice)
       orderId: enriched.orderId,
       invoiceNumber: enriched.invoiceNumber,
       
       metadata: (() => {
         const m = enriched.metadata ? { ...enriched.metadata } : {};
+        if (enriched.merchantCode) {
+          m.merchantCode = enriched.merchantCode;
+        }
         if (
           enriched.mode === 'UTILITIES' &&
           enriched.utilityProvider === 'DATA_BUNDLES'
@@ -322,6 +327,10 @@ export const validateTransaction = async (paymentData: SinglePaymentDto): Promis
       channel: 'MERCHANT_PORTAL',
       walletType: paymentData.walletType || 'BUSINESS',
     };
+
+    if (paymentData.merchantCode) {
+      validationData.merchantCode = paymentData.merchantCode;
+    }
 
   // Map transaction-specific fields
   if (paymentData.mode === 'WALLET_TO_MNO') {
@@ -408,8 +417,8 @@ export const validateTransaction = async (paymentData: SinglePaymentDto): Promis
       partnerName: data.partnerName,
       validationResult: validationResult,
       feePreview: data.feeDetails ? {
-        tariffId: '',
-        tariffName: '',
+        tariffId: data.feeDetails.tariffId || '',
+        tariffName: data.feeDetails.tariffName || '',
         feeAmount: data.feeDetails.feeAmount,
         feePercentage: data.feeDetails.feePercentage || 0,
         totalFee: data.feeDetails.feeAmount,
