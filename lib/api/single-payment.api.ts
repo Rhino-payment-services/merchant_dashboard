@@ -1,8 +1,12 @@
 import apiClient from './client'
 import { resolveAirtimeMnoProvider } from '@/lib/utils'
 import {
+  applyValidatedBillArea,
   enrichUtilityBillFields,
+  extractValidatedBillArea,
   extractValidatedCustomerName,
+  isElectricityMeterType,
+  isElectricityUtility,
   isUtilityBillPayment,
   resolveBillCustomerName,
 } from '@/lib/utils/bill-payment-enrichment'
@@ -57,6 +61,9 @@ export interface SinglePaymentDto {
   utilityAccountNumber?: string
   customerRef?: string
   area?: string
+  /** UMEME/YAKALAST: PREPAID or POSTPAID from validation (sent as meterNumber to backend) */
+  meterNumber?: string
+  customerType?: string
   
   // Merchant fields
   merchantCode?: string
@@ -134,16 +141,23 @@ export const processSinglePayment = async (paymentData: SinglePaymentDto, userId
 
     let resolvedCustomerName = resolveBillCustomerName(enriched)
 
+    const needsElectricityMeterType =
+      isElectricityUtility(enriched.utilityProvider) &&
+      !isElectricityMeterType(enriched.area) &&
+      !isElectricityMeterType(enriched.meterNumber)
+
     if (
       isUtilityBillPayment(enriched.mode, enriched.utilityProvider) &&
-      !resolvedCustomerName
+      (!resolvedCustomerName || needsElectricityMeterType)
     ) {
       if (!effectiveUserId) {
         throw new Error(
           'Customer name is required for bill payment. Validate the account first.',
         )
       }
-      console.log('API: Bill payment missing customerName — validating account first')
+      console.log(
+        'API: Bill payment missing customerName or meter type — validating account first',
+      )
       const validation = await validateTransaction({
         ...enriched,
         userId: effectiveUserId,
@@ -159,6 +173,14 @@ export const processSinglePayment = async (paymentData: SinglePaymentDto, userId
 
       enriched.customerName = resolvedCustomerName
       enriched.recipientName = resolvedCustomerName
+
+      const billArea = extractValidatedBillArea(validation)
+      if (!billArea && needsElectricityMeterType) {
+        throw new Error(
+          'Could not detect PREPAID or POSTPAID for this UMEME meter. Validate the account first.',
+        )
+      }
+      Object.assign(enriched, applyValidatedBillArea(enriched, billArea))
     }
 
     if (
@@ -219,6 +241,7 @@ export const processSinglePayment = async (paymentData: SinglePaymentDto, userId
             enriched.phoneNumber
           : enriched.utilityAccountNumber,
       area: enriched.area,
+      meterNumber: enriched.meterNumber,
       
       // Merchant fields
       merchantCode: enriched.merchantCode,
@@ -237,6 +260,12 @@ export const processSinglePayment = async (paymentData: SinglePaymentDto, userId
         }
         if (resolvedCustomerName && enriched.mode === 'UTILITIES') {
           m.customerName = resolvedCustomerName;
+        }
+        if (enriched.customerType && enriched.mode === 'UTILITIES') {
+          m.customerType = enriched.customerType;
+        }
+        if (enriched.meterNumber && enriched.mode === 'UTILITIES') {
+          m.meterNumber = enriched.meterNumber;
         }
         return Object.keys(m).length > 0 ? m : undefined;
       })(),
@@ -267,6 +296,9 @@ export const validateTransaction = async (paymentData: SinglePaymentDto): Promis
   recipientName?: string
   partnerCode?: string
   partnerName?: string
+  /** PREPAID/POSTPAID for UMEME, or NWSC service area */
+  billArea?: string
+  customerType?: string
   validationResult?: any
   feePreview?: FeePreviewResponseDto
 }> => {
@@ -360,11 +392,15 @@ export const validateTransaction = async (paymentData: SinglePaymentDto): Promis
                           validationResult.data?.customerName ||
                           validationResult.data?.recipientName;
 
+    const billArea = extractValidatedBillArea({ validationResult });
+
     return {
       isValid: data.success || false,
       errors: data.error ? [data.error] : [],
       warnings: data.warnings || [],
       recipientName: recipientName,
+      billArea,
+      customerType: billArea,
       partnerCode: data.partnerCode,
       partnerName: data.partnerName,
       validationResult: validationResult,

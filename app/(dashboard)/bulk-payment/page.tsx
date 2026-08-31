@@ -47,6 +47,10 @@ import {
   utilityRequiresCustomerPhone,
   NWSC_AREAS,
 } from "@/lib/utils/bill-area-field";
+import {
+  applyValidationToBillPayment,
+  isElectricityMeterType,
+} from "@/lib/utils/bill-payment-enrichment";
 
 const TRANSACTION_TYPES = [
   { value: 'WALLET_TO_MNO', label: 'Mobile Money', icon: Phone, color: 'text-blue-600', bg: 'bg-blue-50' },
@@ -217,6 +221,8 @@ export default function BulkPaymentPage() {
   const [feePreview, setFeePreview] = useState<FeePreviewResponseDto | null>(null);
   const [validationInfo, setValidationInfo] = useState<{
     recipientName?: string;
+    billArea?: string;
+    customerType?: string;
     partnerCode?: string;
     partnerName?: string;
     isValid?: boolean;
@@ -422,6 +428,8 @@ export default function BulkPaymentPage() {
       
       setValidationInfo({
         recipientName: recipientName,
+        billArea: validation.billArea,
+        customerType: validation.customerType || validation.billArea,
         partnerCode: validation.partnerCode,
         partnerName: validation.partnerName,
         isValid: validation.isValid
@@ -442,12 +450,14 @@ export default function BulkPaymentPage() {
           recipientName: recipientName,
         }));
       }
-      if (recipientName && singlePayment.mode === 'UTILITIES') {
-        setSinglePayment((prev) => ({
-          ...prev,
-          recipientName,
-          customerName: recipientName,
-        }));
+      if (singlePayment.mode === 'UTILITIES') {
+        setSinglePayment((prev) =>
+          applyValidationToBillPayment(prev, {
+            recipientName,
+            billArea: validation.billArea,
+            customerType: validation.customerType,
+          }),
+        );
       }
 
       if (validation.feePreview) {
@@ -459,6 +469,9 @@ export default function BulkPaymentPage() {
       
       if (recipientName) {
         toast.success(`Recipient validated: ${recipientName}`);
+      }
+      if (validation.billArea && singlePayment.mode === 'UTILITIES') {
+        toast.success(`Meter type: ${validation.billArea}`);
       }
       
       if (validation.errors && validation.errors.length > 0) {
@@ -605,6 +618,20 @@ export default function BulkPaymentPage() {
               recipientName: resolvedBillCustomerName,
               customerName: resolvedBillCustomerName,
             }
+          : {}),
+        ...(singlePayment.mode === 'UTILITIES' &&
+        (validationInfo?.billArea || singlePayment.meterNumber || singlePayment.area)
+          ? (() => {
+              const meterType =
+                validationInfo?.billArea ||
+                singlePayment.meterNumber ||
+                singlePayment.area;
+              return {
+                area: meterType,
+                meterNumber: meterType,
+                customerType: meterType,
+              };
+            })()
           : {}),
       };
       const result = await processSinglePayment(payload, (session?.user as any)?.id);
@@ -1004,30 +1031,66 @@ export default function BulkPaymentPage() {
               paymentId: p.id,
               itemId: p.itemId,
               feePreview: validation.feePreview,
+              billArea: validation.billArea,
+              customerType: validation.customerType,
+              recipientName: validation.recipientName,
             };
           })
       );
 
       const feesById = new Map<string, { fee?: number; netAmount?: number }>();
+      const billFieldsById = new Map<
+        string,
+        { billArea?: string; customerType?: string; recipientName?: string }
+      >();
       for (const r of feeResults) {
-        if (r.status === 'fulfilled' && r.value.feePreview) {
+        if (r.status !== 'fulfilled') continue;
+        if (r.value.feePreview) {
           feesById.set(r.value.paymentId, {
             fee: r.value.feePreview.totalFee,
             netAmount: r.value.feePreview.netAmount,
           });
         }
+        if (
+          r.value.billArea ||
+          r.value.customerType ||
+          r.value.recipientName
+        ) {
+          billFieldsById.set(r.value.paymentId, {
+            billArea: r.value.billArea,
+            customerType: r.value.customerType,
+            recipientName: r.value.recipientName,
+          });
+        }
       }
 
-      if (feesById.size > 0) {
+      if (feesById.size > 0 || billFieldsById.size > 0) {
         setPayments(prev =>
           prev.map(p => {
             const feeInfo = feesById.get(p.id);
-            if (!feeInfo) return p;
-            return {
-              ...p,
-              estimatedFee: feeInfo.fee,
-              estimatedNetAmount: feeInfo.netAmount,
-            };
+            const billInfo = billFieldsById.get(p.id);
+            if (!feeInfo && !billInfo) return p;
+
+            let next = { ...p } as PaymentItem;
+            if (feeInfo) {
+              next = {
+                ...next,
+                estimatedFee: feeInfo.fee,
+                estimatedNetAmount: feeInfo.netAmount,
+              };
+            }
+            if (
+              next.mode === 'UTILITIES' &&
+              !isAirtimeOrDataUtility(normalizeUtilityProvider(next.utilityProvider)) &&
+              billInfo
+            ) {
+              next = applyValidationToBillPayment(next, {
+                recipientName: billInfo.recipientName,
+                billArea: billInfo.billArea,
+                customerType: billInfo.customerType,
+              });
+            }
+            return next;
           }),
         );
       }
@@ -1276,12 +1339,23 @@ export default function BulkPaymentPage() {
             const billName = String(
               p.recipientName || p.customerName || p.accountName || '',
             ).trim();
+            const billArea = p.meterNumber || p.customerType || p.area;
             if (billName) {
               transaction.recipientName = billName;
               transaction.customerName = billName;
               transaction.metadata = {
                 ...(transaction.metadata || {}),
                 customerName: billName,
+              };
+            }
+            if (billArea) {
+              transaction.area = billArea;
+              transaction.meterNumber = billArea;
+              transaction.customerType = billArea;
+              transaction.metadata = {
+                ...(transaction.metadata || {}),
+                customerType: billArea,
+                meterNumber: billArea,
               };
             }
             if (isAirtimeOrDataUtility(normalizeUtilityProvider(p.utilityProvider))) {
@@ -2473,6 +2547,18 @@ export default function BulkPaymentPage() {
                     <div className="flex items-center gap-2">
                       <span className="text-gray-600">Recipient:</span>
                       <span className="font-medium text-green-800">{validationInfo.recipientName}</span>
+                    </div>
+                  )}
+                  {(validationInfo.customerType || validationInfo.billArea) && (
+                    <div className="flex items-center gap-2">
+                      <span className="text-gray-600">
+                        {isElectricityMeterType(validationInfo.customerType || validationInfo.billArea)
+                          ? 'Meter type:'
+                          : 'Area:'}
+                      </span>
+                      <span className="font-medium text-green-800">
+                        {validationInfo.customerType || validationInfo.billArea}
+                      </span>
                     </div>
                   )}
                   {validationInfo.partnerName && (
