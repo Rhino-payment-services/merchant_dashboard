@@ -582,12 +582,16 @@ export default function BulkPaymentPage() {
               ? normalizedUtilPhone
               : singlePayment.phoneNumber,
         customerRef:
-          singlePayment.mode === 'UTILITIES' && isAirtimeOrDataUtility(singlePayment.utilityProvider) && normalizedUtilPhone
-            ? normalizedUtilPhone
+          singlePayment.mode === 'UTILITIES'
+            ? isAirtimeOrDataUtility(singlePayment.utilityProvider) && normalizedUtilPhone
+              ? normalizedUtilPhone
+              : singlePayment.customerRef || singlePayment.utilityAccountNumber
             : singlePayment.customerRef,
         utilityAccountNumber:
-          singlePayment.mode === 'UTILITIES' && isAirtimeOrDataUtility(singlePayment.utilityProvider) && normalizedUtilPhone
-            ? normalizedUtilPhone
+          singlePayment.mode === 'UTILITIES'
+            ? isAirtimeOrDataUtility(singlePayment.utilityProvider) && normalizedUtilPhone
+              ? normalizedUtilPhone
+              : singlePayment.utilityAccountNumber || singlePayment.customerRef
             : singlePayment.utilityAccountNumber,
         metadata: singlePayment.metadata,
         recipientPhoneNumber: singlePayment.mode === 'MERCHANT_TO_WALLET' && singlePayment.recipientPhoneNumber
@@ -894,6 +898,7 @@ export default function BulkPaymentPage() {
                 : p.phoneNumber,
           ...(resolvedMno ? { mnoProvider: resolvedMno } : {}),
           recipientName: p.recipientName,
+          customerName: p.customerName || p.recipientName,
           accountNumber: p.accountNumber,
           bankSortCode: p.bankSortCode,
           accountName: p.accountName,
@@ -945,6 +950,7 @@ export default function BulkPaymentPage() {
             validated: true,
             // Update with validated name if available
             recipientName: itemResult.accountName || payment.recipientName,
+            customerName: itemResult.accountName || payment.customerName,
             accountName: itemResult.accountName || payment.accountName,
           };
         }
@@ -1267,10 +1273,16 @@ export default function BulkPaymentPage() {
               transaction.area = String(areaRaw).trim();
             }
             transaction.phoneNumber = pnorm;
-            const billName = String(p.recipientName || p.accountName || '').trim();
+            const billName = String(
+              p.recipientName || p.customerName || p.accountName || '',
+            ).trim();
             if (billName) {
               transaction.recipientName = billName;
               transaction.customerName = billName;
+              transaction.metadata = {
+                ...(transaction.metadata || {}),
+                customerName: billName,
+              };
             }
             if (isAirtimeOrDataUtility(normalizeUtilityProvider(p.utilityProvider))) {
               const network = resolveAirtimeMnoProvider(p.mnoProvider, p.phoneNumber);
