@@ -149,6 +149,30 @@ export function getUserPermissions(user: UserSession): UserPermissions {
   };
 }
 
+export function buildUserPermissionSession(input: {
+  profile?: {
+    role?: string;
+    isWalletOwner?: boolean;
+    walletPermissions?: UserPermissions;
+    isSuperMerchantViewingChild?: boolean;
+  } | null;
+  viewingChildMerchantId?: string | null;
+}): UserSession {
+  const { profile, viewingChildMerchantId } = input;
+  if (viewingChildMerchantId || profile?.isSuperMerchantViewingChild) {
+    return {
+      role: 'OWNER',
+      isWalletOwner: false,
+      userData: { ...FULL_OWNER_PERMISSIONS },
+    };
+  }
+  return {
+    role: profile?.role,
+    isWalletOwner: !!profile?.isWalletOwner,
+    userData: profile?.walletPermissions,
+  };
+}
+
 export const PERMISSION_LABELS: Record<keyof UserPermissions, string> = {
   canViewBalance: 'View balance',
   canViewTransactions: 'View transactions',
