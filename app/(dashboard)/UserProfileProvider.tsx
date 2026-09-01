@@ -144,16 +144,36 @@ export function UserProfileProvider({
 
       try {
         try {
-          const apiClient = (await import('@/lib/api/client')).default;
-          const walletResponse = await apiClient.get('/wallet/me/business');
-          businessWallet = walletResponse.data;
+          const { getMyBusinessWallet } = await import('@/lib/api/wallet.api');
+          businessWallet = await getMyBusinessWallet();
 
           if (businessWallet?.merchant) {
-            merchantCode = businessWallet.merchant.merchantCode;
+            merchantCode = (businessWallet.merchant as { merchantCode?: string }).merchantCode;
             businessWallet.merchantData = businessWallet.merchant;
           }
         } catch (walletError: any) {
-          // No business wallet access (neither owner nor team member)
+          const { resolveChildMerchantIdFromSession } = await import('@/lib/api/wallet.api');
+          const childId =
+            viewingChildMerchantId || (await resolveChildMerchantIdFromSession());
+          if (childId) {
+            const { getChildMerchantWallet } = await import('@/lib/api/super-merchant.api');
+            const childWallet = await getChildMerchantWallet(childId);
+            businessWallet = {
+              balance: childWallet.balance,
+              collectionBalance: childWallet.collectionBalance,
+              disbursementBalance: childWallet.disbursementBalance,
+              currency: childWallet.currency,
+              merchantId: childWallet.merchantId,
+              userId: childWallet.userId,
+              merchant: {
+                id: childWallet.merchantId,
+                merchantCode: childWallet.merchantCode,
+                businessTradeName: childWallet.businessTradeName,
+              },
+            };
+            merchantCode = childWallet.merchantCode;
+            businessWallet.merchantData = businessWallet.merchant;
+          }
         }
       } catch (error: any) {
         console.error('UserProfile wallet fetch error:', error);

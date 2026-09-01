@@ -1,4 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useSession } from 'next-auth/react';
 import {
   getWalletTeam,
   inviteTeamMember,
@@ -50,8 +51,14 @@ export function useAccessibleWallets() {
  * Get my business wallet (for merchants)
  */
 export function useMyBusinessWallet() {
+  const { data: session } = useSession();
+  const merchantCode = (session?.user as { merchantCode?: string })?.merchantCode;
+  const viewingChildMerchantId = (
+    session?.user as { viewingChildMerchantId?: string | null }
+  )?.viewingChildMerchantId;
+
   return useQuery({
-    queryKey: ['wallet', 'business'] as const,
+    queryKey: ['wallet', 'business', merchantCode, viewingChildMerchantId] as const,
     queryFn: getMyBusinessWallet,
     staleTime: 60000, // 1 minute
     retry: 1,
