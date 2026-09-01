@@ -42,7 +42,7 @@ import {
   canApprovePayments,
   canManageEvents,
   canManageSettings,
-  type UserSession,
+  buildUserPermissionSession,
 } from '@/lib/utils/permissions';
 
 const navLinks = [
@@ -122,11 +122,12 @@ export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
   const merchantCanLiquidate =
     liquidationOnlyMode || featureLiquidation || featureBulkPayments;
 
-  const userSession: UserSession = {
-    role: (profile as any)?.role,
-    isWalletOwner: !!(profile as any)?.isWalletOwner,
-    userData: (profile as any)?.walletPermissions,
-  };
+  const userSession = buildUserPermissionSession({
+    profile: profile as Parameters<typeof buildUserPermissionSession>[0]['profile'],
+    viewingChildMerchantId:
+      (session?.user as { viewingChildMerchantId?: string | null })?.viewingChildMerchantId ??
+      null,
+  });
 
   // Filter navLinks based on feature flags + team member permissions
   const filteredNavLinks = navLinks.map(section => ({

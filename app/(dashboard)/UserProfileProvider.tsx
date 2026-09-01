@@ -4,6 +4,7 @@ import { useMerchantAuth } from "@/lib/context/MerchantAuthContext";
 import { useSession } from "next-auth/react";
 import { useQuery } from "@tanstack/react-query";
 import { isSessionMerchantOwnAccount } from "@/lib/auth/sessionPayload";
+import { FULL_OWNER_PERMISSIONS } from "@/lib/utils/permissions";
 
 type UserProfile = {
   merchantId: string;
@@ -122,6 +123,8 @@ export function UserProfileProvider({
           role: (session?.user as any)?.role || userData?.role,
           isTeamMember: false,
           isWalletOwner: false,
+          isSuperMerchantViewingChild: true,
+          walletPermissions: { ...FULL_OWNER_PERMISSIONS },
           merchantData: {
             id: childWallet.merchantId,
             merchantCode: childWallet.merchantCode,
@@ -201,8 +204,17 @@ export function UserProfileProvider({
       const sessionSaysNotOwner =
         !!sessionMerchant && sessionMerchant.isOwnAccount === false;
 
+      const isSuperMerchantChildView =
+        !!viewingChildMerchantId ||
+        (walletOwnedByOther &&
+          sessionMerchants.some(
+            (m: { isSuperMerchant?: boolean; isOwnAccount?: boolean }) =>
+              m.isSuperMerchant === true && m.isOwnAccount === true,
+          ));
+
       isTeamMember =
-        hasTeamWalletMeta || walletOwnedByOther || sessionSaysNotOwner;
+        !isSuperMerchantChildView &&
+        (hasTeamWalletMeta || walletOwnedByOther || sessionSaysNotOwner);
 
       const isWalletOwner =
         !isTeamMember &&
@@ -245,7 +257,10 @@ export function UserProfileProvider({
       const businessEmail = merchantData?.businessEmail || userData?.email || '';
 
       const walletTeamRole = businessWallet?.accessRole || (isTeamMember ? null : undefined);
-      const walletPermissions = businessWallet?.permissions;
+      let walletPermissions = businessWallet?.permissions;
+      if (isSuperMerchantChildView) {
+        walletPermissions = { ...FULL_OWNER_PERMISSIONS };
+      }
       const effectiveRole = walletTeamRole || userRole;
 
       return {
@@ -266,6 +281,7 @@ export function UserProfileProvider({
         role: effectiveRole,
         isTeamMember,
         isWalletOwner,
+        isSuperMerchantViewingChild: isSuperMerchantChildView,
         walletPermissions: walletPermissions,
         merchantData: merchantData,
         merchantBusinessTradeName: merchantData?.businessTradeName || sessionMerchant?.businessTradeName,
