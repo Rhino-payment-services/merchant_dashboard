@@ -138,11 +138,11 @@ export async function getMyBusinessWallet(): Promise<{
   walletType: string;
   balance: number;
   currency: string;
-  permissions?: UserPermissions;
+  permissions?: import('@/lib/utils/permissions').UserPermissions;
   accessRole?: string;
 }> {
-  const response = await apiClient.get('/wallet/me/business');
-  return response.data;
+  const { getMyBusinessWallet: fetchBusinessWallet } = await import('./wallet.api');
+  return fetchBusinessWallet();
 }
 
 export async function acceptTeamInvitation(data: {

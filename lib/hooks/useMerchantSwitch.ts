@@ -25,6 +25,7 @@ export function useMerchantSwitch() {
           queryClient.invalidateQueries({ queryKey: ['userProfile'] }),
           queryClient.invalidateQueries({ queryKey: ['transactions'] }),
           queryClient.invalidateQueries({ queryKey: ['super-merchant'] }),
+          queryClient.invalidateQueries({ queryKey: ['wallet'] }),
         ])
         router.push(redirectTo)
         return true
