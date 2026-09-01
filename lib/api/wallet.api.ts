@@ -72,7 +72,7 @@ export const getMyBusinessWallet = async (): Promise<MyBusinessWallet> => {
     const { getChildMerchantWallet } = await import('./super-merchant.api')
     const wallet = await getChildMerchantWallet(childMerchantId)
     return {
-      id: wallet.merchantId,
+      id: wallet.walletId,
       walletType: 'BUSINESS',
       balance: wallet.balance,
       currency: wallet.currency,
