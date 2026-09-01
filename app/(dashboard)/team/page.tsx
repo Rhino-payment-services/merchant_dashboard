@@ -74,7 +74,7 @@ import {
 import {
   canManageTeam,
   getDefaultPermissionsForRole,
-  type UserSession,
+  buildUserPermissionSession,
 } from '@/lib/utils/permissions';
 import { AccessDenied } from '@/app/components/AccessDenied';
 
@@ -159,11 +159,12 @@ export default function TeamManagementPage() {
     ),
   };
 
-  const userSession: UserSession = {
-    role: (profile as any)?.role,
-    isWalletOwner: !!(profile as any)?.isWalletOwner,
-    userData: (profile as any)?.walletPermissions,
-  };
+  const userSession = buildUserPermissionSession({
+    profile: profile as Parameters<typeof buildUserPermissionSession>[0]['profile'],
+    viewingChildMerchantId:
+      (session?.user as { viewingChildMerchantId?: string | null })?.viewingChildMerchantId ??
+      null,
+  });
   const canManage = canManageTeam(userSession);
 
   // Get merchant's business wallet directly
