@@ -108,6 +108,7 @@ export const getChildMerchants = async (superMerchantId: string): Promise<{ chil
 }
 
 export interface ChildMerchantWallet {
+  walletId: string
   userId: string
   merchantId: string
   merchantCode: string
