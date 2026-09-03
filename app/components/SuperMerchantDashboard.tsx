@@ -59,6 +59,7 @@ interface MerchantItem {
   businessTradeName: string;
   isSuperMerchant: boolean;
   isOwnAccount: boolean;
+  isChildMerchant: boolean;
 }
 
 export default function SuperMerchantDashboard({ merchantId, merchantName }: SuperMerchantDashboardProps) {
@@ -85,17 +86,25 @@ export default function SuperMerchantDashboard({ merchantId, merchantName }: Sup
           businessTradeName: m.businessTradeName,
           isSuperMerchant: m.isSuperMerchant ?? false,
           isOwnAccount: m.isOwnAccount,
+          isChildMerchant: m.isChildMerchant === true,
         }))
       : sessionMerchants.map((m: any) => ({
           id: m.id,
           merchantCode: m.merchantCode,
           businessTradeName: m.businessTradeName,
           isSuperMerchant: m.isSuperMerchant || false,
-          isOwnAccount: true,
+          isOwnAccount: m.isOwnAccount === true,
+          isChildMerchant: false,
         }));
   // Get current selected merchant
   const currentMerchant = allMerchants.find((m: MerchantItem) => m.merchantCode === currentMerchantCode) || allMerchants[0];
   const currentContextId = currentMerchant?.id || selectedMerchantContext;
+
+  const ownAccounts = allMerchants.filter((m) => m.isOwnAccount);
+  const childAccounts = allMerchants.filter((m) => m.isChildMerchant);
+  const teamAccounts = allMerchants.filter(
+    (m) => !m.isOwnAccount && !m.isChildMerchant,
+  );
 
   const fetchDashboardData = async () => {
     try {
@@ -221,7 +230,7 @@ export default function SuperMerchantDashboard({ merchantId, merchantName }: Sup
   }
 
   if (error || !dashboardData) {
-    const childCount = allMerchants.filter((m) => !m.isOwnAccount).length;
+    const childCount = childAccounts.length;
     return (
       <div className="space-y-4">
         {allMerchants.length > 1 && (
@@ -241,17 +250,29 @@ export default function SuperMerchantDashboard({ merchantId, merchantName }: Sup
                 </SelectValue>
               </SelectTrigger>
               <SelectContent>
-                {allMerchants.filter((m: MerchantItem) => m.isOwnAccount).map((merchant) => (
+                {ownAccounts.map((merchant) => (
                   <SelectItem key={merchant.id} value={merchant.id}>
                     {merchant.businessTradeName}
                   </SelectItem>
                 ))}
+                {teamAccounts.length > 0 && (
+                  <>
+                    <div className="px-2 py-1.5 text-xs font-semibold text-gray-500 border-t mt-1">
+                      Team access
+                    </div>
+                    {teamAccounts.map((merchant) => (
+                      <SelectItem key={merchant.id} value={merchant.id}>
+                        {merchant.businessTradeName}
+                      </SelectItem>
+                    ))}
+                  </>
+                )}
                 {childCount > 0 && (
                   <>
                     <div className="px-2 py-1.5 text-xs font-semibold text-gray-500 border-t mt-1">
                       Child Merchants
                     </div>
-                    {allMerchants.filter((m: MerchantItem) => !m.isOwnAccount).map((merchant) => (
+                    {childAccounts.map((merchant) => (
                       <SelectItem key={merchant.id} value={merchant.id}>
                         {merchant.businessTradeName}
                       </SelectItem>
@@ -319,7 +340,7 @@ export default function SuperMerchantDashboard({ merchantId, merchantName }: Sup
               </SelectTrigger>
               <SelectContent>
                 {/* User's Own Accounts */}
-                {allMerchants.filter((m: MerchantItem) => m.isOwnAccount).map((merchant) => (
+                {ownAccounts.map((merchant) => (
                   <SelectItem key={merchant.id} value={merchant.id}>
                     <div className="flex items-center gap-2 w-full">
                       {merchant.isSuperMerchant ? (
@@ -340,13 +361,31 @@ export default function SuperMerchantDashboard({ merchantId, merchantName }: Sup
                     </div>
                   </SelectItem>
                 ))}
+                {teamAccounts.length > 0 && (
+                  <>
+                    <div className="px-2 py-1.5 text-xs font-semibold text-gray-500 border-t mt-1">
+                      Team access
+                    </div>
+                    {teamAccounts.map((merchant) => (
+                      <SelectItem key={merchant.id} value={merchant.id}>
+                        <div className="flex items-center gap-2 w-full">
+                          <Building2 className="h-4 w-4 text-gray-400" />
+                          <span className="flex-1">{merchant.businessTradeName}</span>
+                          <Badge variant="outline" className="text-violet-600">
+                            Team
+                          </Badge>
+                        </div>
+                      </SelectItem>
+                    ))}
+                  </>
+                )}
                 {/* Child Merchants */}
-                {allMerchants.filter((m: MerchantItem) => !m.isOwnAccount).length > 0 && (
+                {childAccounts.length > 0 && (
                   <>
                     <div className="px-2 py-1.5 text-xs font-semibold text-gray-500 border-t mt-1">
                       Child Merchants
                     </div>
-                    {allMerchants.filter((m: MerchantItem) => !m.isOwnAccount).map((merchant) => (
+                    {childAccounts.map((merchant) => (
                       <SelectItem key={merchant.id} value={merchant.id}>
                         <div className="flex items-center gap-2 w-full">
                           <Building2 className="h-4 w-4 text-gray-400" />

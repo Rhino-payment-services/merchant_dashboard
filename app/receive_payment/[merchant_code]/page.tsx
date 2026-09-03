@@ -14,6 +14,7 @@ import {
   AlertCircle,
   Lock,
   BadgeCheck,
+  Wallet,
 } from 'lucide-react'
 import Image from 'next/image'
 import { toast } from 'sonner'
@@ -55,6 +56,9 @@ interface PaymentPageProps {
   }>
 }
 
+type PaymentChannel = 'choose' | 'momo' | 'rukapay'
+type PaymentStep = 'form' | 'processing' | 'success' | 'error' | 'rukapay_instructions'
+
 const QUICK_AMOUNTS = [5000, 10000, 20000, 50000] as const
 
 const QUICK_LABELS: Record<number, string> = {
@@ -63,6 +67,13 @@ const QUICK_LABELS: Record<number, string> = {
   20000: '20K',
   50000: '50K',
 }
+
+const DEFAULT_RUKAPAY_DIAL_STEPS = [
+  'Dial *289# on the phone number you entered',
+  'Select My Account (00)',
+  'Select Pending payments',
+  'Choose this payment and enter your RukaPay PIN',
+]
 
 function formatAmountLabel(value: string): string {
   const n = parseFloat(value)
@@ -221,15 +232,17 @@ function PaymentPageSkeleton() {
 export default function ReceivePaymentPage({ params }: PaymentPageProps) {
   const [merchantCode, setMerchantCode] = useState<string>('')
   const [merchantInfo, setMerchantInfo] = useState<MerchantInfo | null>(null)
+  const [paymentChannel, setPaymentChannel] = useState<PaymentChannel>('choose')
   const [phoneNumber, setPhoneNumber] = useState('')
   const [amount, setAmount] = useState('')
   const [paymentDescription, setPaymentDescription] = useState('')
   const [referralCode, setReferralCode] = useState('')
   const [isLoading, setIsLoading] = useState(false)
   const [isMerchantLoading, setIsMerchantLoading] = useState(true)
-  const [paymentStep, setPaymentStep] = useState<'form' | 'confirm' | 'processing' | 'success' | 'error'>('form')
+  const [paymentStep, setPaymentStep] = useState<PaymentStep>('form')
   const [transactionRef, setTransactionRef] = useState('')
   const [errorMessage, setErrorMessage] = useState('')
+  const [dialInstructions, setDialInstructions] = useState<string[]>(DEFAULT_RUKAPAY_DIAL_STEPS)
   const phoneInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
@@ -267,22 +280,25 @@ export default function ReceivePaymentPage({ params }: PaymentPageProps) {
   }, [merchantCode])
 
   useEffect(() => {
-    if (!isMerchantLoading && merchantInfo?.isActive && merchantInfo.acceptPayments && paymentStep === 'form') {
+    if (
+      !isMerchantLoading &&
+      merchantInfo?.isActive &&
+      merchantInfo.acceptPayments &&
+      paymentStep === 'form' &&
+      paymentChannel !== 'choose'
+    ) {
       phoneInputRef.current?.focus()
     }
-  }, [isMerchantLoading, merchantInfo, paymentStep])
+  }, [isMerchantLoading, merchantInfo, paymentStep, paymentChannel])
 
   const formatPhoneNumber = (phone: string): string => {
     let cleaned = phone.replace(/\D/g, '')
-
     if (cleaned.startsWith('0')) {
       cleaned = '256' + cleaned.substring(1)
     }
-
     if (!cleaned.startsWith('256')) {
       cleaned = '256' + cleaned
     }
-
     return cleaned
   }
 
@@ -290,8 +306,22 @@ export default function ReceivePaymentPage({ params }: PaymentPageProps) {
     setPhoneNumber(formatNationalPhoneDisplay(value))
   }
 
+  const resetFormFields = () => {
+    setPhoneNumber('')
+    setAmount('')
+    setPaymentDescription('')
+    setTransactionRef('')
+    setErrorMessage('')
+    setDialInstructions(DEFAULT_RUKAPAY_DIAL_STEPS)
+  }
+
   const handlePaymentSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+
+    if (paymentChannel === 'choose') {
+      toast.error('Please choose how you want to pay')
+      return
+    }
 
     if (!phoneNumber || !amount) {
       toast.error('Please fill in all required fields')
@@ -322,15 +352,41 @@ export default function ReceivePaymentPage({ params }: PaymentPageProps) {
     try {
       const { API_URL } = await import('@/lib/config')
 
+      if (paymentChannel === 'rukapay') {
+        const response = await fetch(`${API_URL}/public/merchant-payment/rukapay-intent`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            merchantCode,
+            payerPhone: formattedPhone,
+            amount: numAmount,
+            ...(paymentDescription.trim() && { description: paymentDescription.trim() }),
+          }),
+        })
+        const result = await response.json()
+        if (!response.ok) {
+          throw new Error(result.message || result.error || 'Failed to create payment request')
+        }
+        if (result.id) {
+          setTransactionRef(result.id)
+        }
+        if (Array.isArray(result.dialInstructions) && result.dialInstructions.length > 0) {
+          setDialInstructions(result.dialInstructions)
+        }
+        setPaymentStep('rukapay_instructions')
+        setIsLoading(false)
+        toast.success('Payment request created. Dial *289# to approve.')
+        return
+      }
+
       const response = await fetch(`${API_URL}/public/merchant-payment/collect`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          merchantCode: merchantCode,
+          merchantCode,
           phoneNumber: formattedPhone,
           amount: numAmount,
+          channel: 'MERCHANT_PORTAL',
           ...(paymentDescription.trim() && { description: paymentDescription.trim() }),
           ...(referralCode.trim() && { referralCode: referralCode.trim() }),
         }),
@@ -382,7 +438,14 @@ export default function ReceivePaymentPage({ params }: PaymentPageProps) {
   const amountLabel = formatAmountLabel(amount)
   const hasValidAmount = amountLabel !== ''
   const displayPhone = phoneNumber || '—'
-  const payButtonLabel = hasValidAmount ? `Pay ${currency} ${amountLabel}` : 'Pay now'
+  const payButtonLabel =
+    paymentChannel === 'rukapay'
+      ? hasValidAmount
+        ? `Continue · ${currency} ${amountLabel}`
+        : 'Continue to *289#'
+      : hasValidAmount
+        ? `Pay ${currency} ${amountLabel}`
+        : 'Pay now'
 
   if (isMerchantLoading) {
     return (
@@ -431,7 +494,63 @@ export default function ReceivePaymentPage({ params }: PaymentPageProps) {
     )
   }
 
-  if (paymentStep === 'processing') {
+  if (paymentStep === 'rukapay_instructions') {
+    return (
+      <PageShell>
+        <CheckoutHeader />
+        <MerchantBlock merchant={merchantInfo} />
+        <div className="text-center">
+          <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-primary/10">
+            <Wallet className="h-7 w-7 text-primary" />
+          </div>
+          <h2 className="mb-2 text-xl font-semibold">Approve on *289#</h2>
+          <p className="mb-6 text-sm text-muted-foreground">
+            Use the RukaPay wallet on{' '}
+            <span className="font-medium text-foreground">{displayPhone}</span>. Dial{' '}
+            <span className="font-medium text-foreground">*289#</span>
+            {' '}→ My Account → Pending payments → PIN.
+          </p>
+        </div>
+
+        <DetailRows
+          rows={[
+            { label: 'Merchant', value: merchantName },
+            { label: 'Amount', value: formatCurrencyDisplay(amount, currency) },
+            { label: 'Phone', value: displayPhone },
+            ...(transactionRef
+              ? [{ label: 'Request ID', value: <span className="font-mono text-xs">{transactionRef.slice(0, 8)}…</span> }]
+              : []),
+          ]}
+        />
+
+        <div className="mt-8 rounded-xl border border-primary/20 bg-primary/5 p-4">
+          <p className="mb-3 text-sm font-semibold text-foreground">How to complete payment</p>
+          <ol className="space-y-2 text-sm text-muted-foreground">
+            {dialInstructions.map((step, index) => (
+              <li key={step}>
+                {index + 1}. {step}
+              </li>
+            ))}
+          </ol>
+        </div>
+
+        <Button
+          variant="ghost"
+          className="mt-8 w-full"
+          onClick={() => {
+            setPaymentStep('form')
+            setPaymentChannel('choose')
+            setIsLoading(false)
+            resetFormFields()
+          }}
+        >
+          Done
+        </Button>
+      </PageShell>
+    )
+  }
+
+  if (paymentStep === 'processing' && paymentChannel === 'momo') {
     return (
       <PageShell>
         <CheckoutHeader />
@@ -470,14 +589,23 @@ export default function ReceivePaymentPage({ params }: PaymentPageProps) {
           onClick={() => {
             setPaymentStep('form')
             setIsLoading(false)
-            setPhoneNumber('')
-            setAmount('')
-            setPaymentDescription('')
-            setReferralCode('')
+            resetFormFields()
           }}
         >
           Cancel
         </Button>
+      </PageShell>
+    )
+  }
+
+  if (paymentStep === 'processing') {
+    return (
+      <PageShell>
+        <CheckoutHeader />
+        <div className="flex flex-1 flex-col items-center justify-center text-center">
+          <Loader2 className="mb-4 h-10 w-10 animate-spin text-primary" />
+          <p className="text-sm text-muted-foreground">Creating your payment request…</p>
+        </div>
       </PageShell>
     )
   }
@@ -515,11 +643,8 @@ export default function ReceivePaymentPage({ params }: PaymentPageProps) {
           className="mt-8 h-12 w-full"
           onClick={() => {
             setPaymentStep('form')
-            setPhoneNumber('')
-            setAmount('')
-            setPaymentDescription('')
-            setReferralCode('')
-            setTransactionRef('')
+            setPaymentChannel('choose')
+            resetFormFields()
           }}
         >
           Make another payment
@@ -554,16 +679,82 @@ export default function ReceivePaymentPage({ params }: PaymentPageProps) {
     )
   }
 
+  if (paymentChannel === 'choose') {
+    return (
+      <PageShell>
+        <CheckoutHeader />
+        <MerchantBlock merchant={merchantInfo} />
+        <p className="mb-4 text-center text-sm text-muted-foreground">Choose how to pay</p>
+        <div className="space-y-3">
+          <button
+            type="button"
+            onClick={() => setPaymentChannel('rukapay')}
+            className="flex w-full items-start gap-3 rounded-xl border border-border bg-card p-4 text-left transition hover:border-primary hover:bg-primary/5"
+          >
+            <span className="mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
+              <Wallet className="h-5 w-5" />
+            </span>
+            <span>
+              <span className="block text-sm font-semibold text-foreground">Pay with RukaPay</span>
+              <span className="mt-1 block text-xs text-muted-foreground">
+                Use your RukaPay wallet. After this page, dial *289# → My Account → Pending payments → enter PIN.
+              </span>
+            </span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setPaymentChannel('momo')}
+            className="flex w-full items-start gap-3 rounded-xl border border-border bg-card p-4 text-left transition hover:border-primary hover:bg-primary/5"
+          >
+            <span className="mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
+              <Smartphone className="h-5 w-5" />
+            </span>
+            <span>
+              <span className="block text-sm font-semibold text-foreground">Mobile Money</span>
+              <span className="mt-1 block text-xs text-muted-foreground">
+                MTN or Airtel. You will get a prompt on your phone to confirm with your MoMo PIN.
+              </span>
+            </span>
+          </button>
+        </div>
+      </PageShell>
+    )
+  }
+
   return (
     <PageShell>
       <CheckoutHeader />
       <MerchantBlock merchant={merchantInfo} />
 
+      <button
+        type="button"
+        onClick={() => setPaymentChannel('choose')}
+        className="mb-4 inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
+      >
+        <ArrowLeft className="h-4 w-4" />
+        Change payment method
+      </button>
+
+      <div className="mb-5 rounded-lg border border-border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
+        {paymentChannel === 'rukapay' ? (
+          <>
+            Paying with <span className="font-medium text-foreground">RukaPay wallet</span>. Dial{' '}
+            <span className="font-medium text-foreground">*289#</span>
+            {' '}→ My Account → Pending payments → PIN.
+          </>
+        ) : (
+          <>
+            Paying with <span className="font-medium text-foreground">Mobile Money</span>. A prompt will be sent to your phone.
+          </>
+        )}
+      </div>
+
       <form onSubmit={handlePaymentSubmit} className="flex flex-1 flex-col">
         <div className="space-y-5">
-          {/* Phone */}
           <div className="space-y-2">
-            <Label htmlFor="phoneNumber">Phone number</Label>
+            <Label htmlFor="phoneNumber">
+              {paymentChannel === 'rukapay' ? 'RukaPay phone number' : 'Phone number'}
+            </Label>
             <div className="flex gap-2">
               <Input
                 value="+256"
@@ -586,10 +777,13 @@ export default function ReceivePaymentPage({ params }: PaymentPageProps) {
                 aria-describedby="phone-help"
               />
             </div>
-            <FieldHint id="phone-help">MTN or Airtel mobile money number</FieldHint>
+            <FieldHint id="phone-help">
+              {paymentChannel === 'rukapay'
+                ? 'Must be the phone registered on your RukaPay account'
+                : 'MTN or Airtel mobile money number'}
+            </FieldHint>
           </div>
 
-          {/* Amount */}
           <div className="space-y-2">
             <Label htmlFor="amount">Amount</Label>
             <div className="relative">
@@ -633,7 +827,6 @@ export default function ReceivePaymentPage({ params }: PaymentPageProps) {
             </div>
           </div>
 
-          {/* Description */}
           <div className="space-y-2">
             <div className="flex items-center justify-between gap-2">
               <Label htmlFor="paymentDescription">
@@ -694,7 +887,9 @@ export default function ReceivePaymentPage({ params }: PaymentPageProps) {
             )}
           </Button>
           <p className="mt-4 text-center text-xs text-muted-foreground">
-            You&apos;ll confirm on your phone with Mobile Money PIN
+            {paymentChannel === 'rukapay'
+              ? 'Next: dial *289# → My Account → Pending payments → PIN'
+              : "You'll confirm on your phone with Mobile Money PIN"}
           </p>
         </div>
       </form>

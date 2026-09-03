@@ -19,6 +19,9 @@ import {
 import Link from "next/link";
 import { UGANDAN_BANKS } from "@/app/lib/bankList";
 import { useUserProfile } from "../UserProfileProvider";
+import { AccessDenied } from "@/app/components/AccessDenied";
+import { useTeamPermissionSession } from "@/lib/hooks/useTeamPermissionSession";
+import { canManageSettings } from "@/lib/utils/permissions";
 import {
   Select,
   SelectContent,
@@ -63,6 +66,7 @@ type LiquidationDestinationResponse = {
 export default function SettingsPage() {
   const { data: session, update } = useSession();
   const { refetch: refetchProfile } = useUserProfile();
+  const teamSession = useTeamPermissionSession();
   const userData = (session?.user as any)?.userData || (session?.user as any);
   const hasPassword = (session?.user as any)?.hasPassword ?? false;
 
@@ -323,8 +327,14 @@ export default function SettingsPage() {
   const pinLoginEnabled = userData?.pinLoginEnabled === true;
   const portalPinSet = userData?.merchantPortalPinSet === true;
 
+  if (!canManageSettings(teamSession)) {
+    return (
+      <AccessDenied description="You do not have permission to manage settings." />
+    );
+  }
+
   return (
-    <div className="min-h-screen bg-gray-50 p-8">
+    <div className="p-8">
       <div className="max-w-2xl mx-auto">
         <div className="mb-8">
           <h1 className="text-3xl font-bold text-[#08163d] mb-2">Account Settings</h1>

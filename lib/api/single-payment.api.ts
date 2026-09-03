@@ -1,5 +1,16 @@
 import apiClient from './client'
 import { resolveAirtimeMnoProvider } from '@/lib/utils'
+import {
+  applyValidatedBillArea,
+  enrichUtilityBillFields,
+  extractValidatedBillArea,
+  extractValidatedCustomerName,
+  isElectricityMeterType,
+  isElectricityUtility,
+  isUtilityBillPayment,
+  resolveBillCustomerName,
+} from '@/lib/utils/bill-payment-enrichment'
+import { isUmemeUtility } from '@/lib/utils/bill-area-field'
 
 // Helper function to validate MNO provider
 const getValidMnoProvider = (provider: string | undefined): string => {
@@ -31,6 +42,8 @@ export interface SinglePaymentDto {
   phoneNumber?: string
   mnoProvider?: string
   recipientName?: string
+  /** Bill customer name from validation (UMEME, NWSC, etc.) */
+  customerName?: string
   
   // Bank fields
   accountNumber?: string
@@ -48,6 +61,9 @@ export interface SinglePaymentDto {
   utilityAccountNumber?: string
   customerRef?: string
   area?: string
+  /** UMEME/YAKALAST: PREPAID or POSTPAID from validation (sent as meterNumber to backend) */
+  meterNumber?: string
+  customerType?: string
   
   // Merchant fields
   merchantCode?: string
@@ -79,6 +95,8 @@ export interface ValidateTransactionRequestDto {
   merchantCode?: string
   userId?: string
   currency?: string
+  channel?: string
+  walletType?: string
 }
 
 // Transaction Response DTO
@@ -118,68 +136,144 @@ export interface FeePreviewResponseDto {
  */
 export const processSinglePayment = async (paymentData: SinglePaymentDto, userId?: string): Promise<TransactionResponseDto> => {
   try {
+    const effectiveUserId = userId || paymentData.userId
+    const enriched = enrichUtilityBillFields({ ...paymentData })
+
+    let resolvedCustomerName = resolveBillCustomerName(enriched)
+
+    const needsElectricityMeterType =
+      isElectricityUtility(enriched.utilityProvider) &&
+      !isElectricityMeterType(enriched.area) &&
+      !isElectricityMeterType(enriched.meterNumber)
+
+    if (
+      isUtilityBillPayment(enriched.mode, enriched.utilityProvider) &&
+      (!resolvedCustomerName || needsElectricityMeterType)
+    ) {
+      if (!effectiveUserId) {
+        throw new Error(
+          'Customer name and meter type are required for bill payment. Validate the account first.',
+        )
+      }
+      console.log(
+        'API: Bill payment missing customerName or meter type — validating account first',
+      )
+      const validation = await validateTransaction({
+        ...enriched,
+        userId: effectiveUserId,
+      })
+
+      if (!resolvedCustomerName) {
+        resolvedCustomerName = extractValidatedCustomerName(validation)
+        if (!resolvedCustomerName) {
+          throw new Error(
+            validation.errors?.[0] ||
+              'Could not load customer name. Validate the bill account and customer phone, then try again.',
+          )
+        }
+        enriched.customerName = resolvedCustomerName
+        enriched.recipientName = resolvedCustomerName
+      }
+
+      const billArea = extractValidatedBillArea(validation)
+      if (!billArea && needsElectricityMeterType) {
+        throw new Error(
+          'Could not detect PREPAID or POSTPAID for this UMEME meter. Validate the account first.',
+        )
+      }
+      if (billArea) {
+        Object.assign(enriched, applyValidatedBillArea(enriched, billArea))
+      }
+    }
+
+    if (
+      isUmemeUtility(enriched.utilityProvider) &&
+      enriched.mode === 'UTILITIES' &&
+      !resolvedCustomerName
+    ) {
+      throw new Error(
+        'Customer name is required for UMEME. Validate the meter and customer phone first.',
+      )
+    }
+
     // Transform SinglePaymentDto to match backend UnifiedTransactionDto
     const processData = {
-      mode: paymentData.mode,
-      amount: paymentData.amount,
-      currency: paymentData.currency || 'UGX',
-      description: paymentData.description,
-      reference: paymentData.reference,
-      walletType: paymentData.walletType || 'BUSINESS',
-      userId: userId, // Sender's user ID
+      mode: enriched.mode,
+      amount: enriched.amount,
+      currency: enriched.currency || 'UGX',
+      description: enriched.description,
+      reference: enriched.reference,
+      walletType: enriched.walletType || 'BUSINESS',
+      userId: effectiveUserId,
       channel: 'MERCHANT_PORTAL', // ✅ Set channel for metrics tracking
       
+      // Merchant context for tariff lookup (header is backup via apiClient)
+      merchantCode: enriched.merchantCode,
+      merchantId: enriched.merchantId,
+      
       // Map transaction-specific fields
-      phoneNumber: paymentData.phoneNumber,
+      phoneNumber: enriched.phoneNumber,
       mnoProvider:
-        paymentData.mode === 'UTILITIES'
-          ? paymentData.mnoProvider && String(paymentData.mnoProvider).trim()
-            ? getValidMnoProvider(paymentData.mnoProvider)
+        enriched.mode === 'UTILITIES'
+          ? enriched.mnoProvider && String(enriched.mnoProvider).trim()
+            ? getValidMnoProvider(enriched.mnoProvider)
             : undefined
-          : getValidMnoProvider(paymentData.mnoProvider),
-      recipientName: paymentData.recipientName,
+          : getValidMnoProvider(enriched.mnoProvider),
+      recipientName: enriched.recipientName || resolvedCustomerName,
+      customerName: resolvedCustomerName,
       
       // Bank fields
-      accountNumber: paymentData.accountNumber,
-      bankSortCode: paymentData.bankSortCode,
-      bankName: paymentData.bankName,
-      accountName: paymentData.accountName,
-      swiftCode: paymentData.swiftCode,
+      accountNumber: enriched.accountNumber,
+      bankSortCode: enriched.bankSortCode,
+      bankName: enriched.bankName,
+      accountName: enriched.accountName,
+      swiftCode: enriched.swiftCode,
       
       // Wallet fields
-      recipientPhoneNumber: paymentData.recipientPhoneNumber,
-      recipientUserId: paymentData.recipientUserId,
+      recipientPhoneNumber: enriched.recipientPhoneNumber,
+      recipientUserId: enriched.recipientUserId,
       
       // Utility fields (airtime / data: account ref is the MSISDN)
-      utilityProvider: paymentData.utilityProvider,
+      utilityProvider: enriched.utilityProvider,
+      customerRef:
+        enriched.mode === 'UTILITIES'
+          ? enriched.customerRef ||
+            enriched.utilityAccountNumber ||
+            enriched.phoneNumber
+          : undefined,
       utilityAccountNumber:
-        paymentData.mode === 'UTILITIES'
-          ? paymentData.utilityAccountNumber ||
-            paymentData.customerRef ||
-            paymentData.phoneNumber
-          : paymentData.utilityAccountNumber,
-      area: paymentData.area,
+        enriched.mode === 'UTILITIES'
+          ? enriched.utilityAccountNumber ||
+            enriched.customerRef ||
+            enriched.phoneNumber
+          : enriched.utilityAccountNumber,
+      area: enriched.area,
+      meterNumber: enriched.meterNumber,
       
-      // Merchant fields
-      merchantCode: paymentData.merchantCode,
-      merchantId: paymentData.merchantId,
-      orderId: paymentData.orderId,
-      invoiceNumber: paymentData.invoiceNumber,
+      // Merchant fields (orderId / invoice)
+      orderId: enriched.orderId,
+      invoiceNumber: enriched.invoiceNumber,
       
       metadata: (() => {
-        const m = paymentData.metadata ? { ...paymentData.metadata } : undefined;
-        if (!m) return undefined;
-        if (typeof m.referralCode === 'string') {
-          const trimmed = m.referralCode.trim();
-          if (trimmed) m.referralCode = trimmed;
-          else delete m.referralCode;
+        const m = enriched.metadata ? { ...enriched.metadata } : {};
+        if (enriched.merchantCode) {
+          m.merchantCode = enriched.merchantCode;
         }
         if (
-          paymentData.mode === 'UTILITIES' &&
-          paymentData.utilityProvider === 'DATA_BUNDLES'
+          enriched.mode === 'UTILITIES' &&
+          enriched.utilityProvider === 'DATA_BUNDLES'
         ) {
           const q = Number(m.dataQuantity);
           if (!Number.isNaN(q)) m.dataQuantity = q;
+        }
+        if (resolvedCustomerName && enriched.mode === 'UTILITIES') {
+          m.customerName = resolvedCustomerName;
+        }
+        if (enriched.customerType && enriched.mode === 'UTILITIES') {
+          m.customerType = enriched.customerType;
+        }
+        if (enriched.meterNumber && enriched.mode === 'UTILITIES') {
+          m.meterNumber = enriched.meterNumber;
         }
         return Object.keys(m).length > 0 ? m : undefined;
       })(),
@@ -187,6 +281,7 @@ export const processSinglePayment = async (paymentData: SinglePaymentDto, userId
 
     console.log('API: Processing single payment:', processData);
     console.log('API: Original payment data:', paymentData);
+    console.log('API: Enriched payment data:', enriched);
     console.log('API: MNO Provider from frontend:', paymentData.mnoProvider);
     const response = await apiClient.post('/transactions/process', processData);
     console.log('API: Single payment response:', response.data);
@@ -209,6 +304,9 @@ export const validateTransaction = async (paymentData: SinglePaymentDto): Promis
   recipientName?: string
   partnerCode?: string
   partnerName?: string
+  /** PREPAID/POSTPAID for UMEME, or NWSC service area */
+  billArea?: string
+  customerType?: string
   validationResult?: any
   feePreview?: FeePreviewResponseDto
 }> => {
@@ -226,7 +324,13 @@ export const validateTransaction = async (paymentData: SinglePaymentDto): Promis
       currency: paymentData.currency || 'UGX',
       geographicRegion: 'UG',
       userId: paymentData.userId,
+      channel: 'MERCHANT_PORTAL',
+      walletType: paymentData.walletType || 'BUSINESS',
     };
+
+    if (paymentData.merchantCode) {
+      validationData.merchantCode = paymentData.merchantCode;
+    }
 
   // Map transaction-specific fields
   if (paymentData.mode === 'WALLET_TO_MNO') {
@@ -300,17 +404,21 @@ export const validateTransaction = async (paymentData: SinglePaymentDto): Promis
                           validationResult.data?.customerName ||
                           validationResult.data?.recipientName;
 
+    const billArea = extractValidatedBillArea({ validationResult });
+
     return {
       isValid: data.success || false,
       errors: data.error ? [data.error] : [],
       warnings: data.warnings || [],
       recipientName: recipientName,
+      billArea,
+      customerType: billArea,
       partnerCode: data.partnerCode,
       partnerName: data.partnerName,
       validationResult: validationResult,
       feePreview: data.feeDetails ? {
-        tariffId: '',
-        tariffName: '',
+        tariffId: data.feeDetails.tariffId || '',
+        tariffName: data.feeDetails.tariffName || '',
         feeAmount: data.feeDetails.feeAmount,
         feePercentage: data.feeDetails.feePercentage || 0,
         totalFee: data.feeDetails.feeAmount,

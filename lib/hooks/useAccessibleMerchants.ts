@@ -2,6 +2,7 @@ import { useMemo } from 'react'
 import { useSession } from 'next-auth/react'
 import { useQueries } from '@tanstack/react-query'
 import { getChildMerchants } from '@/lib/api/super-merchant.api'
+import { isSessionMerchantOwnAccount } from '@/lib/auth/sessionPayload'
 
 export interface AccessibleMerchant {
   id: string
@@ -21,6 +22,7 @@ type SessionMerchant = {
   isActive?: boolean
   isVerified?: boolean
   isSuperMerchant?: boolean
+  isOwnAccount?: boolean
 }
 
 function normalizeMerchantCode(code: string | null | undefined): string {
@@ -39,7 +41,10 @@ export function useAccessibleMerchants() {
   const sessionMerchants: SessionMerchant[] = (session?.user as { merchants?: SessionMerchant[] })?.merchants ?? []
 
   const superMerchantIds = useMemo(
-    () => sessionMerchants.filter((m) => m.isSuperMerchant).map((m) => m.id),
+    () =>
+      sessionMerchants
+        .filter((m) => m.isSuperMerchant && isSessionMerchantOwnAccount(m))
+        .map((m) => m.id),
     [sessionMerchants],
   )
 
@@ -60,7 +65,7 @@ export function useAccessibleMerchants() {
       isActive: m.isActive,
       isVerified: m.isVerified,
       isSuperMerchant: m.isSuperMerchant ?? false,
-      isOwnAccount: true,
+      isOwnAccount: isSessionMerchantOwnAccount(m),
       isChildMerchant: false,
     }))
 

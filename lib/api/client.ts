@@ -33,13 +33,9 @@ apiClient.interceptors.request.use(
       try {
         const { getSession } = await import('next-auth/react')
         const session = await getSession()
-        
-        console.log('🔑 [API Client] Session data:', session);
-        console.log('🔑 [API Client] Access token from session:', session?.accessToken);
-        
+
         if (session?.accessToken) {
           config.headers.Authorization = `Bearer ${session.accessToken}`
-          console.log('🔑 [API Client] Using token from session:', session.accessToken.substring(0, 20) + '...');
         }
         const merchantCode = (session?.user as any)?.merchantCode
         if (merchantCode != null && String(merchantCode).trim() !== '') {
@@ -48,23 +44,16 @@ apiClient.interceptors.request.use(
         if (!config.headers.Authorization) {
           // Fallback to localStorage for backwards compatibility
           const accessToken = localStorage.getItem('accessToken')
-          console.log('🔑 [API Client] Access token from localStorage:', accessToken);
           if (accessToken) {
             config.headers.Authorization = `Bearer ${accessToken}`
-            console.log('🔑 [API Client] Using token from localStorage:', accessToken.substring(0, 20) + '...');
           }
         }
-        
-        console.log('🔑 [API Client] Final Authorization header:', config.headers.Authorization);
-        console.log('🔑 [API Client] Request URL:', config.url);
       } catch (error) {
         console.error('Error getting session:', error)
         // Fallback to localStorage
         const accessToken = localStorage.getItem('accessToken')
-        console.log('🔑 [API Client] Fallback - Access token from localStorage:', accessToken);
         if (accessToken) {
           config.headers.Authorization = `Bearer ${accessToken}`
-          console.log('🔑 [API Client] Fallback - Using token from localStorage:', accessToken.substring(0, 20) + '...');
         }
       }
     }

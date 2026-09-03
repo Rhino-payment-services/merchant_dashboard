@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useState, useEffect } from 'react';
+import React from 'react';
 import { Button } from '../../components/ui/button';
 import { useRouter, usePathname } from 'next/navigation';
 import { 
@@ -30,7 +30,20 @@ import {
 import Image from 'next/image';
 import { useSession } from 'next-auth/react';
 import { useUserProfile } from '../(dashboard)/UserProfileProvider';
-import { checkMerchantIsSuperMerchant } from '@/lib/api/super-merchant.api';
+import { isSessionMerchantOwnAccount } from '@/lib/auth/sessionPayload';
+import {
+  canViewTransactions,
+  canCollectPayments,
+  canInitiatePayments,
+  canLiquidate as canLiquidatePermission,
+  canViewReports,
+  canManageTeam,
+  canManagePayroll,
+  canApprovePayments,
+  canManageEvents,
+  canManageSettings,
+  buildUserPermissionSession,
+} from '@/lib/utils/permissions';
 
 const navLinks = [
   { section: 'GENERAL', links: [
@@ -70,20 +83,25 @@ export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
   const { data: session } = useSession();
   const { profile } = useUserProfile();
   const merchants = (session?.user as any)?.merchants || [];
+  const sessionMerchantCode = (session?.user as any)?.merchantCode;
 
-  // Sidebar always shows the logged-in user's own merchant — never the child being viewed
-  const ownMerchant =
-    merchants.find((m: any) => m.isSuperMerchant === true) || merchants[0];
+  // Sidebar shows the merchant currently selected in session (own or team invite).
+  const codeMatch = (m: any) =>
+    String(m?.merchantCode || '').trim() === String(sessionMerchantCode || '').trim();
 
-  const currentMerchant = ownMerchant;
+  const currentMerchant =
+    merchants.find((m: any) => codeMatch(m)) ||
+    merchants.find((m: any) => isSessionMerchantOwnAccount(m) && m.isSuperMerchant === true) ||
+    merchants.find((m: any) => isSessionMerchantOwnAccount(m)) ||
+    merchants[0];
 
   const businessName =
-    ownMerchant?.businessTradeName ||
-    (ownMerchant?.merchantCode ? `Business · ${ownMerchant.merchantCode}` : null);
+    currentMerchant?.businessTradeName ||
+    (currentMerchant?.merchantCode ? `Business · ${currentMerchant.merchantCode}` : null);
 
-  const displayMerchantCode = ownMerchant?.merchantCode;
+  const displayMerchantCode = currentMerchant?.merchantCode;
   
-  // Feature flags from the user's own session merchant (not child context)
+  // Feature flags from the currently selected merchant (own or team)
   const liveMerchant =
     (profile as any)?.merchantData ||
     (profile as any)?.businessWallet?.merchant ||
@@ -101,53 +119,17 @@ export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
 
   // Liquidate + payroll: require featureLiquidation or featureBulkPayments (Payment link is always shown).
   // Liquidation-Only Mode forces Liquidate visible and hides Payment/Payroll.
-  const canLiquidate = liquidationOnlyMode || featureLiquidation || featureBulkPayments;
+  const merchantCanLiquidate =
+    liquidationOnlyMode || featureLiquidation || featureBulkPayments;
 
-  // State for super merchant status
-  const [isSuperMerchant, setIsSuperMerchant] = useState(false);
-  
-  // Check super merchant status - similar to home page logic
-  useEffect(() => {
-    const checkSuperMerchantStatus = async () => {
-      // First, check if session merchants array has isSuperMerchant field (fastest check)
-      if (currentMerchant && typeof currentMerchant.isSuperMerchant === 'boolean') {
-        console.log('✅ Sidebar: Using isSuperMerchant from session merchant data:', currentMerchant.isSuperMerchant);
-        setIsSuperMerchant(currentMerchant.isSuperMerchant);
-        return;
-      }
-      
-      // Fallback: check if any merchant in the session is a super merchant
-      const anySuperMerchant = merchants.some((m: any) => m.isSuperMerchant === true);
-      if (anySuperMerchant) {
-        console.log('✅ Sidebar: Found super merchant in merchants array');
-        setIsSuperMerchant(true);
-        return;
-      }
-      
-      // Final fallback: Check via API using current merchant ID
-      const currentMerchantId = currentMerchant?.id || profile?.merchantId;
-      if (currentMerchantId) {
-        try {
-          console.log('🔍 Sidebar: Checking super merchant status via API for merchantId:', currentMerchantId);
-          const result = await checkMerchantIsSuperMerchant(currentMerchantId);
-          console.log('🔍 Sidebar: Super merchant check result:', result);
-          setIsSuperMerchant(result);
-        } catch (err: any) {
-          console.error('❌ Sidebar: Error checking super merchant status:', err);
-          setIsSuperMerchant(false);
-        }
-      } else {
-        console.warn('⚠️ Sidebar: No merchant ID available for super merchant check');
-        setIsSuperMerchant(false);
-      }
-    };
-    
-    if (session && merchants.length > 0) {
-      checkSuperMerchantStatus();
-    }
-  }, [session, currentMerchant, merchants, profile?.merchantId]);
-  
-  // Filter navLinks based on feature flags
+  const userSession = buildUserPermissionSession({
+    profile: profile as Parameters<typeof buildUserPermissionSession>[0]['profile'],
+    viewingChildMerchantId:
+      (session?.user as { viewingChildMerchantId?: string | null })?.viewingChildMerchantId ??
+      null,
+  });
+
+  // Filter navLinks based on feature flags + team member permissions
   const filteredNavLinks = navLinks.map(section => ({
     ...section,
     links: section.links.filter(link => {
@@ -155,13 +137,41 @@ export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
         if (link.path === '/bulk-payment') return false;
         if (link.path === '/payroll') return false;
         if (link.path === '/payroll/approvals') return false;
-        if (link.path === '/liquidate') return true;
-        return true;
+        if (link.path === '/liquidate') {
+          return merchantCanLiquidate && canLiquidatePermission(userSession);
+        }
+        // still apply team perms for other items
       }
-      // Payment (single + bulk + bills) is available to all merchants; Liquidate stays gated.
-      if (link.path === '/liquidate') return canLiquidate;
-      if (link.path === '/payroll') return featurePayroll && canLiquidate;
-      if (link.path === '/payroll/approvals') return featurePayrollApprovals && canLiquidate;
+      if (link.path === '/transactions') return canViewTransactions(userSession);
+      if (link.path === '/top-up' || link.path === '/qr-code') {
+        return canCollectPayments(userSession);
+      }
+      if (link.path === '/bulk-payment') {
+        return !liquidationOnlyMode && canInitiatePayments(userSession);
+      }
+      if (link.path === '/events') return canManageEvents(userSession);
+      if (link.path === '/liquidate') {
+        return merchantCanLiquidate && canLiquidatePermission(userSession);
+      }
+      if (link.path === '/reports') return canViewReports(userSession);
+      if (link.path === '/team') return canManageTeam(userSession);
+      if (link.path === '/payroll') {
+        return (
+          featurePayroll &&
+          merchantCanLiquidate &&
+          canManagePayroll(userSession)
+        );
+      }
+      if (link.path === '/payroll/approvals') {
+        return (
+          featurePayrollApprovals &&
+          merchantCanLiquidate &&
+          canApprovePayments(userSession)
+        );
+      }
+      if (link.path === '/kyc' || link.path === '/settings') {
+        return canManageSettings(userSession);
+      }
       return true;
     })
   })).filter(section => section.links.length > 0); // Remove empty sections
@@ -193,7 +203,7 @@ export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
       
       {/* Sidebar */}
       <aside className={`
-        fixed md:static top-0 left-0 h-screen md:h-auto md:self-stretch w-64 shrink-0 bg-white z-50 md:z-auto
+        fixed md:static top-0 left-0 h-screen md:h-full md:max-h-full min-h-0 w-64 shrink-0 bg-white z-50 md:z-auto
         transform transition-transform duration-300 ease-in-out
         ${isOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}
         flex flex-col overflow-hidden p-6 border-r border-gray-200

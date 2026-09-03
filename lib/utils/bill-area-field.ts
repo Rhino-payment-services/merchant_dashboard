@@ -126,6 +126,34 @@ export function getAreaFieldConfig(
   };
 }
 
+export function isUmemeUtility(utilityProvider?: string | null): boolean {
+  return normalizeProvider(utilityProvider) === 'UMEME';
+}
+
+/** UMEME bill validation requires customer phone for Pegasus lookup. */
+export function utilityRequiresCustomerPhone(
+  utilityProvider?: string | null,
+): boolean {
+  return isUmemeUtility(utilityProvider);
+}
+
+/** Returns an error message when UMEME customer phone is missing or invalid. */
+export function validateUtilityCustomerPhone(
+  utilityProvider?: string | null,
+  phone?: string | null,
+): string | null {
+  if (!utilityRequiresCustomerPhone(utilityProvider)) return null;
+  const trimmed = (phone ?? '').trim();
+  if (!trimmed) {
+    return 'Customer phone is required for UMEME meter validation.';
+  }
+  const digits = trimmed.replace(/\D/g, '');
+  if (digits.length < 9) {
+    return 'Enter a valid Uganda phone number (e.g. 0700123456 or 256700123456).';
+  }
+  return null;
+}
+
 /** Client-side error message when Area is required but missing/invalid. */
 export function validateBillArea(
   utilityProvider?: string | null,

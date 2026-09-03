@@ -1,4 +1,66 @@
 import apiClient from './client'
+import { validateTransaction, SinglePaymentDto } from './single-payment.api'
+import {
+  applyValidatedBillArea,
+  enrichUtilityBillFields,
+  extractValidatedBillArea,
+  extractValidatedCustomerName,
+  isElectricityMeterType,
+  isElectricityUtility,
+  isUtilityBillPayment,
+  resolveBillCustomerName,
+} from '@/lib/utils/bill-payment-enrichment'
+
+/**
+ * Bulk validate/process DTOs only allow whitelisted fields (forbidNonWhitelisted).
+ * For UTILITIES (UMEME): keep customerName + meterNumber at top level (backend whitelisted).
+ * For bank/MNO: map customerName into recipientName / accountName only.
+ */
+export function sanitizeBulkTransactionItemForBackend(
+  item: BulkTransactionItem,
+): BulkTransactionItem {
+  const customerName = item.customerName?.trim()
+  const meterNumber = item.meterNumber?.trim()
+  const customerType = item.customerType?.trim()
+  const billArea = item.area?.trim() || meterNumber || customerType
+
+  const metadata: Record<string, any> = { ...(item.metadata || {}) }
+  if (customerName) metadata.customerName = customerName
+  if (meterNumber) metadata.meterNumber = meterNumber
+  if (customerType) metadata.customerType = customerType
+
+  const { swiftCode: _swiftCode, ...rest } = item
+
+  if (rest.mode === 'UTILITIES') {
+    const billName = rest.recipientName || customerName || rest.accountName
+    return {
+      ...rest,
+      recipientName: billName,
+      customerName: billName,
+      area: billArea || rest.area,
+      meterNumber: billArea || rest.meterNumber,
+      metadata: Object.keys(metadata).length > 0 ? metadata : rest.metadata,
+    }
+  }
+
+  const {
+    customerName: _customerName,
+    meterNumber: _meterNumber,
+    customerType: _customerType,
+    ...allowed
+  } = rest
+
+  return {
+    ...allowed,
+    recipientName: allowed.recipientName || customerName || allowed.accountName,
+    accountName:
+      allowed.mode === 'WALLET_TO_BANK'
+        ? allowed.accountName || customerName
+        : allowed.accountName,
+    area: billArea || allowed.area,
+    metadata: Object.keys(metadata).length > 0 ? metadata : allowed.metadata,
+  }
+}
 
 export interface BulkTransactionItem {
   itemId: string
@@ -13,6 +75,7 @@ export interface BulkTransactionItem {
   phoneNumber?: string
   mnoProvider?: string
   recipientName?: string
+  customerName?: string
   
   // Bank fields
   accountNumber?: string
@@ -31,6 +94,9 @@ export interface BulkTransactionItem {
   utilityAccountNumber?: string
   customerRef?: string
   area?: string
+  /** UMEME/YAKALAST: PREPAID or POSTPAID from validation */
+  meterNumber?: string
+  customerType?: string
   
   // Merchant fields
   merchantCode?: string
@@ -115,13 +181,17 @@ export const validateBulkRecipients = async (
     mnoProvider?: string
     accountNumber?: string
     bankName?: string
+    area?: string
     error?: string
     validatedAt: string
   }>
   validatedAt: string
 }> => {
   try {
-    const response = await apiClient.post('/transactions/bulk/validate', { items })
+    const sanitizedItems = items.map(sanitizeBulkTransactionItemForBackend)
+    const response = await apiClient.post('/transactions/bulk/validate', {
+      items: sanitizedItems,
+    })
     return response.data
   } catch (error: any) {
     console.error('Error validating bulk recipients:', error)
@@ -136,11 +206,87 @@ export const processBulkTransactionAsync = async (
   request: CreateBulkTransactionRequest
 ): Promise<BulkTransactionResponse> => {
   try {
-    const response = await apiClient.post('/transactions/bulk/async', request)
+    const enrichedTransactions = await Promise.all(
+      request.transactions.map(async (tx) => {
+        let item = enrichUtilityBillFields({ ...tx })
+
+        if (!isUtilityBillPayment(item.mode, item.utilityProvider)) {
+          return item
+        }
+
+        let customerName = resolveBillCustomerName(item)
+        const needsElectricityMeterType =
+          isElectricityUtility(item.utilityProvider) &&
+          !isElectricityMeterType(item.area) &&
+          !isElectricityMeterType(item.meterNumber)
+
+        if ((!customerName || needsElectricityMeterType) && request.userId) {
+          console.log(
+            `API: Bulk bill ${item.itemId} missing customerName or meter type — validating account first`,
+          )
+          const validation = await validateTransaction({
+            mode: 'UTILITIES',
+            amount: item.amount,
+            currency: item.currency || 'UGX',
+            walletType: item.walletType || 'BUSINESS',
+            userId: request.userId,
+            utilityProvider: item.utilityProvider,
+            customerRef: item.customerRef,
+            utilityAccountNumber: item.utilityAccountNumber,
+            phoneNumber: item.phoneNumber,
+            area: item.area,
+          } satisfies SinglePaymentDto)
+          customerName = extractValidatedCustomerName(validation)
+          if (!customerName) {
+            throw new Error(
+              `Bill payment ${item.itemId}: ${
+                validation.errors?.[0] ||
+                'Could not load customer name. Validate the account and customer phone first.'
+              }`,
+            )
+          }
+
+          const billArea = extractValidatedBillArea(validation)
+          if (!billArea && needsElectricityMeterType) {
+            throw new Error(
+              `Bill payment ${item.itemId}: Could not detect PREPAID or POSTPAID for this UMEME meter.`,
+            )
+          }
+          item = applyValidatedBillArea(
+            {
+              ...item,
+              customerName,
+              recipientName: customerName,
+            },
+            billArea,
+          )
+        } else if (customerName && needsElectricityMeterType) {
+          throw new Error(
+            `Bill payment ${item.itemId}: PREPAID/POSTPAID meter type is required. Validate the UMEME account first.`,
+          )
+        }
+
+        if (customerName && !item.customerName) {
+          item = {
+            ...item,
+            customerName,
+            recipientName: customerName,
+            metadata: { ...(item.metadata || {}), customerName },
+          }
+        }
+
+        return sanitizeBulkTransactionItemForBackend(item)
+      }),
+    )
+
+    const response = await apiClient.post('/transactions/bulk/async', {
+      ...request,
+      transactions: enrichedTransactions,
+    })
     return response.data
   } catch (error: any) {
     console.error('Error processing bulk transaction async:', error)
-    throw new Error(error.response?.data?.message || 'Failed to process bulk transaction')
+    throw new Error(error.response?.data?.message || error.message || 'Failed to process bulk transaction')
   }
 }
 

@@ -124,7 +124,7 @@ function SelectMerchantContent() {
         </div>
 
         <Card className="p-6 space-y-4">
-          {merchants.filter((m) => m.isOwnAccount).map((m) => (
+          {merchants.filter((m) => !m.isChildMerchant).map((m) => (
             <button
               key={m.id}
               onClick={() => handleSelectMerchant(m)}
@@ -137,10 +137,18 @@ function SelectMerchantContent() {
                 </div>
                 <div className="min-w-0">
                   <p className="font-medium text-gray-900 truncate">{m.businessTradeName || 'Business'}</p>
-                  <p className="text-sm text-gray-500">Code: {m.merchantCode}</p>
+                  <p className="text-sm text-gray-500">
+                    Code: {m.merchantCode}
+                    {!m.isOwnAccount ? ' · Team access' : ''}
+                  </p>
                 </div>
               </div>
               <div className="flex items-center gap-2 flex-shrink-0">
+                {!m.isOwnAccount && (
+                  <span className="inline-flex items-center text-xs font-medium text-violet-700 bg-violet-50 px-2 py-1 rounded">
+                    Team
+                  </span>
+                )}
                 {m.isActive ? (
                   <span className="inline-flex items-center gap-1 text-xs font-medium text-green-700 bg-green-50 px-2 py-1 rounded">
                     <CheckCircle className="h-3 w-3" /> Active

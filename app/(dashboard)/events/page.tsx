@@ -6,6 +6,9 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
+import { AccessDenied } from "@/app/components/AccessDenied"
+import { useTeamPermissionSession } from "@/lib/hooks/useTeamPermissionSession"
+import { canManageEvents } from "@/lib/utils/permissions"
 import {
   Select,
   SelectContent,
@@ -92,6 +95,7 @@ function statusBadgeVariant(status: string): "default" | "secondary" | "outline"
 export default function EventsPage() {
   const { data: session } = useSession()
   const { isRefetching } = useUserProfile()
+  const teamSession = useTeamPermissionSession()
   const merchantCode = (session?.user as { merchantCode?: string })?.merchantCode
 
   const [stats, setStats] = useState<MerchantEventsStatisticsResponse | null>(null)
@@ -319,6 +323,12 @@ export default function EventsPage() {
       icon: UserCheck,
     },
   ]
+
+  if (!canManageEvents(teamSession)) {
+    return (
+      <AccessDenied description="You do not have permission to manage events." />
+    )
+  }
 
   return (
     <div className="container mx-auto py-8 px-4">

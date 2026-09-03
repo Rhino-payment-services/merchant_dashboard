@@ -35,6 +35,9 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Badge } from '@/components/ui/badge';
 import TransactionReceipt from '@/components/TransactionReceipt';
 import { useUserProfile } from '../UserProfileProvider';
+import { AccessDenied } from '@/app/components/AccessDenied';
+import { useTeamPermissionSession } from '@/lib/hooks/useTeamPermissionSession';
+import { canViewTransactions } from '@/lib/utils/permissions';
 import {
   computeMerchantTransactionSummary,
   formatTransactionCharges,
@@ -137,6 +140,7 @@ function computeNetAmountAndTotalFee(tx: any) {
 export default function TransactionsPage() {
   const { data: session } = useSession();
   const { profile } = useUserProfile();
+  const teamSession = useTeamPermissionSession();
   // Use ONLY session for which merchant's transactions to load (never profile – profile can be a single merchant and would show same data when switching)
   const sessionMerchantCode = (session?.user as any)?.merchantCode;
   const firstSessionMerchantCode = (session?.user as any)?.merchants?.[0]?.merchantCode;
@@ -611,6 +615,10 @@ export default function TransactionsPage() {
         </Card>
       </div>
     );
+  }
+
+  if (!canViewTransactions(teamSession)) {
+    return <AccessDenied description="You do not have permission to view transactions." />;
   }
 
   return (

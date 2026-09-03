@@ -8,6 +8,9 @@ import { useSession } from "next-auth/react";
 import { useProcessTransaction, useValidatePhoneNumber } from "@/lib/api/payment.api";
 import { getWalletBalance, WalletBalance } from "@/lib/api/wallet.api";
 import { toast } from 'sonner';
+import { AccessDenied } from '@/app/components/AccessDenied';
+import { useTeamPermissionSession } from '@/lib/hooks/useTeamPermissionSession';
+import { canCollectPayments } from '@/lib/utils/permissions';
 
 interface TopUpForm {
   phone: string;
@@ -17,6 +20,7 @@ interface TopUpForm {
 
 export default function TopUpPage() {
   const { data: session } = useSession();
+  const teamSession = useTeamPermissionSession();
   const processTransaction = useProcessTransaction();
   const validatePhoneNumber = useValidatePhoneNumber();
 
@@ -35,6 +39,7 @@ export default function TopUpPage() {
 
   // Fetch wallet balance
   useEffect(() => {
+    if (!canCollectPayments(teamSession)) return;
     const fetchBalance = async () => {
       try {
         setBalanceLoading(true);
@@ -49,7 +54,13 @@ export default function TopUpPage() {
     };
 
     fetchBalance();
-  }, [success]); // Refetch when a transaction succeeds
+  }, [success, teamSession]); // Refetch when a transaction succeeds
+
+  if (!canCollectPayments(teamSession)) {
+    return (
+      <AccessDenied description="You do not have permission to collect payments." />
+    );
+  }
 
   const handleTopUpChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;

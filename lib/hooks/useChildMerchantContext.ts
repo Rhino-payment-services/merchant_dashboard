@@ -150,6 +150,7 @@ export function useChildMerchantContext(): ChildMerchantContext {
     await Promise.all([
       queryClient.invalidateQueries({ queryKey: ['userProfile'] }),
       queryClient.invalidateQueries({ queryKey: ['transactions'] }),
+      queryClient.invalidateQueries({ queryKey: ['wallet'] }),
     ])
   }, [merchants, queryClient, updateSession])
 

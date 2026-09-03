@@ -14,6 +14,8 @@ import {
   getLastTwoThirtyDayWindows,
 } from '@/lib/utils/transaction-display';
 import SweepToDisbursementModal from './SweepToDisbursementModal';
+import { useTeamPermissionSession } from '@/lib/hooks/useTeamPermissionSession';
+import { canViewBalance, canViewTransactions } from '@/lib/utils/permissions';
 
 type StatCardItem = {
   label: string;
@@ -26,6 +28,9 @@ type StatCardItem = {
 export default function StatCards() {
   const { profile } = useUserProfile();
   const { data: session } = useSession();
+  const teamSession = useTeamPermissionSession();
+  const allowBalance = canViewBalance(teamSession);
+  const allowTransactions = canViewTransactions(teamSession);
   const {
     childMerchantId,
     childMerchantCode,
@@ -67,10 +72,16 @@ export default function StatCards() {
       setTotalReceived(0);
       setTotalSent(0);
 
-      const balanceData = await getWalletBalance(childMerchantId || undefined);
-      setWalletBalance(balanceData.balance);
-      setCollectionBalance(balanceData.collectionBalance ?? null);
-      setDisbursementBalance(balanceData.disbursementBalance ?? null);
+      if (allowBalance) {
+        const balanceData = await getWalletBalance(childMerchantId || undefined);
+        setWalletBalance(balanceData.balance ?? 0);
+        setCollectionBalance(balanceData.collectionBalance ?? null);
+        setDisbursementBalance(balanceData.disbursementBalance ?? null);
+      }
+
+      if (!allowTransactions) {
+        return;
+      }
 
       const merchantCodeForTx = isViewingChild ? childMerchantCode : undefined;
       const meta = await getMyTransactions(
@@ -153,7 +164,7 @@ export default function StatCards() {
 
   const merchantCode = (session?.user as any)?.merchantCode;
   const hasFetchedRef = useRef<string | null>(null);
-  const fetchKey = `${merchantCode || ''}:${childMerchantId || ''}`;
+  const fetchKey = `${merchantCode || ''}:${childMerchantId || ''}:${allowBalance}:${allowTransactions}`;
 
   useEffect(() => {
     if (!merchantCode && !isViewingChild) return;
@@ -161,7 +172,7 @@ export default function StatCards() {
     if (hasFetchedRef.current === fetchKey) return;
     hasFetchedRef.current = fetchKey;
     fetchWalletData();
-  }, [fetchKey, merchantCode, isViewingChild, childMerchantId]);
+  }, [fetchKey, merchantCode, isViewingChild, childMerchantId, allowBalance, allowTransactions]);
 
   if (walletLoading) {
     return (
@@ -178,68 +189,91 @@ export default function StatCards() {
   }
 
   const hasSplitBalances =
+    allowBalance &&
     featureBulkPayments &&
     collectionBalance !== null &&
     disbursementBalance !== null;
+
+  const maskMoney = (amount: number) =>
+    allowBalance ? `${amount.toLocaleString()} UGX` : '••••';
+  const maskCount = (n: number) => (allowTransactions ? `${n}` : '••••');
 
   const stats: StatCardItem[] = hasSplitBalances
     ? [
         {
           label: 'Collection balance',
-          value: `${(collectionBalance ?? 0).toLocaleString()} UGX`,
-          change: 'Incoming customer payments (Collection wallet)',
+          value: maskMoney(collectionBalance ?? 0),
+          change: allowBalance
+            ? 'Incoming customer payments (Collection wallet)'
+            : 'Balance hidden — no permission',
           changeType: 'neutral',
           icon: '📥',
         },
         {
           label: 'Payout balance',
-          value: `${(disbursementBalance ?? 0).toLocaleString()} UGX`,
-          change: 'Available for outgoing payments (Disbursement wallet)',
+          value: maskMoney(disbursementBalance ?? 0),
+          change: allowBalance
+            ? 'Available for outgoing payments (Disbursement wallet)'
+            : 'Balance hidden — no permission',
           changeType: 'neutral',
           icon: '📤',
         },
         {
           label: 'Total transactions',
-          value: `${totalTransactions}`,
-          change: txnCountChange.label,
-          changeType: txnCountChange.changeType,
+          value: maskCount(totalTransactions),
+          change: allowTransactions ? txnCountChange.label : 'Transactions hidden — no permission',
+          changeType: allowTransactions ? txnCountChange.changeType : 'neutral',
           icon: '🛒',
         },
         {
           label: 'Total received',
-          value: `${totalReceived.toLocaleString()} UGX`,
-          change: receivedChange.label,
-          changeType: receivedChange.changeType,
+          value: allowTransactions && allowBalance ? maskMoney(totalReceived) : '••••',
+          change:
+            allowTransactions && allowBalance
+              ? receivedChange.label
+              : 'Hidden — no permission',
+          changeType:
+            allowTransactions && allowBalance ? receivedChange.changeType : 'neutral',
           icon: '📦',
         },
       ]
     : [
         {
           label: 'Current balance',
-          value: `${walletBalance.toLocaleString()} UGX`,
-          change: 'Available business wallet balance',
+          value: maskMoney(walletBalance),
+          change: allowBalance
+            ? 'Available business wallet balance'
+            : 'Balance hidden — no permission',
           changeType: 'neutral',
           icon: '💰',
         },
         {
           label: 'Total transactions',
-          value: `${totalTransactions}`,
-          change: txnCountChange.label,
-          changeType: txnCountChange.changeType,
+          value: maskCount(totalTransactions),
+          change: allowTransactions ? txnCountChange.label : 'Transactions hidden — no permission',
+          changeType: allowTransactions ? txnCountChange.changeType : 'neutral',
           icon: '🛒',
         },
         {
           label: 'Total received',
-          value: `${totalReceived.toLocaleString()} UGX`,
-          change: receivedChange.label,
-          changeType: receivedChange.changeType,
+          value: allowTransactions && allowBalance ? maskMoney(totalReceived) : '••••',
+          change:
+            allowTransactions && allowBalance
+              ? receivedChange.label
+              : 'Hidden — no permission',
+          changeType:
+            allowTransactions && allowBalance ? receivedChange.changeType : 'neutral',
           icon: '📦',
         },
         {
           label: 'Total sent',
-          value: `${totalSent.toLocaleString()} UGX`,
-          change: sentChange.label,
-          changeType: sentChange.changeType,
+          value: allowTransactions && allowBalance ? maskMoney(totalSent) : '••••',
+          change:
+            allowTransactions && allowBalance
+              ? sentChange.label
+              : 'Hidden — no permission',
+          changeType:
+            allowTransactions && allowBalance ? sentChange.changeType : 'neutral',
           icon: '👥',
         },
       ];
@@ -247,7 +281,7 @@ export default function StatCards() {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between gap-2">
-        {hasSplitBalances && (
+        {hasSplitBalances && allowBalance && (
           <Button
             size="sm"
             onClick={() => setSweepModalOpen(true)}

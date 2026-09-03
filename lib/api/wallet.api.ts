@@ -1,4 +1,4 @@
- import apiClient from './client'
+import apiClient from './client'
 
 export interface WalletBalance {
   userId: string
@@ -34,15 +34,76 @@ export interface TransactionsResponse {
   limit: number
 }
 
+/** Read super-merchant child context from NextAuth session (client only). */
+export async function resolveChildMerchantIdFromSession(): Promise<string | null> {
+  if (typeof window === 'undefined') return null
+  try {
+    const { getSession } = await import('next-auth/react')
+    const session = await getSession()
+    const id = (session?.user as { viewingChildMerchantId?: string | null })
+      ?.viewingChildMerchantId
+    return id?.trim() ? id.trim() : null
+  } catch {
+    return null
+  }
+}
+
+export interface MyBusinessWallet {
+  id: string
+  walletType: string
+  balance: number
+  currency: string
+  permissions?: Record<string, boolean>
+  accessRole?: string
+  merchantId?: string
+  merchant?: Record<string, unknown>
+  balanceHidden?: boolean
+  collectionBalance?: number
+  disbursementBalance?: number
+  userId?: string
+}
+
+/**
+ * Fetch the current business wallet (owner, team member, or super-merchant child view).
+ */
+export const getMyBusinessWallet = async (): Promise<MyBusinessWallet> => {
+  const childMerchantId = await resolveChildMerchantIdFromSession()
+  if (childMerchantId) {
+    const { getChildMerchantWallet } = await import('./super-merchant.api')
+    const wallet = await getChildMerchantWallet(childMerchantId)
+    return {
+      id: wallet.walletId,
+      walletType: 'BUSINESS',
+      balance: wallet.balance,
+      currency: wallet.currency,
+      merchantId: wallet.merchantId,
+      collectionBalance: wallet.collectionBalance,
+      disbursementBalance: wallet.disbursementBalance,
+      userId: wallet.userId,
+      merchant: {
+        id: wallet.merchantId,
+        merchantCode: wallet.merchantCode,
+        businessTradeName: wallet.businessTradeName,
+      },
+    }
+  }
+
+  const response = await apiClient.get('/wallet/me/business')
+  return response.data
+}
+
 /**
  * Get merchant wallet balance
  * Uses /wallet/me/business to explicitly get the business wallet
  */
 export const getWalletBalance = async (childMerchantId?: string): Promise<WalletBalance> => {
   try {
-    if (childMerchantId) {
+    const effectiveChildId =
+      childMerchantId ?? (await resolveChildMerchantIdFromSession()) ?? undefined
+
+    if (effectiveChildId) {
       const { getChildMerchantWallet } = await import('./super-merchant.api')
-      const wallet = await getChildMerchantWallet(childMerchantId)
+      const wallet = await getChildMerchantWallet(effectiveChildId)
       return {
         userId: wallet.userId,
         balance: wallet.balance,
@@ -108,9 +169,12 @@ export const getMyTransactions = async (
   merchantCode?: string | null,
 ): Promise<TransactionsResponse> => {
   try {
-    if (childMerchantId) {
+    const effectiveChildId =
+      childMerchantId ?? (await resolveChildMerchantIdFromSession()) ?? undefined
+
+    if (effectiveChildId) {
       const response = await apiClient.get(
-        `/super-merchant/child-merchant/${childMerchantId}/transactions`,
+        `/super-merchant/child-merchant/${effectiveChildId}/transactions`,
         { params },
       )
       return response.data

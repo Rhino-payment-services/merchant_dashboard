@@ -28,6 +28,9 @@ import { useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import { useUserProfile } from "../UserProfileProvider";
 import { toast } from 'sonner';
+import { AccessDenied } from '@/app/components/AccessDenied';
+import { useTeamPermissionSession } from '@/lib/hooks/useTeamPermissionSession';
+import { canInitiatePayments } from '@/lib/utils/permissions';
 import { readSheetFromBinaryString, writeWorkbookToFile } from "@/lib/excel-utils";
 import { processBulkTransactionAsync, validateBulkRecipients, getBulkTransactionStatus, BulkTransactionItem, BulkTransactionItemResult } from "@/lib/api/bulk-payment.api";
 import { SinglePaymentDto, FeePreviewResponseDto, processSinglePayment, validateTransaction } from "@/lib/api/single-payment.api";
@@ -39,8 +42,15 @@ import {
 import {
   getAreaFieldConfig,
   validateBillArea,
+  validateUtilityCustomerPhone,
+  isUmemeUtility,
+  utilityRequiresCustomerPhone,
   NWSC_AREAS,
 } from "@/lib/utils/bill-area-field";
+import {
+  applyValidationToBillPayment,
+  isElectricityMeterType,
+} from "@/lib/utils/bill-payment-enrichment";
 
 const TRANSACTION_TYPES = [
   { value: 'WALLET_TO_MNO', label: 'Mobile Money', icon: Phone, color: 'text-blue-600', bg: 'bg-blue-50' },
@@ -90,6 +100,19 @@ const normalizeUtilityProvider = (raw: unknown): string => {
 
 const isUraUtility = (provider: string | undefined) =>
   provider === URA_UTILITY_PROVIDER;
+
+/** Normalize customer phone for utility bills when provided. */
+const normalizeUtilityBillPhone = (
+  provider: string | undefined,
+  phone: string | undefined,
+): string | undefined => {
+  const raw = phone?.trim();
+  if (!raw) return undefined;
+  if (isAirtimeOrDataUtility(provider) || isUmemeUtility(provider)) {
+    return normalizePhoneToUganda(raw);
+  }
+  return raw;
+};
 
 /** Client-side PRN check for URA; final amount/PRN match is enforced by the backend. */
 const validateUraPrn = (raw: string | undefined): string | null => {
@@ -146,6 +169,7 @@ interface PaymentItem extends Partial<BulkTransactionItem> {
 export default function BulkPaymentPage() {
   const { data: session, status: sessionStatus } = useSession();
   const router = useRouter();
+  const teamSession = useTeamPermissionSession();
   const [payments, setPayments] = useState<PaymentItem[]>([]);
   const [bulkDescription, setBulkDescription] = useState('');
   const [bulkReference, setBulkReference] = useState('');
@@ -197,6 +221,8 @@ export default function BulkPaymentPage() {
   const [feePreview, setFeePreview] = useState<FeePreviewResponseDto | null>(null);
   const [validationInfo, setValidationInfo] = useState<{
     recipientName?: string;
+    billArea?: string;
+    customerType?: string;
     partnerCode?: string;
     partnerName?: string;
     isValid?: boolean;
@@ -266,6 +292,12 @@ export default function BulkPaymentPage() {
           </CardContent>
         </Card>
       </div>
+    );
+  }
+
+  if (!canInitiatePayments(teamSession)) {
+    return (
+      <AccessDenied description="You do not have permission to initiate payments." />
     );
   }
 
@@ -356,6 +388,11 @@ export default function BulkPaymentPage() {
         toast.error(areaErr);
         return;
       }
+      const phoneErr = validateUtilityCustomerPhone(up, singlePayment.phoneNumber);
+      if (phoneErr) {
+        toast.error(phoneErr);
+        return;
+      }
     }
 
     setValidatingTransaction(true);
@@ -370,13 +407,15 @@ export default function BulkPaymentPage() {
         ...singlePayment,
         ...(airtimeNetwork ? { mnoProvider: airtimeNetwork } : {}),
         userId: (session?.user as any)?.id,
+        merchantCode: merchantCodeForRequest,
         phoneNumber:
           singlePayment.mode === 'WALLET_TO_MNO' && singlePayment.phoneNumber
             ? normalizePhoneToUganda(singlePayment.phoneNumber)
-            : singlePayment.mode === 'UTILITIES' &&
-                isAirtimeOrDataUtility(singlePayment.utilityProvider) &&
-                singlePayment.phoneNumber
-              ? normalizePhoneToUganda(singlePayment.phoneNumber)
+            : singlePayment.mode === 'UTILITIES' && singlePayment.phoneNumber
+              ? normalizeUtilityBillPhone(
+                  singlePayment.utilityProvider,
+                  singlePayment.phoneNumber,
+                )
               : singlePayment.phoneNumber,
         recipientPhoneNumber: singlePayment.mode === 'MERCHANT_TO_WALLET' && singlePayment.recipientPhoneNumber
           ? normalizePhoneToUganda(singlePayment.recipientPhoneNumber)
@@ -390,6 +429,8 @@ export default function BulkPaymentPage() {
       
       setValidationInfo({
         recipientName: recipientName,
+        billArea: validation.billArea,
+        customerType: validation.customerType || validation.billArea,
         partnerCode: validation.partnerCode,
         partnerName: validation.partnerName,
         isValid: validation.isValid
@@ -410,15 +451,14 @@ export default function BulkPaymentPage() {
           recipientName: recipientName,
         }));
       }
-      if (
-        recipientName &&
-        singlePayment.mode === 'UTILITIES' &&
-        isAirtimeOrDataUtility(singlePayment.utilityProvider)
-      ) {
-        setSinglePayment((prev) => ({
-          ...prev,
-          recipientName,
-        }));
+      if (singlePayment.mode === 'UTILITIES') {
+        setSinglePayment((prev) =>
+          applyValidationToBillPayment(prev, {
+            recipientName,
+            billArea: validation.billArea,
+            customerType: validation.customerType,
+          }),
+        );
       }
 
       if (validation.feePreview) {
@@ -430,6 +470,9 @@ export default function BulkPaymentPage() {
       
       if (recipientName) {
         toast.success(`Recipient validated: ${recipientName}`);
+      }
+      if (validation.billArea && singlePayment.mode === 'UTILITIES') {
+        toast.success(`Meter type: ${validation.billArea}`);
       }
       
       if (validation.errors && validation.errors.length > 0) {
@@ -497,21 +540,45 @@ export default function BulkPaymentPage() {
         toast.error(areaErr);
         return;
       }
+      const phoneErr = validateUtilityCustomerPhone(up, singlePayment.phoneNumber);
+      if (phoneErr) {
+        toast.error(phoneErr);
+        return;
+      }
+      if (isUmemeUtility(up)) {
+        const billName =
+          validationInfo?.recipientName ||
+          singlePayment.customerName ||
+          singlePayment.recipientName;
+        if (!billName?.trim()) {
+          toast.error('Validate the UMEME meter first to load the customer name');
+          return;
+        }
+      }
     }
 
     setSinglePaymentLoading(true);
     try {
       const normalizedUtilPhone =
-        singlePayment.mode === 'UTILITIES' &&
-        isAirtimeOrDataUtility(singlePayment.utilityProvider) &&
-        singlePayment.phoneNumber
-          ? normalizePhoneToUganda(singlePayment.phoneNumber)
+        singlePayment.mode === 'UTILITIES' && singlePayment.phoneNumber
+          ? normalizeUtilityBillPhone(
+              singlePayment.utilityProvider,
+              singlePayment.phoneNumber,
+            )
           : singlePayment.phoneNumber;
 
       const resolvedMnoRecipientName =
         singlePayment.mode === 'WALLET_TO_MNO'
           ? validationInfo?.recipientName || singlePayment.recipientName
           : singlePayment.recipientName;
+
+      const resolvedBillCustomerName =
+        singlePayment.mode === 'UTILITIES' &&
+        !isAirtimeOrDataUtility(singlePayment.utilityProvider)
+          ? validationInfo?.recipientName ||
+            singlePayment.customerName ||
+            singlePayment.recipientName
+          : undefined;
 
       const airtimeNetwork =
         singlePayment.mode === 'UTILITIES' &&
@@ -532,6 +599,7 @@ export default function BulkPaymentPage() {
 
       const payload: SinglePaymentDto = {
         ...singlePayment,
+        merchantCode: merchantCodeForRequest,
         ...(airtimeNetwork ? { mnoProvider: airtimeNetwork } : {}),
         phoneNumber:
           singlePayment.mode === 'WALLET_TO_MNO' && singlePayment.phoneNumber
@@ -540,12 +608,16 @@ export default function BulkPaymentPage() {
               ? normalizedUtilPhone
               : singlePayment.phoneNumber,
         customerRef:
-          singlePayment.mode === 'UTILITIES' && isAirtimeOrDataUtility(singlePayment.utilityProvider) && normalizedUtilPhone
-            ? normalizedUtilPhone
+          singlePayment.mode === 'UTILITIES'
+            ? isAirtimeOrDataUtility(singlePayment.utilityProvider) && normalizedUtilPhone
+              ? normalizedUtilPhone
+              : singlePayment.customerRef || singlePayment.utilityAccountNumber
             : singlePayment.customerRef,
         utilityAccountNumber:
-          singlePayment.mode === 'UTILITIES' && isAirtimeOrDataUtility(singlePayment.utilityProvider) && normalizedUtilPhone
-            ? normalizedUtilPhone
+          singlePayment.mode === 'UTILITIES'
+            ? isAirtimeOrDataUtility(singlePayment.utilityProvider) && normalizedUtilPhone
+              ? normalizedUtilPhone
+              : singlePayment.utilityAccountNumber || singlePayment.customerRef
             : singlePayment.utilityAccountNumber,
         metadata: cleanedMetadata,
         recipientPhoneNumber: singlePayment.mode === 'MERCHANT_TO_WALLET' && singlePayment.recipientPhoneNumber
@@ -553,6 +625,32 @@ export default function BulkPaymentPage() {
           : singlePayment.recipientPhoneNumber,
         ...(singlePayment.mode === 'WALLET_TO_MNO' && resolvedMnoRecipientName
           ? { recipientName: resolvedMnoRecipientName }
+          : {}),
+        ...(resolvedBillCustomerName
+          ? {
+              recipientName: resolvedBillCustomerName,
+              customerName: resolvedBillCustomerName,
+            }
+          : {}),
+        ...(singlePayment.mode === 'UTILITIES' &&
+        (validationInfo?.billArea ||
+          validationInfo?.customerType ||
+          singlePayment.meterNumber ||
+          singlePayment.customerType ||
+          singlePayment.area)
+          ? (() => {
+              const meterType =
+                validationInfo?.billArea ||
+                validationInfo?.customerType ||
+                singlePayment.meterNumber ||
+                singlePayment.customerType ||
+                singlePayment.area;
+              return {
+                area: meterType,
+                meterNumber: meterType,
+                customerType: meterType,
+              };
+            })()
           : {}),
       };
       const result = await processSinglePayment(payload, (session?.user as any)?.id);
@@ -637,15 +735,16 @@ export default function BulkPaymentPage() {
       toast.error(areaErr);
       return;
     }
+    const phoneErr = validateUtilityCustomerPhone(up, formData.phoneNumber);
+    if (phoneErr) {
+      toast.error(phoneErr);
+      return;
+    }
   }
 
     if (editingId) {
-      const utilPhoneEdit =
-        formData.mode === 'UTILITIES' &&
-        isAirtimeOrDataUtility(formData.utilityProvider) &&
-        formData.phoneNumber
-          ? normalizePhoneToUganda(formData.phoneNumber)
-          : undefined;
+      const utilProvNorm = normalizeUtilityProvider(formData.utilityProvider);
+      const utilPhoneEdit = normalizeUtilityBillPhone(utilProvNorm, formData.phoneNumber);
       const airtimeMnoEdit =
         formData.mode === 'UTILITIES' &&
         isAirtimeOrDataUtility(formData.utilityProvider)
@@ -665,13 +764,15 @@ export default function BulkPaymentPage() {
                 status: 'pending',
                 validated: false,
                 walletType: 'BUSINESS',
-                ...(utilPhoneEdit
+                ...(utilPhoneEdit && isAirtimeOrDataUtility(utilProvNorm)
                   ? {
                       phoneNumber: utilPhoneEdit,
                       customerRef: utilPhoneEdit,
                       utilityAccountNumber: utilPhoneEdit,
                     }
-                  : {}),
+                  : utilPhoneEdit
+                    ? { phoneNumber: utilPhoneEdit }
+                    : {}),
               }
             : p,
         ),
@@ -687,12 +788,8 @@ export default function BulkPaymentPage() {
         (paymentData as any).recipientPhone = paymentData.recipientPhoneNumber;
       }
       
-      const utilPhone =
-        paymentData.mode === 'UTILITIES' &&
-        isAirtimeOrDataUtility(paymentData.utilityProvider) &&
-        paymentData.phoneNumber
-          ? normalizePhoneToUganda(paymentData.phoneNumber)
-          : undefined;
+      const utilProvNorm = normalizeUtilityProvider(paymentData.utilityProvider);
+      const utilPhone = normalizeUtilityBillPhone(utilProvNorm, paymentData.phoneNumber);
       const airtimeMno =
         paymentData.mode === 'UTILITIES' &&
         isAirtimeOrDataUtility(paymentData.utilityProvider)
@@ -702,20 +799,22 @@ export default function BulkPaymentPage() {
       const newPayment: PaymentItem = {
         ...paymentData as BulkTransactionItem,
         ...(paymentData.mode === 'UTILITIES'
-          ? { utilityProvider: normalizeUtilityProvider(paymentData.utilityProvider) }
+          ? { utilityProvider: utilProvNorm }
           : {}),
         ...(airtimeMno ? { mnoProvider: airtimeMno } : {}),
         id: `item-${Date.now()}`,
         itemId: `ITEM-${Date.now()}`,
         status: 'pending',
         walletType: 'BUSINESS', // ✅ Hardcoded to BUSINESS wallet
-        ...(utilPhone
+        ...(utilPhone && isAirtimeOrDataUtility(utilProvNorm)
           ? {
               phoneNumber: utilPhone,
               customerRef: utilPhone,
               utilityAccountNumber: utilPhone,
             }
-          : {}),
+          : utilPhone
+            ? { phoneNumber: utilPhone }
+            : {}),
       };
       setPayments(prev => [...prev, newPayment]);
       toast.success('Payment added to list');
@@ -780,6 +879,39 @@ export default function BulkPaymentPage() {
       return;
     }
 
+    const umemePhoneInvalid = payments.filter(
+      (p) =>
+        p.mode === 'UTILITIES' &&
+        validateUtilityCustomerPhone(
+          normalizeUtilityProvider(p.utilityProvider),
+          p.phoneNumber,
+        ),
+    );
+    if (umemePhoneInvalid.length > 0) {
+      setPayments((prev) =>
+        prev.map((p) => {
+          const err =
+            p.mode === 'UTILITIES'
+              ? validateUtilityCustomerPhone(
+                  normalizeUtilityProvider(p.utilityProvider),
+                  p.phoneNumber,
+                )
+              : null;
+          if (!err) return p;
+          return {
+            ...p,
+            status: 'failed' as const,
+            error: err,
+            validated: true,
+          };
+        }),
+      );
+      toast.error(
+        `${umemePhoneInvalid.length} UMEME payment(s) need a valid customer phone before validating.`,
+      );
+      return;
+    }
+
     setValidating(true);
 
     try {
@@ -804,12 +936,18 @@ export default function BulkPaymentPage() {
           phoneNumber:
             p.mode === 'WALLET_TO_MNO' && p.phoneNumber
               ? normalizePhoneToUganda(p.phoneNumber)
-              : p.phoneNumber,
+              : p.mode === 'UTILITIES' && p.phoneNumber
+                ? normalizeUtilityBillPhone(
+                    normalizeUtilityProvider(p.utilityProvider),
+                    p.phoneNumber,
+                  )
+                : p.phoneNumber,
           ...(resolvedMno ? { mnoProvider: resolvedMno } : {}),
-          recipientName: p.recipientName,
+          recipientName: p.recipientName || p.customerName,
+          customerName: p.customerName || p.recipientName,
           accountNumber: p.accountNumber,
           bankSortCode: p.bankSortCode,
-          accountName: p.accountName,
+          accountName: p.accountName || (p.mode === 'WALLET_TO_BANK' ? p.customerName : undefined),
           bankName: p.bankName,
           recipientPhone: p.recipientPhone
             ? normalizePhoneToUganda(p.recipientPhone)
@@ -823,12 +961,16 @@ export default function BulkPaymentPage() {
         if (p.mode === 'UTILITIES') {
           base.utilityProvider = normalizeUtilityProvider(p.utilityProvider);
           const utilPhone =
-            isAirtimeOrDataUtility(normalizeUtilityProvider(p.utilityProvider)) && p.phoneNumber
-              ? normalizePhoneToUganda(p.phoneNumber)
+            p.phoneNumber
+              ? normalizeUtilityBillPhone(
+                  normalizeUtilityProvider(p.utilityProvider),
+                  p.phoneNumber,
+                )
               : p.phoneNumber;
           base.customerRef = p.customerRef || p.utilityAccountNumber || utilPhone;
           base.utilityAccountNumber = p.utilityAccountNumber || p.customerRef || utilPhone;
-          base.area = p.area;
+          base.area = p.area || p.meterNumber || p.customerType;
+          base.meterNumber = p.meterNumber || p.customerType || p.area;
           base.phoneNumber = utilPhone;
           base.metadata = p.metadata;
         }
@@ -855,7 +997,15 @@ export default function BulkPaymentPage() {
             validated: true,
             // Update with validated name if available
             recipientName: itemResult.accountName || payment.recipientName,
+            customerName: itemResult.accountName || payment.customerName,
             accountName: itemResult.accountName || payment.accountName,
+            ...(itemResult.area
+              ? {
+                  area: itemResult.area,
+                  meterNumber: itemResult.area,
+                  customerType: itemResult.area,
+                }
+              : {}),
           };
         }
         return payment;
@@ -887,6 +1037,7 @@ export default function BulkPaymentPage() {
               currency: p.currency || 'UGX',
               walletType: 'BUSINESS',
               userId: (session?.user as any)?.id,
+              merchantCode: merchantCodeForRequest,
               phoneNumber: utilPh,
               ...(feeAirtimeMno ? { mnoProvider: feeAirtimeMno } : {}),
               recipientName: p.recipientName,
@@ -908,30 +1059,66 @@ export default function BulkPaymentPage() {
               paymentId: p.id,
               itemId: p.itemId,
               feePreview: validation.feePreview,
+              billArea: validation.billArea,
+              customerType: validation.customerType,
+              recipientName: validation.recipientName,
             };
           })
       );
 
       const feesById = new Map<string, { fee?: number; netAmount?: number }>();
+      const billFieldsById = new Map<
+        string,
+        { billArea?: string; customerType?: string; recipientName?: string }
+      >();
       for (const r of feeResults) {
-        if (r.status === 'fulfilled' && r.value.feePreview) {
+        if (r.status !== 'fulfilled') continue;
+        if (r.value.feePreview) {
           feesById.set(r.value.paymentId, {
             fee: r.value.feePreview.totalFee,
             netAmount: r.value.feePreview.netAmount,
           });
         }
+        if (
+          r.value.billArea ||
+          r.value.customerType ||
+          r.value.recipientName
+        ) {
+          billFieldsById.set(r.value.paymentId, {
+            billArea: r.value.billArea,
+            customerType: r.value.customerType,
+            recipientName: r.value.recipientName,
+          });
+        }
       }
 
-      if (feesById.size > 0) {
+      if (feesById.size > 0 || billFieldsById.size > 0) {
         setPayments(prev =>
           prev.map(p => {
             const feeInfo = feesById.get(p.id);
-            if (!feeInfo) return p;
-            return {
-              ...p,
-              estimatedFee: feeInfo.fee,
-              estimatedNetAmount: feeInfo.netAmount,
-            };
+            const billInfo = billFieldsById.get(p.id);
+            if (!feeInfo && !billInfo) return p;
+
+            let next = { ...p } as PaymentItem;
+            if (feeInfo) {
+              next = {
+                ...next,
+                estimatedFee: feeInfo.fee,
+                estimatedNetAmount: feeInfo.netAmount,
+              };
+            }
+            if (
+              next.mode === 'UTILITIES' &&
+              !isAirtimeOrDataUtility(normalizeUtilityProvider(next.utilityProvider)) &&
+              billInfo
+            ) {
+              next = applyValidationToBillPayment(next, {
+                recipientName: billInfo.recipientName,
+                billArea: billInfo.billArea,
+                customerType: billInfo.customerType,
+              });
+            }
+            return next;
           }),
         );
       }
@@ -1164,7 +1351,12 @@ export default function BulkPaymentPage() {
           } else if (p.mode === 'UTILITIES') {
             // Bulk bill payment fields
             transaction.utilityProvider = normalizeUtilityProvider(p.utilityProvider);
-            const pnorm = p.phoneNumber ? normalizePhoneToUganda(p.phoneNumber) : p.phoneNumber;
+            const pnorm = p.phoneNumber
+              ? normalizeUtilityBillPhone(
+                  normalizeUtilityProvider(p.utilityProvider),
+                  p.phoneNumber,
+                )
+              : p.phoneNumber;
             transaction.customerRef = p.customerRef || p.utilityAccountNumber || pnorm;
             transaction.utilityAccountNumber = p.utilityAccountNumber || p.customerRef || pnorm;
             const areaRaw = p.area;
@@ -1172,6 +1364,27 @@ export default function BulkPaymentPage() {
               transaction.area = String(areaRaw).trim();
             }
             transaction.phoneNumber = pnorm;
+            const billName = String(
+              p.recipientName || p.customerName || p.accountName || '',
+            ).trim();
+            const billArea = p.meterNumber || p.customerType || p.area;
+            if (billName) {
+              transaction.recipientName = billName;
+              transaction.customerName = billName;
+              transaction.metadata = {
+                ...(transaction.metadata || {}),
+                customerName: billName,
+              };
+            }
+            if (billArea) {
+              transaction.area = billArea;
+              transaction.meterNumber = billArea;
+              transaction.metadata = {
+                ...(transaction.metadata || {}),
+                customerType: billArea,
+                meterNumber: billArea,
+              };
+            }
             if (isAirtimeOrDataUtility(normalizeUtilityProvider(p.utilityProvider))) {
               const network = resolveAirtimeMnoProvider(p.mnoProvider, p.phoneNumber);
               if (network) transaction.mnoProvider = network;
@@ -1360,12 +1573,23 @@ export default function BulkPaymentPage() {
           const unsupportedDataBundlesCount = mapped.filter(
             (r) => r.mode === 'UTILITIES' && r.utilityProvider === 'DATA_BUNDLES'
           ).length;
+          const umemeMissingPhoneCount = mapped.filter(
+            (r) =>
+              r.mode === 'UTILITIES' &&
+              isUmemeUtility(r.utilityProvider) &&
+              validateUtilityCustomerPhone(r.utilityProvider, r.phoneNumber),
+          ).length;
           const valid = mapped.filter(
             (r) =>
               r.amount &&
               Number(r.amount) > 0 &&
               r.mode != null &&
-              !(r.mode === 'UTILITIES' && r.utilityProvider === 'DATA_BUNDLES')
+              !(r.mode === 'UTILITIES' && r.utilityProvider === 'DATA_BUNDLES') &&
+              !(
+                r.mode === 'UTILITIES' &&
+                isUmemeUtility(r.utilityProvider) &&
+                validateUtilityCustomerPhone(r.utilityProvider, r.phoneNumber)
+              )
           );
           const skippedCount = mapped.length - valid.length;
           if (skippedCount > 0) {
@@ -1378,6 +1602,11 @@ export default function BulkPaymentPage() {
               `Skipped ${unsupportedDataBundlesCount} data bundle row(s): merchant dashboard currently supports Airtime only for utility uploads.`
             );
           }
+          if (umemeMissingPhoneCount > 0) {
+            toast.warning(
+              `Skipped ${umemeMissingPhoneCount} UMEME row(s): customer phone is required in the Phone Number column.`
+            );
+          }
 
           const newPayments: PaymentItem[] = valid.map((row, index) => {
             const mode = row.mode as any;
@@ -1385,7 +1614,12 @@ export default function BulkPaymentPage() {
             const airData =
               mode === 'UTILITIES' &&
               row.utilityProvider === 'AIRTIME';
-            const normPh = airData && ph ? normalizePhoneToUganda(ph) : ph;
+            const normPh =
+              airData && ph
+                ? normalizePhoneToUganda(ph)
+                : isUmemeUtility(row.utilityProvider) && ph
+                  ? normalizePhoneToUganda(ph)
+                  : ph;
             const mno =
               mode === 'UTILITIES' && airData
                 ? resolveAirtimeMnoProvider(row.mnoProvider, normPh || ph)
@@ -1492,13 +1726,24 @@ export default function BulkPaymentPage() {
           const unsupportedDataBundlesCount = mapped.filter(
             (r) => r.mode === 'UTILITIES' && r.utilityProvider === 'DATA_BUNDLES'
           ).length;
+          const umemeMissingPhoneCount = mapped.filter(
+            (r) =>
+              r.mode === 'UTILITIES' &&
+              isUmemeUtility(r.utilityProvider) &&
+              validateUtilityCustomerPhone(r.utilityProvider, r.phoneNumber),
+          ).length;
           const valid = mapped.filter(r => {
             const amt = r.amount != null && r.amount !== '' ? Number(r.amount) : NaN;
             return (
               !Number.isNaN(amt) &&
               amt > 0 &&
               r.mode != null &&
-              !(r.mode === 'UTILITIES' && r.utilityProvider === 'DATA_BUNDLES')
+              !(r.mode === 'UTILITIES' && r.utilityProvider === 'DATA_BUNDLES') &&
+              !(
+                r.mode === 'UTILITIES' &&
+                isUmemeUtility(r.utilityProvider) &&
+                validateUtilityCustomerPhone(r.utilityProvider, r.phoneNumber)
+              )
             );
           });
           const skippedCount = mapped.length - valid.length;
@@ -1512,6 +1757,11 @@ export default function BulkPaymentPage() {
               `Skipped ${unsupportedDataBundlesCount} data bundle row(s): merchant dashboard currently supports Airtime only for utility uploads.`
             );
           }
+          if (umemeMissingPhoneCount > 0) {
+            toast.warning(
+              `Skipped ${umemeMissingPhoneCount} UMEME row(s): customer phone is required in the Phone Number column.`
+            );
+          }
 
           const newPayments: PaymentItem[] = valid.map((row, index) => {
             const desc = (row.description != null && row.description !== '')
@@ -1522,7 +1772,12 @@ export default function BulkPaymentPage() {
             const airData =
               mode === 'UTILITIES' &&
               row.utilityProvider === 'AIRTIME';
-            const normPh = airData && ph ? normalizePhoneToUganda(ph) : ph;
+            const normPh =
+              airData && ph
+                ? normalizePhoneToUganda(ph)
+                : isUmemeUtility(row.utilityProvider) && ph
+                  ? normalizePhoneToUganda(ph)
+                  : ph;
             const mno =
               mode === 'UTILITIES' && airData
                 ? resolveAirtimeMnoProvider(row.mnoProvider, normPh || ph)
@@ -2149,7 +2404,12 @@ export default function BulkPaymentPage() {
                           )}
                           <div>
                             <label className="block text-sm font-semibold text-gray-700 mb-2">
-                              Customer Phone (Optional)
+                              {utilityRequiresCustomerPhone(singlePayment.utilityProvider)
+                                ? 'Customer Phone'
+                                : 'Customer Phone (Optional)'}
+                              {utilityRequiresCustomerPhone(singlePayment.utilityProvider) && (
+                                <span className="text-red-500"> *</span>
+                              )}
                             </label>
                             <Input
                               value={singlePayment.phoneNumber || ''}
@@ -2157,6 +2417,11 @@ export default function BulkPaymentPage() {
                               placeholder="e.g., 0700123456"
                               className="w-full"
                             />
+                            {utilityRequiresCustomerPhone(singlePayment.utilityProvider) && (
+                              <p className="text-xs text-gray-600 mt-1">
+                                Required for UMEME meter validation and customer name lookup.
+                              </p>
+                            )}
                           </div>
                         </div>
                       </TabsContent>
@@ -2339,6 +2604,18 @@ export default function BulkPaymentPage() {
                     <div className="flex items-center gap-2">
                       <span className="text-gray-600">Recipient:</span>
                       <span className="font-medium text-green-800">{validationInfo.recipientName}</span>
+                    </div>
+                  )}
+                  {(validationInfo.customerType || validationInfo.billArea) && (
+                    <div className="flex items-center gap-2">
+                      <span className="text-gray-600">
+                        {isElectricityMeterType(validationInfo.customerType || validationInfo.billArea)
+                          ? 'Meter type:'
+                          : 'Area:'}
+                      </span>
+                      <span className="font-medium text-green-800">
+                        {validationInfo.customerType || validationInfo.billArea}
+                      </span>
                     </div>
                   )}
                   {validationInfo.partnerName && (
@@ -2918,13 +3195,23 @@ export default function BulkPaymentPage() {
                         )}
                         <div>
                           <label className="block text-sm font-semibold text-gray-700 mb-2">
-                            Customer Phone (Optional)
+                            {utilityRequiresCustomerPhone(formData.utilityProvider)
+                              ? 'Customer Phone'
+                              : 'Customer Phone (Optional)'}
+                            {utilityRequiresCustomerPhone(formData.utilityProvider) && (
+                              <span className="text-red-500"> *</span>
+                            )}
                           </label>
                           <Input
                             value={formData.phoneNumber || ''}
                             onChange={(e) => setFormData((prev) => ({ ...prev, phoneNumber: e.target.value }))}
                             placeholder="e.g., 0700123456"
                           />
+                          {utilityRequiresCustomerPhone(formData.utilityProvider) && (
+                            <p className="text-xs text-gray-600 mt-1">
+                              Required for UMEME meter validation and customer name lookup.
+                            </p>
+                          )}
                         </div>
                       </TabsContent>
                       <TabsContent value="airtime_data" className="space-y-4 pt-3">
