@@ -11,6 +11,7 @@ export type TransactionLike = {
   type?: string;
   channel?: string;
   reference?: string;
+  externalReference?: string;
   description?: string;
   amount?: number;
   fee?: number;
@@ -56,9 +57,55 @@ export function formatMoneyAmount(amount: number, currency = 'UGX'): string {
   }).format(n);
 }
 
+/**
+ * Africa's Talking airtime/data: internal face-value split, not a merchant charge.
+ * Wallet is debited face amount only (fee = 0).
+ */
+export function isAfricaTalkingFaceValueLedger(
+  txn: TransactionLike | null | undefined,
+): boolean {
+  if (!txn) return false;
+
+  const meta = (txn.metadata ?? {}) as Record<string, unknown>;
+  const fb = (meta.feeBreakdown as Record<string, unknown>) || {};
+  const revenue = meta.revenue as { source?: string } | undefined;
+  const util = String(meta.utilityProvider || '').toUpperCase();
+  const pt = String(meta.payment_type || '').toLowerCase();
+  const isAtUtility =
+    util === 'AIRTIME' ||
+    util === 'DATA_BUNDLES' ||
+    pt === 'airtime' ||
+    pt === 'mobile_data';
+
+  if (fb.allocationOfFaceValue === true) {
+    return isAtUtility;
+  }
+  if (revenue?.source === 'africastalking_face_value_split') return true;
+
+  const type = String(txn.type ?? '').toUpperCase();
+  if (type !== 'BILL_PAYMENT' && type !== 'UTILITIES') return false;
+  if (!isAtUtility) return false;
+
+  const code = String(meta.partnerCode || '').toUpperCase();
+  const partnerName = String(meta.partnerName || '').toLowerCase();
+  const ext = String(txn.externalReference || meta.externalReference || '').trim();
+  const atRef = ext.startsWith('ATQid_') || ext.startsWith('ATPid_');
+  const isAtPartner =
+    code === 'AFRICASTALKING' ||
+    atRef ||
+    partnerName.includes("africa's talking") ||
+    partnerName.includes('africastalking');
+
+  return isAtPartner;
+}
+
 /** Total fee/charges debited on this transaction (merchant-visible). */
 export function getTransactionFeeAmount(txn: TransactionLike | null | undefined): number {
   if (!txn) return 0;
+
+  if (isAfricaTalkingFaceValueLedger(txn)) {
+    return 0;
+  }
 
   const fee = Number(txn.fee);
   if (Number.isFinite(fee) && fee !== 0) {
@@ -156,6 +203,10 @@ export function getTransactionNetAmount(
   if (!txn) return 0;
 
   const amount = Number(txn.amount) || 0;
+  if (isAfricaTalkingFaceValueLedger(txn)) {
+    return amount;
+  }
+
   const direction = String(txn.direction ?? '').toUpperCase();
   const fee = getTransactionFeeAmount(txn);
   const netField = Number(txn.netAmount);

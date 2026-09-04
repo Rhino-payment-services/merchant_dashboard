@@ -10,6 +10,7 @@ import {
   getTransactionDescriptionDisplay,
   getTransactionFeeAmount,
   getTransactionNetAmount,
+  isAfricaTalkingFaceValueLedger,
   getTransactionReceiverParty,
   getTransactionSenderParty,
   getTransactionTypeDisplay,
@@ -542,7 +543,9 @@ export default function TransactionReceipt({ transaction, merchantInfo }: Transa
               </div>
             )}
 
-            {transaction.metadata?.revenue && transaction.direction === 'CREDIT' && (
+            {transaction.metadata?.revenue &&
+              transaction.direction === 'CREDIT' &&
+              !isAfricaTalkingFaceValueLedger(transaction) && (
               <div className="flex justify-between items-center text-green-700">
                 <span className="text-sm font-semibold">Your Revenue:</span>
                 <span className="text-sm font-semibold">
