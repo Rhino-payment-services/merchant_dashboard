@@ -15,6 +15,7 @@ import {
   AlertCircle,
   KeyRound,
   Landmark,
+  Bell,
 } from "lucide-react";
 import Link from "next/link";
 import { UGANDAN_BANKS } from "@/app/lib/bankList";
@@ -106,6 +107,17 @@ export default function SettingsPage() {
   const [liquidationBankBranch, setLiquidationBankBranch] = useState("");
   const [confirmLiquidationOpen, setConfirmLiquidationOpen] = useState(false);
 
+  const [paymentNotifLoading, setPaymentNotifLoading] = useState(true);
+  const [paymentNotifSaving, setPaymentNotifSaving] = useState(false);
+  const [paymentSmsEnabled, setPaymentSmsEnabled] = useState(true);
+  const [paymentEmailEnabled, setPaymentEmailEnabled] = useState(false);
+  const [paymentOwnerPhone, setPaymentOwnerPhone] = useState<string | null>(
+    null,
+  );
+  const [paymentOwnerEmail, setPaymentOwnerEmail] = useState<string | null>(
+    null,
+  );
+
   useEffect(() => {
     if (userData) {
       const p = userData?.profile || {};
@@ -119,6 +131,72 @@ export default function SettingsPage() {
       });
     }
   }, [userData]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const loadPaymentNotificationSettings = async () => {
+      try {
+        setPaymentNotifLoading(true);
+        const res = await apiClient.get(
+          "/auth/merchant/payment-notification-settings",
+        );
+        if (cancelled) return;
+        const data = res.data || {};
+        setPaymentSmsEnabled(data.merchantPaymentSmsEnabled !== false);
+        setPaymentEmailEnabled(data.merchantPaymentEmailEnabled === true);
+        setPaymentOwnerPhone(data.ownerPhone || null);
+        setPaymentOwnerEmail(data.ownerEmail || null);
+      } catch (err: any) {
+        if (!cancelled) {
+          console.error("Failed to load payment notification settings", err);
+        }
+      } finally {
+        if (!cancelled) setPaymentNotifLoading(false);
+      }
+    };
+    loadPaymentNotificationSettings();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const savePaymentNotificationSettings = async (next: {
+    merchantPaymentSmsEnabled?: boolean;
+    merchantPaymentEmailEnabled?: boolean;
+  }) => {
+    const previousSms = paymentSmsEnabled;
+    const previousEmail = paymentEmailEnabled;
+    try {
+      setPaymentNotifSaving(true);
+      if (next.merchantPaymentSmsEnabled !== undefined) {
+        setPaymentSmsEnabled(next.merchantPaymentSmsEnabled);
+      }
+      if (next.merchantPaymentEmailEnabled !== undefined) {
+        setPaymentEmailEnabled(next.merchantPaymentEmailEnabled);
+      }
+      const res = await apiClient.patch(
+        "/auth/merchant/payment-notification-settings",
+        next,
+      );
+      const data = res.data || {};
+      if (data.merchantPaymentSmsEnabled !== undefined) {
+        setPaymentSmsEnabled(data.merchantPaymentSmsEnabled !== false);
+      }
+      if (data.merchantPaymentEmailEnabled !== undefined) {
+        setPaymentEmailEnabled(data.merchantPaymentEmailEnabled === true);
+      }
+      toast.success("Payment confirmation settings saved");
+    } catch (err: any) {
+      setPaymentSmsEnabled(previousSms);
+      setPaymentEmailEnabled(previousEmail);
+      toast.error(
+        err.response?.data?.message ||
+          "Failed to update payment confirmation settings",
+      );
+    } finally {
+      setPaymentNotifSaving(false);
+    }
+  };
 
   const applyLiquidationSettings = (data: LiquidationDestinationResponse) => {
     setCanEditLiquidation(data.canEdit !== false);
@@ -650,6 +728,66 @@ export default function SettingsPage() {
             </div>
           </Card>
         )}
+
+        <Card className="p-8 mb-8">
+          <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
+            <Bell className="w-5 h-5 text-main-600" />
+            Payment Confirmation
+          </h3>
+          <p className="text-sm text-gray-600 mb-4">
+            Choose how the merchant owner is notified when a customer payment is
+            received. Team members manage their own toggles on the Team page.
+          </p>
+          {paymentNotifLoading ? (
+            <p className="text-sm text-gray-500">Loading notification settings...</p>
+          ) : (
+            <div className="space-y-4">
+              <label className="flex items-start justify-between gap-4 p-4 border rounded-lg cursor-pointer">
+                <div>
+                  <div className="text-sm font-medium">SMS notifications</div>
+                  <p className="text-xs text-gray-500 mt-1">
+                    Send payment confirmation SMS to{" "}
+                    {paymentOwnerPhone || "the owner phone"}
+                  </p>
+                </div>
+                <input
+                  type="checkbox"
+                  className="mt-1 h-4 w-4"
+                  checked={paymentSmsEnabled}
+                  disabled={paymentNotifSaving || !paymentOwnerPhone}
+                  onChange={(e) => {
+                    void savePaymentNotificationSettings({
+                      merchantPaymentSmsEnabled: e.target.checked,
+                    });
+                  }}
+                />
+              </label>
+              <label className="flex items-start justify-between gap-4 p-4 border rounded-lg cursor-pointer">
+                <div>
+                  <div className="text-sm font-medium">Email notifications</div>
+                  <p className="text-xs text-gray-500 mt-1">
+                    Send payment confirmation email to{" "}
+                    {paymentOwnerEmail || "the owner email"}
+                    {!paymentOwnerEmail
+                      ? " — add an email above before enabling"
+                      : ""}
+                  </p>
+                </div>
+                <input
+                  type="checkbox"
+                  className="mt-1 h-4 w-4"
+                  checked={paymentEmailEnabled}
+                  disabled={paymentNotifSaving || !paymentOwnerEmail}
+                  onChange={(e) => {
+                    void savePaymentNotificationSettings({
+                      merchantPaymentEmailEnabled: e.target.checked,
+                    });
+                  }}
+                />
+              </label>
+            </div>
+          )}
+        </Card>
 
         <Card className="p-8 mb-8">
           <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">

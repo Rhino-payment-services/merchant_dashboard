@@ -121,9 +121,13 @@ export default function TeamManagementPage() {
   const [editForm, setEditForm] = useState<{
     role: 'ADMIN' | 'ACCOUNTANT' | 'MEMBER' | 'VIEWER';
     permissions: PermissionFormState;
+    paymentSmsNotificationsEnabled: boolean;
+    paymentEmailNotificationsEnabled: boolean;
   }>({
     role: 'MEMBER',
     permissions: emptyPerms(),
+    paymentSmsNotificationsEnabled: false,
+    paymentEmailNotificationsEnabled: false,
   });
 
   const [transferForm, setTransferForm] = useState({
@@ -349,6 +353,8 @@ export default function TeamManagementPage() {
         canManageTeam: !!member.canManageTeam,
         canManageSettings: !!member.canManageSettings,
       },
+      paymentSmsNotificationsEnabled: !!member.paymentSmsNotificationsEnabled,
+      paymentEmailNotificationsEnabled: !!member.paymentEmailNotificationsEnabled,
     });
     setShowEditDialog(true);
   };
@@ -361,6 +367,9 @@ export default function TeamManagementPage() {
       await updateTeamMember(editingMember.id, {
         role: editForm.role,
         ...editForm.permissions,
+        paymentSmsNotificationsEnabled: editForm.paymentSmsNotificationsEnabled,
+        paymentEmailNotificationsEnabled:
+          editForm.paymentEmailNotificationsEnabled,
       });
       queryClient.invalidateQueries({
         queryKey: teamQueryKeys.walletTeam(businessWalletId),
@@ -949,6 +958,16 @@ export default function TeamManagementPage() {
                             Settings
                           </Badge>
                         )}
+                        {member.paymentSmsNotificationsEnabled && (
+                          <Badge variant="outline" className="text-xs">
+                            Payment SMS
+                          </Badge>
+                        )}
+                        {member.paymentEmailNotificationsEnabled && (
+                          <Badge variant="outline" className="text-xs">
+                            Payment Email
+                          </Badge>
+                        )}
                       </div>
 
                       {/* Status messages */}
@@ -1185,6 +1204,43 @@ export default function TeamManagementPage() {
               features={featureCeiling}
               disabled={savingEdit}
             />
+            <div className="space-y-3 border rounded-lg p-4">
+              <p className="text-sm font-medium">Payment confirmation</p>
+              <p className="text-xs text-gray-500">
+                Only ACTIVE members receive notifications. Pending invites are
+                ignored until accepted.
+              </p>
+              <label className="flex items-center justify-between gap-3 text-sm">
+                <span>SMS notifications</span>
+                <input
+                  type="checkbox"
+                  className="h-4 w-4"
+                  checked={editForm.paymentSmsNotificationsEnabled}
+                  disabled={savingEdit}
+                  onChange={(e) =>
+                    setEditForm({
+                      ...editForm,
+                      paymentSmsNotificationsEnabled: e.target.checked,
+                    })
+                  }
+                />
+              </label>
+              <label className="flex items-center justify-between gap-3 text-sm">
+                <span>Email notifications</span>
+                <input
+                  type="checkbox"
+                  className="h-4 w-4"
+                  checked={editForm.paymentEmailNotificationsEnabled}
+                  disabled={savingEdit}
+                  onChange={(e) =>
+                    setEditForm({
+                      ...editForm,
+                      paymentEmailNotificationsEnabled: e.target.checked,
+                    })
+                  }
+                />
+              </label>
+            </div>
             <div className="flex justify-end gap-2">
               <Button
                 type="button"
