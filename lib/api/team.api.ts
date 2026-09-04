@@ -23,6 +23,7 @@ export interface TeamMember extends UserPermissions {
   canManageTeam: boolean;
   canManageSettings: boolean;
   paymentSmsNotificationsEnabled?: boolean;
+  paymentEmailNotificationsEnabled?: boolean;
   invitedAt: string;
   acceptedAt?: string;
   lastAccessAt?: string;
@@ -65,6 +66,7 @@ export interface UpdateTeamMemberDto extends TeamPermissionPayload {
   role?: 'ADMIN' | 'ACCOUNTANT' | 'MEMBER' | 'VIEWER';
   status?: 'ACTIVE' | 'SUSPENDED';
   paymentSmsNotificationsEnabled?: boolean;
+  paymentEmailNotificationsEnabled?: boolean;
 }
 
 export interface TransferOwnershipDto {
