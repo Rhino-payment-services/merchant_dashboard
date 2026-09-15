@@ -14,7 +14,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { formatIsoDateDisplay } from '@/lib/date-picker-utils';
+import { formatIsoDateDisplay, formatStatementPeriodLabel } from '@/lib/date-picker-utils';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useMyTransactions, TransactionFilter } from '@/lib/api/transactions.api';
 import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, RefreshCw, Activity, BarChart3, Clock, CheckCircle, XCircle, AlertCircle, TrendingUp, TrendingDown, DollarSign, Eye, Search, Printer, CreditCard, Info, Users, AlertTriangle, Building2, Download, FileSpreadsheet } from 'lucide-react';
@@ -39,6 +39,7 @@ import { AccessDenied } from '@/app/components/AccessDenied';
 import { useTeamPermissionSession } from '@/lib/hooks/useTeamPermissionSession';
 import { canViewTransactions } from '@/lib/utils/permissions';
 import {
+  computeMerchantCashMovementSummary,
   computeMerchantTransactionSummary,
   formatTransactionCharges,
   formatTransactionNetAmount,
@@ -334,15 +335,18 @@ export default function TransactionsPage() {
   // Summary across all filtered transactions (not just the current page)
   const calculatedSummary = useMemo(() => {
     const stats = computeMerchantTransactionSummary(viewScopedSummaryTransactions);
+    const movement = computeMerchantCashMovementSummary(viewScopedSummaryTransactions, {
+      excludeSweeps: walletView === 'all',
+    });
     return {
-      totalAmount: stats.totalGrossAmount,
-      totalFee: stats.totalFees,
+      totalDeposited: movement.totalNetCredit,
+      totalSpent: movement.totalNetDebit,
       successfulCount: stats.successfulCount,
       failedCount: stats.failedCount,
       totalTransactions: stats.totalCount,
       walletType: (summary as any).walletType || 'PERSONAL',
     };
-  }, [viewScopedSummaryTransactions, (summary as any).walletType]);
+  }, [viewScopedSummaryTransactions, walletView, (summary as any).walletType]);
 
   const summaryScopeLabel = useMemo(() => {
     const parts: string[] = [];
@@ -394,13 +398,8 @@ export default function TransactionsPage() {
   const exportRangeSummary = useMemo(() => {
     const range = resolveExportDateRange({ from, to });
     if (!range) return 'Invalid date range (end before start)';
-    if (range.defaultedToToday) {
-      return `Today (${formatIsoDateDisplay(range.startDate)})`;
-    }
-    if (range.startDate === range.endDate) {
-      return formatIsoDateDisplay(range.startDate);
-    }
-    return `${formatIsoDateDisplay(range.startDate)} – ${formatIsoDateDisplay(range.endDate)}`;
+    if (range.unbounded) return 'All dates';
+    return formatStatementPeriodLabel(range.startDate, range.endDate);
   }, [from, to]);
 
   const tableDateSummary = useMemo(() => {
@@ -429,16 +428,16 @@ export default function TransactionsPage() {
 
     setIsExporting(true);
     const toastId = toast.loading(
-      range.defaultedToToday
-        ? `Exporting today's transactions (${range.startDate})…`
-        : 'Preparing export…',
+      range.unbounded
+        ? 'Preparing export for all matching transactions…'
+        : `Preparing export for ${formatStatementPeriodLabel(range.startDate, range.endDate)}…`,
     );
     try {
       const txs = dedupeAdminFundTransactions(
         await fetchAllBusinessTransactions(
           {
-            startDate: range.startDate,
-            endDate: range.endDate,
+            ...(range.startDate ? { startDate: range.startDate } : {}),
+            ...(range.endDate ? { endDate: range.endDate } : {}),
           },
           childMerchantId || undefined,
           effectiveMerchantCode,
@@ -446,14 +445,15 @@ export default function TransactionsPage() {
       ).filter((tx) => matchesTransactionStatusFilter(tx, status || undefined));
 
       if (txs.length === 0) {
-        toast.error('No transactions found for the selected date(s)', { id: toastId });
+        toast.error('No transactions found for the selected period', { id: toastId });
         return;
       }
 
       const rows = merchantTransactionsToExportRows(txs, viewerContext);
       const merchantPart = sanitizeMerchantFilenamePart(getMerchantName());
-      const fileLabel =
-        range.startDate === range.endDate
+      const fileLabel = range.unbounded
+        ? 'all-dates'
+        : range.startDate === range.endDate
           ? range.startDate
           : `${range.startDate}_to_${range.endDate}`;
 
@@ -470,9 +470,8 @@ export default function TransactionsPage() {
         );
       }
 
-      const dayNote = range.defaultedToToday ? ` for today (${range.startDate})` : '';
       toast.success(
-        `Exported ${txs.length} transaction${txs.length === 1 ? '' : 's'}${dayNote}`,
+        `Exported ${txs.length} transaction${txs.length === 1 ? '' : 's'}`,
         { id: toastId },
       );
     } catch (error: unknown) {
@@ -730,27 +729,27 @@ export default function TransactionsPage() {
             {/* Summary Cards */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
           <Card className="p-4">
-            <h3 className="text-sm font-medium text-gray-500">Total Amount</h3>
-            <p className="text-2xl font-bold text-gray-900">
+            <h3 className="text-sm font-medium text-gray-500">Amount deposited</h3>
+            <p className="text-2xl font-bold text-green-700">
               {summaryLoading ? '...' : new Intl.NumberFormat('en-UG', { 
                 style: 'currency', 
                 currency: 'UGX' 
-              }).format(calculatedSummary.totalAmount || 0)}
+              }).format(calculatedSummary.totalDeposited || 0)}
             </p>
             <p className="text-xs text-gray-400 mt-1">
-              Successful only · gross (before fees) · {summaryScopeLabel}
+              Total net credit · {summaryScopeLabel}
             </p>
           </Card>
           <Card className="p-4">
-            <h3 className="text-sm font-medium text-gray-500">Total Fees</h3>
-            <p className="text-2xl font-bold text-gray-900">
+            <h3 className="text-sm font-medium text-gray-500">Amount spent</h3>
+            <p className="text-2xl font-bold text-red-700">
               {summaryLoading ? '...' : new Intl.NumberFormat('en-UG', { 
                 style: 'currency', 
                 currency: 'UGX' 
-              }).format(calculatedSummary.totalFee || 0)}
+              }).format(calculatedSummary.totalSpent || 0)}
             </p>
             <p className="text-xs text-gray-400 mt-1">
-              Successful only · {summaryScopeLabel}
+              Total net debit · {summaryScopeLabel}
             </p>
           </Card>
           <Card className="p-4">
@@ -771,8 +770,8 @@ export default function TransactionsPage() {
           </Card>
         </div>
         <p className="text-xs text-gray-500 -mt-4 mb-6">
-          These totals include <span className="font-medium">all matching transactions</span> for your current filters
-          (date, status, wallet view) — not just this page. Total Amount is the gross Amount column, not Net Amount or wallet balance.
+          These totals are successful wallet movements for your current filters
+          (dates, status, wallet view) — not just this page. Charges on each row are the fee on that transaction.
         </p>
 
         <Card className="mb-6 overflow-hidden border border-gray-200 shadow-sm p-4">

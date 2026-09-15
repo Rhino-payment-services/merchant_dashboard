@@ -51,12 +51,10 @@ export interface Transaction {
     phone?: string
   }
   metadata?: {
-    revenue?: {
-      amount: number
-      currency?: string
-    }
     [key: string]: any
   }
+  balanceBefore?: number | null
+  balanceAfter?: number | null
 }
 
 export interface TransactionsResponse {
@@ -159,6 +157,59 @@ const getMyTransactions = async (
       failedCount: 0
     }
   }
+}
+
+export interface BusinessWalletStatementWallet {
+  walletId: string
+  walletType: string
+  openingBalance: number
+  totalNetCredit: number
+  totalNetDebit: number
+  closingBalance: number
+  transactionFees: number
+  successfulCount: number
+}
+
+export interface BusinessWalletStatement {
+  period: {
+    startDate: string
+    endDate: string
+    timezone: string
+  }
+  currency: string
+  openingBalance: number
+  totalNetCredit: number
+  totalNetDebit: number
+  closingBalance: number
+  transactionFees: number
+  successfulCount: number
+  wallets: BusinessWalletStatementWallet[]
+}
+
+export async function getBusinessWalletStatement(
+  startDate: string,
+  endDate: string,
+  childMerchantId?: string,
+  merchantCode?: string | null,
+): Promise<BusinessWalletStatement> {
+  const params = new URLSearchParams()
+  params.append('startDate', startDate)
+  params.append('endDate', endDate)
+  if (merchantCode) {
+    params.append('merchantCode', String(merchantCode).trim())
+  }
+
+  const endpoint = childMerchantId
+    ? `/super-merchant/child-merchant/${childMerchantId}/statement`
+    : `/wallet/me/business/statement`
+
+  const config: { headers?: Record<string, string> } = {}
+  if (merchantCode) {
+    config.headers = { 'X-Merchant-Code': String(merchantCode).trim() }
+  }
+
+  const response = await apiClient.get(`${endpoint}?${params.toString()}`, config)
+  return response.data
 }
 
 const getTransactionById = async (transactionId: string): Promise<Transaction> => {
