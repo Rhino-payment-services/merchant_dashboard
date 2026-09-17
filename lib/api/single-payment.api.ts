@@ -422,7 +422,11 @@ export const validateTransaction = async (paymentData: SinglePaymentDto): Promis
         feeAmount: data.feeDetails.feeAmount,
         feePercentage: data.feeDetails.feePercentage || 0,
         totalFee: data.feeDetails.feeAmount,
-        netAmount: (data.feeDetails.totalAmount ?? 0) - (data.feeDetails.feeAmount ?? 0),
+        netAmount:
+          data.feeDetails.principalAmount != null
+            ? Number(data.feeDetails.principalAmount)
+            : (data.feeDetails.totalAmount ?? 0) -
+              (data.feeDetails.feeAmount ?? 0),
         currency: data.feeDetails.currency,
         rukapayFee: data.feeDetails.platformRevenue || 0,
         partnerFee: data.feeDetails.partnerRevenue || 0,
