@@ -330,8 +330,8 @@ export function computeMerchantTransactionSummary(
 
 /**
  * Merchant cash-movement summary: successful external inflows/outflows only.
- * Excludes pending/failed and internal collection↔disbursement sweeps.
- * (UI labels: Total received / Total sent / Net movement)
+ * Excludes pending/failed. Sweeps are excluded by default so combined
+ * deposited/spent matches the wallet statement.
  */
 export function computeMerchantPnLSummary(transactions: TransactionLike[]): {
   totalRevenue: number;
@@ -366,6 +366,43 @@ export function computeMerchantPnLSummary(transactions: TransactionLike[]): {
     netIncome: totalRevenue - totalExpenses,
     creditCount,
     debitCount,
+  };
+}
+
+/** Net wallet movement for a filtered list (transactions page totals). */
+export function computeMerchantCashMovementSummary(
+  transactions: TransactionLike[],
+  options?: { excludeSweeps?: boolean },
+): {
+  totalNetCredit: number;
+  totalNetDebit: number;
+  transactionFees: number;
+  successfulCount: number;
+} {
+  const excludeSweeps = options?.excludeSweeps !== false;
+  let totalNetCredit = 0;
+  let totalNetDebit = 0;
+  let transactionFees = 0;
+  let successfulCount = 0;
+
+  for (const txn of transactions) {
+    if (!isSuccessfulTransactionStatus(String(txn.status || ''))) continue;
+    if (excludeSweeps && isSweepTransaction(txn)) continue;
+    successfulCount += 1;
+    transactionFees += getTransactionFeeAmount(txn);
+    const net = getTransactionNetAmount(txn);
+    if (isCreditLikeTransaction(txn)) {
+      totalNetCredit += net;
+    } else if (isDebitLikeTransaction(txn)) {
+      totalNetDebit += net;
+    }
+  }
+
+  return {
+    totalNetCredit,
+    totalNetDebit,
+    transactionFees,
+    successfulCount,
   };
 }
 

@@ -39,6 +39,34 @@ export function formatIsoDateDisplay(iso: string): string {
   })
 }
 
+export function formatIsoDateLong(iso: string): string {
+  const parsed = parseIsoDateLocal(iso)
+  if (!parsed) return ''
+  return parsed.toLocaleDateString('en-GB', {
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+  })
+}
+
+export function formatStatementPeriodLabel(from?: string, to?: string): string {
+  const start = (from || '').trim()
+  const end = (to || '').trim()
+  if (start && end && start === end) return formatIsoDateLong(start)
+  if (start && end) return `${formatIsoDateLong(start)} – ${formatIsoDateLong(end)}`
+  if (start) return `From ${formatIsoDateLong(start)}`
+  if (end) return `Until ${formatIsoDateLong(end)}`
+  return 'All dates'
+}
+
+export function currentMonthToTodayRange(): { from: string; to: string } {
+  const today = todayLocal()
+  return {
+    from: toIsoDateLocal(new Date(today.getFullYear(), today.getMonth(), 1)),
+    to: toIsoDateLocal(today),
+  }
+}
+
 /** Short label for compact filter toolbars (e.g. 25 May 26). */
 export function formatIsoDateCompact(iso: string): string {
   const parsed = parseIsoDateLocal(iso)

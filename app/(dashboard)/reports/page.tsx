@@ -9,7 +9,7 @@ import { useUserProfile } from '../UserProfileProvider';
 import { AccessDenied } from '@/app/components/AccessDenied';
 import { useTeamPermissionSession } from '@/lib/hooks/useTeamPermissionSession';
 import { canViewReports } from '@/lib/utils/permissions';
-import { TransactionFilter } from '@/lib/api/transactions.api';
+import { TransactionFilter, getBusinessWalletStatement } from '@/lib/api/transactions.api';
 import { getWalletBalance } from '@/lib/api/wallet.api';
 import { useQuery } from '@tanstack/react-query';
 import { 
@@ -17,9 +17,8 @@ import {
   FileText, 
   TrendingUp, 
   TrendingDown, 
-  DollarSign, 
-  CreditCard, 
-  Calendar,
+  Landmark,
+  Wallet,
   Filter,
   BarChart3,
   PieChart,
@@ -29,25 +28,28 @@ import {
   ChevronRight,
   ChevronsLeft,
   ChevronsRight,
-  Wallet,
 } from 'lucide-react';
 import { Chart } from '../../components/chart';
 import { writeWorkbookWithSheetsToFile } from '@/lib/excel-utils';
 import jsPDF from 'jspdf';
-import html2canvas from 'html2canvas';
 import { toast } from 'sonner';
 import { useSession } from 'next-auth/react';
 import { useChildMerchantContext } from '@/lib/hooks/useChildMerchantContext';
 import {
+  currentMonthToTodayRange,
+  formatStatementPeriodLabel,
+} from '@/lib/date-picker-utils';
+import {
   downloadTextFile,
   fetchAllBusinessTransactions,
+  merchantStatementCoverRows,
+  merchantStatementCsvPreamble,
   merchantTransactionsToCsv,
   merchantTransactionsToExportRows,
   resolveExportDateRange,
   sanitizeMerchantFilenamePart,
 } from '@/lib/utils/merchant-transaction-export';
 import {
-  computeMerchantPnLSummary,
   getTransactionReceiverParty,
   getTransactionSenderParty,
   isSweepTransaction,
@@ -72,14 +74,16 @@ interface Transaction {
 }
 
 interface ReportSummary {
-  totalRevenue: number;
-  totalExpenses: number;
-  netIncome: number;
+  openingBalance: number;
+  totalNetCredit: number;
+  totalNetDebit: number;
+  closingBalance: number;
+  transactionFees: number;
+  successfulCount: number;
+  currency: string;
   totalTransactions: number;
   creditTransactions: number;
   debitTransactions: number;
-  averageTransaction: number;
-  successRate: number;
 }
 
 export default function ReportsPage() {
@@ -106,8 +110,7 @@ export default function ReportsPage() {
     ? childMerchantCode
     : currentMerchantCode;
 
-  const [dateRange, setDateRange] = useState({ from: '', to: '' });
-  const [exportDateRange, setExportDateRange] = useState({ from: '', to: '' });
+  const [dateRange, setDateRange] = useState(currentMonthToTodayRange);
   const [transactionType, setTransactionType] = useState<'all' | 'credit' | 'debit'>('all');
   const [status, setStatus] = useState<'all' | 'success' | 'pending' | 'failed'>('all');
   const [searchTerm, setSearchTerm] = useState('');
@@ -155,6 +158,44 @@ export default function ReportsPage() {
     staleTime: 30000,
     retry: 2,
     refetchOnWindowFocus: false,
+  });
+
+  const statementRange = useMemo(() => {
+    const range = resolveExportDateRange({
+      from: dateRange.from,
+      to: dateRange.to,
+    });
+    if (range && !range.unbounded && range.startDate && range.endDate) {
+      return { startDate: range.startDate, endDate: range.endDate };
+    }
+    const fallback = currentMonthToTodayRange();
+    return { startDate: fallback.from, endDate: fallback.to };
+  }, [dateRange]);
+
+  const {
+    data: statement,
+    isLoading: statementLoading,
+    refetch: refetchStatement,
+  } = useQuery({
+    queryKey: [
+      'reports',
+      'statement',
+      statementRange.startDate,
+      statementRange.endDate,
+      childMerchantId,
+      effectiveMerchantCode,
+    ],
+    queryFn: () =>
+      getBusinessWalletStatement(
+        statementRange.startDate,
+        statementRange.endDate,
+        childMerchantId || undefined,
+        effectiveMerchantCode,
+      ),
+    staleTime: 30000,
+    retry: 2,
+    refetchOnWindowFocus: false,
+    enabled: Boolean(statementRange.startDate && statementRange.endDate),
   });
 
   const merchants = (session?.user as { merchants?: { merchantCode?: string; featureBulkPayments?: boolean }[] })?.merchants ?? [];
@@ -320,48 +361,30 @@ export default function ReportsPage() {
     setCurrentPage(1);
   }, [dateRange, transactionType, status, searchTerm]);
 
-  // P&L: successful external movements only (exclude pending/failed + internal sweeps)
+  // Period statement from the API; table filters only affect the list and charts.
   const summary: ReportSummary = useMemo(() => {
-    const rawForPnL = filteredTransactions
-      .map((t) => t.raw)
-      .filter(Boolean);
-    const pnl = computeMerchantPnLSummary(rawForPnL);
-
-    const totalTransactions = filteredTransactions.length;
-    const averageTransaction =
-      totalTransactions > 0
-        ? (pnl.totalRevenue + pnl.totalExpenses) / totalTransactions
-        : 0;
-    const successRate =
-      totalTransactions > 0
-        ? (filteredTransactions.filter((t) => t.rdbs_approval_status === 'success')
-            .length /
-            totalTransactions) *
-          100
-        : 0;
+    const creditTransactions = filteredTransactions.filter(
+      (t) => t.rdbs_type === 'credit' && t.rdbs_approval_status === 'success' && !t.isSweep,
+    ).length;
+    const debitTransactions = filteredTransactions.filter(
+      (t) => t.rdbs_type === 'debit' && t.rdbs_approval_status === 'success' && !t.isSweep,
+    ).length;
 
     return {
-      totalRevenue: pnl.totalRevenue,
-      totalExpenses: pnl.totalExpenses,
-      netIncome: pnl.netIncome,
-      totalTransactions,
-      creditTransactions: pnl.creditCount,
-      debitTransactions: pnl.debitCount,
-      averageTransaction,
-      successRate,
+      openingBalance: Number(statement?.openingBalance || 0),
+      totalNetCredit: Number(statement?.totalNetCredit || 0),
+      totalNetDebit: Number(statement?.totalNetDebit || 0),
+      closingBalance: Number(statement?.closingBalance || 0),
+      transactionFees: Number(statement?.transactionFees || 0),
+      successfulCount: Number(statement?.successfulCount || 0),
+      currency: statement?.currency || 'UGX',
+      totalTransactions: filteredTransactions.length,
+      creditTransactions,
+      debitTransactions,
     };
-  }, [filteredTransactions]);
+  }, [filteredTransactions, statement]);
 
   // Format currency
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('en-UG', {
-      style: 'currency',
-      currency: 'UGX',
-      minimumFractionDigits: 0,
-      maximumFractionDigits: 0
-    }).format(amount);
-  };
-
   const getMerchantViewerContext = () => ({
     merchantName:
       profile?.merchant_names ||
@@ -369,22 +392,13 @@ export default function ReportsPage() {
       profile?.businessTradeName ||
       'Merchant',
     phone: profile?.merchant_phone || profile?.ownerPhone || profile?.phone || '',
+    merchantCode: effectiveMerchantCode || undefined,
   });
 
   const loadTransactionsForExport = async () => {
-    const range = resolveExportDateRange({
-      from: exportDateRange.from,
-      to: exportDateRange.to,
-    });
-    if (!range) {
-      toast.error('End date cannot be before start date');
-      return null;
-    }
-
+    const range = statementRange;
     const toastId = toast.loading(
-      range.defaultedToToday
-        ? `Loading today's transactions (${range.startDate})…`
-        : 'Loading transactions for export…',
+      `Loading transactions for ${formatStatementPeriodLabel(range.startDate, range.endDate)}…`,
     );
     try {
       const filter: TransactionFilter = {
@@ -407,12 +421,12 @@ export default function ReportsPage() {
       );
 
       if (apiTxs.length === 0) {
-        toast.error('No transactions found for the selected date(s)', { id: toastId });
+        toast.error('No transactions found for the selected period', { id: toastId });
         return null;
       }
 
       toast.dismiss(toastId);
-      return { apiTxs, range };
+      return { apiTxs, range, statement: summary };
     } catch (error: unknown) {
       const message =
         error && typeof error === 'object' && 'message' in error
@@ -437,30 +451,19 @@ export default function ReportsPage() {
         return;
       }
 
-      const { apiTxs, range } = loaded;
-      const exportData = merchantTransactionsToExportRows(apiTxs, getMerchantViewerContext());
+      const { apiTxs, range, statement: statementSummary } = loaded;
+      const viewer = getMerchantViewerContext();
+      const exportData = merchantTransactionsToExportRows(apiTxs, viewer);
+      const summaryData = merchantStatementCoverRows(viewer, range, statementSummary);
 
-      // Build summary data
-      const summaryData = [
-        { 'Metric': 'Total received', 'Value': summary.totalRevenue, 'Currency': 'UGX', 'Formatted': `UGX ${Number(summary.totalRevenue).toLocaleString()}` },
-        { 'Metric': 'Total sent', 'Value': summary.totalExpenses, 'Currency': 'UGX', 'Formatted': `UGX ${Number(summary.totalExpenses).toLocaleString()}` },
-        { 'Metric': 'Net Income', 'Value': summary.netIncome, 'Currency': 'UGX', 'Formatted': `UGX ${Number(summary.netIncome).toLocaleString()}` },
-        { 'Metric': 'Total Transactions', 'Value': summary.totalTransactions, 'Currency': '', 'Formatted': summary.totalTransactions.toString() },
-        { 'Metric': 'Incoming payments', 'Value': summary.creditTransactions, 'Currency': '', 'Formatted': summary.creditTransactions.toString() },
-        { 'Metric': 'Outgoing payments', 'Value': summary.debitTransactions, 'Currency': '', 'Formatted': summary.debitTransactions.toString() },
-        { 'Metric': 'Average Transaction', 'Value': summary.averageTransaction, 'Currency': 'UGX', 'Formatted': `UGX ${Number(summary.averageTransaction).toLocaleString()}` },
-        { 'Metric': 'Success Rate', 'Value': summary.successRate, 'Currency': '%', 'Formatted': `${summary.successRate.toFixed(1)}%` }
-      ];
-
-      // Generate filename with merchant name and date
-      const merchantName = getMerchantViewerContext().merchantName;
+      const merchantName = viewer.merchantName;
       const sanitizedMerchantName = sanitizeMerchantFilenamePart(merchantName);
-      const filename = `${sanitizedMerchantName}-transactions-${exportFileLabel(range)}.xlsx`;
+      const filename = `${sanitizedMerchantName}-statement-${exportFileLabel(range)}.xlsx`;
 
       await writeWorkbookWithSheetsToFile(
         [
+          { name: 'Statement', data: summaryData },
           { name: 'Transactions', data: exportData },
-          { name: 'Summary', data: summaryData },
         ],
         filename
       );
@@ -480,12 +483,14 @@ export default function ReportsPage() {
       if (!loaded) {
         return;
       }
-      const { apiTxs, range } = loaded;
-      const rows = merchantTransactionsToExportRows(apiTxs, getMerchantViewerContext());
-      const merchantName = sanitizeMerchantFilenamePart(getMerchantViewerContext().merchantName);
+      const { apiTxs, range, statement: statementSummary } = loaded;
+      const viewer = getMerchantViewerContext();
+      const rows = merchantTransactionsToExportRows(apiTxs, viewer);
+      const merchantName = sanitizeMerchantFilenamePart(viewer.merchantName);
       downloadTextFile(
-        `${merchantName}-transactions-${exportFileLabel(range)}.csv`,
-        merchantTransactionsToCsv(rows),
+        `${merchantName}-statement-${exportFileLabel(range)}.csv`,
+        merchantStatementCsvPreamble(viewer, range, statementSummary) +
+          merchantTransactionsToCsv(rows),
       );
       toast.success(`Exported ${apiTxs.length} transaction${apiTxs.length === 1 ? '' : 's'}`);
     } catch (error) {
@@ -505,7 +510,7 @@ export default function ReportsPage() {
         return;
       }
 
-      const { apiTxs, range } = loaded;
+      const { apiTxs, range, statement: statementSummary } = loaded;
       const viewer = getMerchantViewerContext();
       const exportTransactions = apiTxs.map((apiTxn) => {
         const sender = getTransactionSenderParty(apiTxn, viewer);
@@ -534,43 +539,64 @@ export default function ReportsPage() {
       const margin = 20;
       const contentWidth = pageWidth - (2 * margin);
       
-      // Get merchant name from profile
-      const merchantName = profile?.merchant_names || profile?.merchantBusinessTradeName || profile?.businessTradeName || 'Unknown Merchant';
+      const merchantName = viewer.merchantName;
+      const periodLabel = formatStatementPeriodLabel(range.startDate, range.endDate);
+      const money = (value: number) =>
+        `UGX ${Number(value || 0).toLocaleString()}`;
       
-      // Add title with merchant name
-      pdf.setFontSize(24);
+      pdf.setFontSize(22);
       pdf.setFont('helvetica', 'bold');
-      pdf.text(`${merchantName} Transaction Report`, pageWidth / 2, margin + 10, { align: 'center' });
+      pdf.text(`${merchantName} Wallet Statement`, pageWidth / 2, margin + 10, { align: 'center' });
       
-      // Add date range if filters are applied
       pdf.setFontSize(10);
       pdf.setFont('helvetica', 'normal');
-      let dateRangeText = `Generated on: ${new Date().toLocaleDateString('en-UG')}`;
-      dateRangeText += ` | Period: ${exportFileLabel(range)}`;
-      pdf.text(dateRangeText, pageWidth / 2, margin + 20, { align: 'center' });
+      pdf.text(
+        `Statement period: ${periodLabel}  ·  Inclusive dates`,
+        pageWidth / 2,
+        margin + 18,
+        { align: 'center' },
+      );
+      pdf.text(
+        `Generated: ${new Date().toLocaleString('en-UG')}`,
+        pageWidth / 2,
+        margin + 24,
+        { align: 'center' },
+      );
       
-      // Add summary
-      pdf.setFontSize(16);
+      pdf.setFontSize(14);
       pdf.setFont('helvetica', 'bold');
-      pdf.text('Summary', margin, margin + 40);
+      pdf.text('Period summary', margin, margin + 40);
       
-      pdf.setFontSize(12);
+      pdf.setFontSize(11);
       pdf.setFont('helvetica', 'normal');
       let yPosition = margin + 50;
       
-      pdf.text(`Total received: UGX ${Number(summary.totalRevenue).toLocaleString()}`, margin, yPosition);
+      pdf.text(`Opening balance: ${money(statementSummary.openingBalance)}`, margin, yPosition);
+      yPosition += 7;
+      pdf.text(`Amount deposited (total net credit): ${money(statementSummary.totalNetCredit)}`, margin, yPosition);
+      yPosition += 7;
+      pdf.text(`Amount spent (total net debit): ${money(statementSummary.totalNetDebit)}`, margin, yPosition);
+      yPosition += 7;
+      pdf.text(`Closing balance: ${money(statementSummary.closingBalance)}`, margin, yPosition);
+      yPosition += 7;
+      pdf.text(
+        `Transaction fees: ${money(statementSummary.transactionFees)}  ·  ${statementSummary.successfulCount} successful transactions`,
+        margin,
+        yPosition,
+      );
       yPosition += 8;
-      pdf.text(`Total sent: UGX ${Number(summary.totalExpenses).toLocaleString()}`, margin, yPosition);
-      yPosition += 8;
-      pdf.text(`Net Income: UGX ${Number(summary.netIncome).toLocaleString()}`, margin, yPosition);
-      yPosition += 8;
-      pdf.text(`Total Transactions: ${summary.totalTransactions}`, margin, yPosition);
-      yPosition += 8;
-      pdf.text(`Incoming payments: ${summary.creditTransactions}`, margin, yPosition);
-      yPosition += 8;
-      pdf.text(`Outgoing payments: ${summary.debitTransactions}`, margin, yPosition);
-      yPosition += 8;
-      pdf.text(`Success Rate: ${summary.successRate.toFixed(1)}%`, margin, yPosition);
+      pdf.setFont('helvetica', 'italic');
+      pdf.setFontSize(9);
+      pdf.text(
+        `Opening + deposits − spending = ${money(
+          statementSummary.openingBalance +
+            statementSummary.totalNetCredit -
+            statementSummary.totalNetDebit,
+        )}`,
+        margin,
+        yPosition,
+      );
+      pdf.setFont('helvetica', 'normal');
       
       // Add transactions table
       yPosition += 20;
@@ -677,7 +703,7 @@ export default function ReportsPage() {
       // Generate filename
       const sanitizedMerchantName = merchantName.replace(/[^a-zA-Z0-9]/g, '_');
       const dateStr = new Date().toISOString().split('T')[0];
-      const filename = `${sanitizedMerchantName}-transaction-report-${exportFileLabel(range)}.pdf`;
+      const filename = `${sanitizedMerchantName}-statement-${exportFileLabel(range)}.pdf`;
       
       pdf.save(filename);
       toast.success('PDF exported successfully');
@@ -691,7 +717,7 @@ export default function ReportsPage() {
 
   // Reset filters
   const resetFilters = () => {
-    setDateRange({ from: '', to: '' });
+    setDateRange(currentMonthToTodayRange());
     setTransactionType('all');
     setStatus('all');
     setSearchTerm('');
@@ -712,7 +738,11 @@ export default function ReportsPage() {
   // Refresh handler
   const handleRefresh = async () => {
     try {
-      await Promise.all([refetchTransactions(), refetchWalletBalances()]);
+      await Promise.all([
+        refetchTransactions(),
+        refetchWalletBalances(),
+        refetchStatement(),
+      ]);
       toast.success('Reports refreshed');
     } catch (error) {
       toast.error('Failed to refresh reports');
@@ -756,24 +786,16 @@ export default function ReportsPage() {
         <div className="mb-8">
           <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
             <div>
-              <h1 className="text-3xl font-bold text-[#08163d] mb-2">Reports & Analytics</h1>
-              <p className="text-gray-600">Comprehensive transaction analysis and insights</p>
+              <h1 className="text-3xl font-bold text-[#08163d] mb-2">Wallet statement</h1>
+              <p className="text-gray-600">
+                Statement period:{' '}
+                <span className="font-medium text-gray-800">
+                  {formatStatementPeriodLabel(statementRange.startDate, statementRange.endDate)}
+                </span>
+                <span className="text-gray-500"> · Inclusive dates</span>
+              </p>
             </div>
             <div className="flex flex-wrap items-end gap-2">
-              <DateRangePicker
-                from={exportDateRange.from}
-                to={exportDateRange.to}
-                onFromChange={(from) =>
-                  setExportDateRange((prev) => ({ ...prev, from }))
-                }
-                onToChange={(to) =>
-                  setExportDateRange((prev) => ({ ...prev, to }))
-                }
-                onClear={() => setExportDateRange({ from: '', to: '' })}
-                fromLabel="Export from"
-                toLabel="Export to (optional)"
-                className="max-w-md"
-              />
               <Button 
                 onClick={handleRefresh}
                 variant="outline"
@@ -833,10 +855,13 @@ export default function ReportsPage() {
                   onToChange={(to) =>
                     setDateRange((prev) => ({ ...prev, to }))
                   }
-                  onClear={() => setDateRange({ from: '', to: '' })}
-                  fromLabel="From date"
-                  toLabel="To date"
+                  onClear={() => setDateRange(currentMonthToTodayRange())}
+                  fromLabel="From"
+                  toLabel="To"
                 />
+                <p className="mt-1 text-xs text-gray-500">
+                  Inclusive dates. Exports use this same period.
+                </p>
               </div>
               <div>
                 <label className="block text-sm font-medium mb-1">Transaction Type</label>
@@ -880,13 +905,13 @@ export default function ReportsPage() {
           </CardContent>
         </Card>
 
-        {/* Live wallet balances — same context as home dashboard */}
+        {/* Available now — live wallets, not the period closing balance */}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
           {hasSplitBalances ? (
             <>
               <Card>
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                  <CardTitle className="text-sm font-medium">Collection balance</CardTitle>
+                  <CardTitle className="text-sm font-medium">Available now · Collection</CardTitle>
                   <Wallet className="h-4 w-4 text-green-600" />
                 </CardHeader>
                 <CardContent>
@@ -894,13 +919,13 @@ export default function ReportsPage() {
                     UGX {Number(walletBalances?.collectionBalance ?? 0).toLocaleString()}
                   </div>
                   <p className="text-xs text-muted-foreground">
-                    Incoming customer payments (Collection wallet)
+                    Live collection wallet · not the period closing balance
                   </p>
                 </CardContent>
               </Card>
               <Card>
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                  <CardTitle className="text-sm font-medium">Payout balance</CardTitle>
+                  <CardTitle className="text-sm font-medium">Available now · Payout</CardTitle>
                   <Wallet className="h-4 w-4 text-blue-600" />
                 </CardHeader>
                 <CardContent>
@@ -908,7 +933,7 @@ export default function ReportsPage() {
                     UGX {Number(walletBalances?.disbursementBalance ?? 0).toLocaleString()}
                   </div>
                   <p className="text-xs text-muted-foreground">
-                    Available for outgoing payments (Disbursement wallet)
+                    Live disbursement wallet · not the period closing balance
                   </p>
                 </CardContent>
               </Card>
@@ -916,84 +941,89 @@ export default function ReportsPage() {
           ) : (
             <Card className="sm:col-span-2">
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Current balance</CardTitle>
+                <CardTitle className="text-sm font-medium">Available now</CardTitle>
                 <Wallet className="h-4 w-4 text-blue-600" />
               </CardHeader>
               <CardContent>
                 <div className="text-2xl font-bold">
                   UGX {Number(walletBalances?.balance ?? 0).toLocaleString()}
                 </div>
-                <p className="text-xs text-muted-foreground">Available business wallet balance</p>
+                <p className="text-xs text-muted-foreground">
+                  Live business wallet · not the period closing balance
+                </p>
               </CardContent>
             </Card>
           )}
         </div>
 
-        {/* Summary Cards */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+        {/* Period statement */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-3">
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Total received</CardTitle>
+              <CardTitle className="text-sm font-medium">Opening balance</CardTitle>
+              <Landmark className="h-4 w-4 text-slate-600" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold text-[#08163d]">
+                {statementLoading ? '…' : `UGX ${Number(summary.openingBalance).toLocaleString()}`}
+              </div>
+              <p className="text-xs text-muted-foreground">As at start of this period</p>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Amount deposited</CardTitle>
               <TrendingUp className="h-4 w-4 text-green-600" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold text-green-600">UGX {Number(summary.totalRevenue).toLocaleString()}</div>
+              <div className="text-2xl font-bold text-green-600">
+                {statementLoading ? '…' : `UGX ${Number(summary.totalNetCredit).toLocaleString()}`}
+              </div>
               <p className="text-xs text-muted-foreground">
-                {summary.creditTransactions} successful incoming payments
-                {dateRange.from || dateRange.to
-                  ? ` · filtered${dateRange.from ? ` from ${dateRange.from}` : ''}${dateRange.to ? ` to ${dateRange.to}` : ''}`
-                  : ' · all dates'}
+                Total net credit · {summary.successfulCount} successful movements
               </p>
             </CardContent>
           </Card>
 
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Total sent</CardTitle>
+              <CardTitle className="text-sm font-medium">Amount spent</CardTitle>
               <TrendingDown className="h-4 w-4 text-red-600" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold text-red-600">UGX {Number(summary.totalExpenses).toLocaleString()}</div>
-              <p className="text-xs text-muted-foreground">
-                {summary.debitTransactions} successful outgoing payments
-                {dateRange.from || dateRange.to
-                  ? ` · filtered${dateRange.from ? ` from ${dateRange.from}` : ''}${dateRange.to ? ` to ${dateRange.to}` : ''}`
-                  : ' · all dates'}
-              </p>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Net Income</CardTitle>
-              <DollarSign className="h-4 w-4 text-blue-600" />
-            </CardHeader>
-            <CardContent>
-              <div className={`text-2xl font-bold ${summary.netIncome >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                UGX {Number(summary.netIncome).toLocaleString()}
+              <div className="text-2xl font-bold text-red-600">
+                {statementLoading ? '…' : `UGX ${Number(summary.totalNetDebit).toLocaleString()}`}
               </div>
               <p className="text-xs text-muted-foreground">
-                Total received − Total sent
-                {dateRange.from || dateRange.to ? ' · based on filtered dates' : ' · all dates'}
+                Total net debit · Transaction fees UGX {Number(summary.transactionFees).toLocaleString()}
               </p>
             </CardContent>
           </Card>
 
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Success Rate</CardTitle>
-              <BarChart3 className="h-4 w-4 text-blue-600" />
+              <CardTitle className="text-sm font-medium">Closing balance</CardTitle>
+              <Wallet className="h-4 w-4 text-blue-600" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold text-blue-600">{summary.successRate.toFixed(1)}%</div>
-              <p className="text-xs text-muted-foreground">
-                {summary.totalTransactions} total transactions
-                {status !== 'all' ? ` · status: ${status}` : ''}
-                {dateRange.from || dateRange.to ? ' · filtered dates' : ' · all dates'}
-              </p>
+              <div className="text-2xl font-bold text-[#08163d]">
+                {statementLoading ? '…' : `UGX ${Number(summary.closingBalance).toLocaleString()}`}
+              </div>
+              <p className="text-xs text-muted-foreground">As at end of this period</p>
             </CardContent>
           </Card>
         </div>
+        <p className="text-sm text-gray-600 mb-8">
+          Opening + deposits − spending ={' '}
+          <span className="font-medium text-gray-900">
+            UGX{' '}
+            {Number(
+              summary.openingBalance + summary.totalNetCredit - summary.totalNetDebit,
+            ).toLocaleString()}
+          </span>
+          . Internal collection-to-payout transfers are excluded from deposited and spent.
+        </p>
 
         {/* Charts — equal columns; min-w-0 stops the bar chart from stretching the grid */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8 items-stretch">
