@@ -50,6 +50,7 @@ import {
   sanitizeMerchantFilenamePart,
 } from '@/lib/utils/merchant-transaction-export';
 import {
+  getTransactionNetAmount,
   getTransactionReceiverParty,
   getTransactionSenderParty,
   isSweepTransaction,
@@ -78,7 +79,6 @@ interface ReportSummary {
   totalNetCredit: number;
   totalNetDebit: number;
   closingBalance: number;
-  transactionFees: number;
   successfulCount: number;
   currency: string;
   totalTransactions: number;
@@ -319,7 +319,7 @@ export default function ReportsPage() {
       rdbs_sender_name: getSenderName(apiTxn),
       rdbs_receiver_name: getReceiverName(apiTxn),
       rdbs_receiver_number: getReceiverNumber(apiTxn),
-      rdbs_amount: Number(apiTxn.amount || 0),
+      rdbs_amount: getTransactionNetAmount(apiTxn),
       // Wallet Funding should always be credit to merchant wallet
       rdbs_type: isWalletFunding ? 'credit' : (apiTxn.direction === 'CREDIT' ? 'credit' : 'debit'),
       rdbs_approval_status: mapStatus(apiTxn.status || 'PENDING'),
@@ -375,7 +375,6 @@ export default function ReportsPage() {
       totalNetCredit: Number(statement?.totalNetCredit || 0),
       totalNetDebit: Number(statement?.totalNetDebit || 0),
       closingBalance: Number(statement?.closingBalance || 0),
-      transactionFees: Number(statement?.transactionFees || 0),
       successfulCount: Number(statement?.successfulCount || 0),
       currency: statement?.currency || 'UGX',
       totalTransactions: filteredTransactions.length,
@@ -453,7 +452,7 @@ export default function ReportsPage() {
 
       const { apiTxs, range, statement: statementSummary } = loaded;
       const viewer = getMerchantViewerContext();
-      const exportData = merchantTransactionsToExportRows(apiTxs, viewer);
+      const exportData = merchantTransactionsToExportRows(apiTxs, viewer, 'statement');
       const summaryData = merchantStatementCoverRows(viewer, range, statementSummary);
 
       const merchantName = viewer.merchantName;
@@ -485,12 +484,12 @@ export default function ReportsPage() {
       }
       const { apiTxs, range, statement: statementSummary } = loaded;
       const viewer = getMerchantViewerContext();
-      const rows = merchantTransactionsToExportRows(apiTxs, viewer);
+      const rows = merchantTransactionsToExportRows(apiTxs, viewer, 'statement');
       const merchantName = sanitizeMerchantFilenamePart(viewer.merchantName);
       downloadTextFile(
         `${merchantName}-statement-${exportFileLabel(range)}.csv`,
         merchantStatementCsvPreamble(viewer, range, statementSummary) +
-          merchantTransactionsToCsv(rows),
+          merchantTransactionsToCsv(rows, 'statement'),
       );
       toast.success(`Exported ${apiTxs.length} transaction${apiTxs.length === 1 ? '' : 's'}`);
     } catch (error) {
@@ -521,7 +520,7 @@ export default function ReportsPage() {
           rdbs_sender_name: sender.name,
           rdbs_receiver_name: receiver.name,
           rdbs_receiver_number: receiver.contact || 'N/A',
-          rdbs_amount: Number(apiTxn.amount || 0),
+          rdbs_amount: getTransactionNetAmount(apiTxn),
           rdbs_type: apiTxn.direction === 'CREDIT' ? ('credit' as const) : ('debit' as const),
           rdbs_approval_status:
             apiTxn.status === 'COMPLETED' || apiTxn.status === 'SUCCESS'
@@ -573,14 +572,14 @@ export default function ReportsPage() {
       
       pdf.text(`Opening balance: ${money(statementSummary.openingBalance)}`, margin, yPosition);
       yPosition += 7;
-      pdf.text(`Amount deposited (total net credit): ${money(statementSummary.totalNetCredit)}`, margin, yPosition);
+      pdf.text(`Amount deposited (net collection): ${money(statementSummary.totalNetCredit)}`, margin, yPosition);
       yPosition += 7;
-      pdf.text(`Amount spent (total net debit): ${money(statementSummary.totalNetDebit)}`, margin, yPosition);
+      pdf.text(`Amount spent (net payout): ${money(statementSummary.totalNetDebit)}`, margin, yPosition);
       yPosition += 7;
       pdf.text(`Closing balance: ${money(statementSummary.closingBalance)}`, margin, yPosition);
       yPosition += 7;
       pdf.text(
-        `Transaction fees: ${money(statementSummary.transactionFees)}  ·  ${statementSummary.successfulCount} successful transactions`,
+        `${statementSummary.successfulCount} successful transactions`,
         margin,
         yPosition,
       );
@@ -981,7 +980,7 @@ export default function ReportsPage() {
                 {statementLoading ? '…' : `UGX ${Number(summary.totalNetCredit).toLocaleString()}`}
               </div>
               <p className="text-xs text-muted-foreground">
-                Total net credit · {summary.successfulCount} successful movements
+                Net collection in this period
               </p>
             </CardContent>
           </Card>
@@ -996,7 +995,7 @@ export default function ReportsPage() {
                 {statementLoading ? '…' : `UGX ${Number(summary.totalNetDebit).toLocaleString()}`}
               </div>
               <p className="text-xs text-muted-foreground">
-                Total net debit · Transaction fees UGX {Number(summary.transactionFees).toLocaleString()}
+                Net payout in this period
               </p>
             </CardContent>
           </Card>
