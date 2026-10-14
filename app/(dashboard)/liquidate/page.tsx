@@ -54,6 +54,7 @@ export default function LiquidatePage() {
   const [payoutAccount, setPayoutAccount] = useState("");
   const [payoutAccountName, setPayoutAccountName] = useState("");
   const [payoutBankName, setPayoutBankName] = useState("");
+  const [payoutBankPhone, setPayoutBankPhone] = useState("");
   const [payoutReason, setPayoutReason] = useState("");
 
   const [bankValidation, setBankValidation] = useState<{
@@ -190,7 +191,11 @@ export default function LiquidatePage() {
 
     if (liquidationOnlyMode) {
       if (lockedDestType === 'BANK') {
-        return !!payoutAccount.trim() && !!payoutBankName;
+        return (
+          !!payoutAccount.trim() &&
+          !!payoutBankName &&
+          /^\+?\d{9,15}$/.test(payoutBankPhone.trim())
+        );
       }
       if (lockedDestType === 'MOMO') {
         return !!payoutPhone.trim() && Boolean(payoutNetwork);
@@ -205,7 +210,8 @@ export default function LiquidatePage() {
         isValidAccountNumber &&
         payoutAccountName.trim().length >= 2 &&
         payoutAccountName.trim().length <= 100 &&
-        !!payoutBankName
+        !!payoutBankName &&
+        /^\+?\d{9,15}$/.test(payoutBankPhone.trim())
       );
     }
     if (payoutType === "MOMO") {
@@ -224,6 +230,7 @@ export default function LiquidatePage() {
     payoutAccount,
     payoutAccountName,
     payoutBankName,
+    payoutBankPhone,
     payoutPhone,
     collectionWalletId,
     liquidationOnlyMode,
@@ -244,6 +251,7 @@ export default function LiquidatePage() {
       if (!/^\d{8,20}$/.test(payoutAccount.trim())) return "Account number must be 8–20 digits.";
       if (payoutAccountName.trim().length < 2) return "Enter the account name.";
       if (payoutAccountName.trim().length > 100) return "Account name must be 100 characters or less.";
+      if (!/^\+?\d{9,15}$/.test(payoutBankPhone.trim())) return "Enter a valid phone number.";
       return null;
     }
 
@@ -263,6 +271,7 @@ export default function LiquidatePage() {
     payoutBankName,
     payoutAccount,
     payoutAccountName,
+    payoutBankPhone,
     payoutPhone,
     collectionWalletId,
   ]);
@@ -302,6 +311,7 @@ export default function LiquidatePage() {
         setPayoutBankName(bankFromList?.bankName || lockedDestination.bankName || '');
         setPayoutAccount(lockedDestination.bankAccountNumber || '');
         setPayoutAccountName(lockedDestination.bankAccountName || '');
+        setPayoutBankPhone('');
         setPayoutPhone('');
       } else if (lockedDestType === 'MOMO') {
         setPayoutType('MOMO');
@@ -314,6 +324,7 @@ export default function LiquidatePage() {
       }
     } else {
       setPayoutPhone("");
+      setPayoutBankPhone("");
       setPayoutAccount("");
       setPayoutAccountName("");
       setPayoutBankName("");
@@ -412,6 +423,7 @@ export default function LiquidatePage() {
         bankSortCode: bankValidation.bankSortCode || lockedDestination?.bankCode,
         bankCode: bankValidation.bankSortCode || lockedDestination?.bankCode,
         bankName: payoutBankName,
+        phoneNumber: payoutBankPhone.trim(),
         description: payoutReason || "Merchant liquidation payout (bank)",
         metadata: {
           channel: "MERCHANT_PORTAL",
@@ -813,6 +825,14 @@ export default function LiquidatePage() {
                         readOnly={liquidationOnlyMode}
                       />
                     </div>
+                    <div className="md:col-span-2">
+                      <Label>Phone number</Label>
+                      <Input
+                        value={payoutBankPhone}
+                        onChange={(e) => setPayoutBankPhone(e.target.value)}
+                        placeholder="e.g. 2567XXXXXXXX or 07XXXXXXXX"
+                      />
+                    </div>
                   </>
                 ) : (
                   <>
@@ -877,6 +897,10 @@ export default function LiquidatePage() {
                     <div className="flex justify-between md:block md:col-span-2">
                       <span className="text-emerald-700">Account name</span>
                       <div className="font-medium">{bankValidation.accountName || payoutAccountName}</div>
+                    </div>
+                    <div className="flex justify-between md:block md:col-span-2">
+                      <span className="text-emerald-700">Phone number</span>
+                      <div className="font-medium">{payoutBankPhone}</div>
                     </div>
                   </div>
                   <div className="mt-3">
