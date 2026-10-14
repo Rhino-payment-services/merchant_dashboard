@@ -51,6 +51,7 @@ export interface PublicMerchantEventDetailResponse {
   title: string
   description?: string | null
   bannerUrl?: string | null
+  logoUrl?: string | null
   location?: string | null
   startsAt?: string | null
   scheduleNote?: string | null
