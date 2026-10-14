@@ -9,8 +9,9 @@ export interface MerchantEventListItem {
   description?: string
   bannerUrl?: string
   location?: string
-  startsAt: string
-  endsAt: string
+  startsAt?: string | null
+  scheduleNote?: string | null
+  endsAt?: string | null
   salesStartAt?: string
   salesEndAt?: string
   currency: string
@@ -113,7 +114,8 @@ export interface CreateMerchantEventTierPayload {
 
 export interface CreateMerchantEventWithTiersPayload {
   title: string
-  startsAt: string
+  startsAt?: string
+  scheduleNote?: string
   walletId?: string
   eventCode?: string
   description?: string
@@ -161,10 +163,11 @@ export interface UpdateMerchantEventWithTiersPayload {
   description?: string
   bannerUrl?: string
   location?: string
-  startsAt?: string
-  endsAt?: string
-  salesStartAt?: string
-  salesEndAt?: string
+  startsAt?: string | null
+  scheduleNote?: string | null
+  endsAt?: string | null
+  salesStartAt?: string | null
+  salesEndAt?: string | null
   currency?: string
   isPublic?: boolean
   isFree?: boolean

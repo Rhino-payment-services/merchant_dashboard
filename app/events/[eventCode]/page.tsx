@@ -25,6 +25,7 @@ import {
   AlertCircle,
 } from "lucide-react"
 import { toast } from "sonner"
+import { formatEventWhen } from "@/lib/event-when"
 import {
   createPublicEventOrder,
   getPublicEventByCode,
@@ -48,18 +49,6 @@ const dateFmt = new Intl.DateTimeFormat("en-UG", {
   dateStyle: "medium",
   timeStyle: "short",
 })
-
-function formatRange(startsAt: string, endsAt?: string | null) {
-  try {
-    const s = new Date(startsAt)
-    const e = endsAt ? new Date(endsAt) : null
-    const left = dateFmt.format(s)
-    if (!e || Number.isNaN(e.getTime())) return left
-    return `${left} – ${dateFmt.format(e)}`
-  } catch {
-    return "—"
-  }
-}
 
 function formatMoney(amount: number, currency: string) {
   try {
@@ -160,6 +149,7 @@ function detailFromOrder(
     bannerUrl: null,
     location: null,
     startsAt: order.event.startsAt,
+    scheduleNote: order.event.scheduleNote ?? null,
     endsAt: order.event.endsAt ?? null,
     currency: order.currency,
     checkoutUrl: null,
@@ -499,7 +489,7 @@ function PublicEventCheckoutPage({ params }: PageProps) {
           </CardHeader>
           <CardContent className="space-y-2 text-sm text-gray-600">
             <p>{msg}</p>
-            <p className="text-xs text-gray-400">{formatRange(detail.startsAt, detail.endsAt)}</p>
+            <p className="text-xs text-gray-400">{formatEventWhen(detail.startsAt, detail.endsAt, detail.scheduleNote)}</p>
           </CardContent>
         </Card>
       </div>
@@ -519,7 +509,7 @@ function PublicEventCheckoutPage({ params }: PageProps) {
           RukaPay event checkout
         </p>
         <h1 className="mt-1 text-2xl font-bold text-gray-900">{detail.title}</h1>
-        <p className="mt-2 text-sm text-gray-600">{formatRange(detail.startsAt, detail.endsAt)}</p>
+        <p className="mt-2 text-sm text-gray-600">{formatEventWhen(detail.startsAt, detail.endsAt, detail.scheduleNote)}</p>
       </div>
 
       {detail.bannerUrl ? (
@@ -543,7 +533,7 @@ function PublicEventCheckoutPage({ params }: PageProps) {
           ) : null}
           <div className="flex gap-2">
             <Calendar className="h-4 w-4 shrink-0 text-gray-500" aria-hidden />
-            <span>{formatRange(detail.startsAt, detail.endsAt)}</span>
+            <span>{formatEventWhen(detail.startsAt, detail.endsAt, detail.scheduleNote)}</span>
           </div>
           {detail.description ? (
             <p className="whitespace-pre-wrap pt-2 text-gray-600">{detail.description}</p>

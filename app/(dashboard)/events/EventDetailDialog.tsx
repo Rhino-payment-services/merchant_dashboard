@@ -22,6 +22,7 @@ import {
   getMerchantEventById,
   type MerchantEventDetailResponse,
 } from "@/lib/api/merchant-events.api"
+import { formatEventWhen } from "@/lib/event-when"
 import { API_URL } from "@/lib/config"
 import { toast } from "sonner"
 import { RefreshCw } from "lucide-react"
@@ -43,16 +44,6 @@ const dateTimeFmt = new Intl.DateTimeFormat("en-UG", {
   dateStyle: "medium",
   timeStyle: "short",
 })
-
-function formatEventRange(startsAt: string, endsAt: string) {
-  try {
-    const s = new Date(startsAt)
-    const e = new Date(endsAt)
-    return `${dateTimeFmt.format(s)} – ${dateTimeFmt.format(e)}`
-  } catch {
-    return "—"
-  }
-}
 
 function formatOptionalDate(iso?: string | null) {
   if (!iso) return "—"
@@ -233,7 +224,7 @@ export function EventDetailDialog({ open, onOpenChange, eventId }: EventDetailDi
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <h3 className="text-sm font-medium text-gray-500 mb-1">Event schedule</h3>
-                  <p className="text-sm text-gray-800">{formatEventRange(detail.startsAt, detail.endsAt)}</p>
+                  <p className="text-sm text-gray-800">{formatEventWhen(detail.startsAt, detail.endsAt, detail.scheduleNote)}</p>
                 </div>
                 <div>
                   <h3 className="text-sm font-medium text-gray-500 mb-1">Sales window</h3>

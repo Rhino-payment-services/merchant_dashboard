@@ -52,7 +52,8 @@ export interface PublicMerchantEventDetailResponse {
   description?: string | null
   bannerUrl?: string | null
   location?: string | null
-  startsAt: string
+  startsAt?: string | null
+  scheduleNote?: string | null
   endsAt?: string | null
   currency: string
   isFree?: boolean
@@ -115,7 +116,8 @@ export interface PublicMerchantEventOrderTransactionSummary {
 export interface PublicMerchantEventOrderEventSummary {
   eventCode: string
   title: string
-  startsAt: string
+  startsAt?: string | null
+  scheduleNote?: string | null
   endsAt?: string | null
 }
 
