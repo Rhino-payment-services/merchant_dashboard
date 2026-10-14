@@ -51,6 +51,7 @@ import {
   type MerchantEventListItem,
   type MerchantEventsStatisticsResponse,
 } from "@/lib/api/merchant-events.api"
+import { formatEventWhen } from "@/lib/event-when"
 import { CreateEventDialog } from "./CreateEventDialog"
 import { EditEventDialog } from "./EditEventDialog"
 import { EventDetailDialog } from "./EventDetailDialog"
@@ -66,21 +67,6 @@ const ALL = "__all__"
 function triBool(v: string): boolean | undefined {
   if (!v || v === ALL) return undefined
   return v === "true"
-}
-
-const dateTimeFmt = new Intl.DateTimeFormat("en-UG", {
-  dateStyle: "medium",
-  timeStyle: "short",
-})
-
-function formatEventRange(startsAt: string, endsAt: string) {
-  try {
-    const s = new Date(startsAt)
-    const e = new Date(endsAt)
-    return `${dateTimeFmt.format(s)} – ${dateTimeFmt.format(e)}`
-  } catch {
-    return "—"
-  }
 }
 
 function statusBadgeVariant(status: string): "default" | "secondary" | "outline" | "destructive" | "success" | "warning" {
@@ -562,11 +548,11 @@ export default function EventsPage() {
                         <div className="font-medium text-gray-900">{ev.title}</div>
                         <div className="text-xs text-gray-500 mt-0.5">{ev.eventCode}</div>
                         <div className="text-xs text-gray-500 mt-1 lg:hidden">
-                          {formatEventRange(ev.startsAt, ev.endsAt)}
+                          {formatEventWhen(ev.startsAt, ev.endsAt, ev.scheduleNote)}
                         </div>
                       </TableCell>
                       <TableCell className="hidden lg:table-cell align-top whitespace-normal text-gray-600 text-sm max-w-[280px]">
-                        {formatEventRange(ev.startsAt, ev.endsAt)}
+                        {formatEventWhen(ev.startsAt, ev.endsAt, ev.scheduleNote)}
                       </TableCell>
                       <TableCell className="hidden md:table-cell align-top whitespace-normal text-gray-600 text-sm max-w-[200px]">
                         {ev.location ?? "—"}
