@@ -177,6 +177,13 @@ export function EventDetailDialog({ open, onOpenChange, eventId }: EventDetailDi
               ) : null}
 
               <div className="flex flex-wrap items-start gap-2 gap-y-2">
+                {detail.logoUrl ? (
+                  <img
+                    src={resolveBannerSrc(detail.logoUrl)}
+                    alt=""
+                    className="h-[48px] w-[48px] shrink-0 rounded-md border bg-white object-contain p-1"
+                  />
+                ) : null}
                 <h2 className="text-xl font-semibold text-gray-900 flex-1 min-w-0">
                   {detail.title}
                 </h2>

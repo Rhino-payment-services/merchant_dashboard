@@ -147,6 +147,7 @@ function detailFromOrder(
     title: order.event.title,
     description: null,
     bannerUrl: null,
+    logoUrl: null,
     location: null,
     startsAt: order.event.startsAt,
     scheduleNote: order.event.scheduleNote ?? null,
@@ -483,6 +484,14 @@ function PublicEventCheckoutPage({ params }: PageProps) {
       <div className="container mx-auto max-w-lg px-4 py-16">
         <Card>
           <CardHeader>
+            {detail.logoUrl ? (
+              // eslint-disable-next-line @next/next/no-img-element -- merchant-provided URLs
+              <img
+                src={resolveBannerUrl(detail.logoUrl)}
+                alt=""
+                className="mb-3 h-[72px] w-[72px] object-contain"
+              />
+            ) : null}
             <CardTitle className="text-xl" style={{ color: BRAND }}>
               {detail.title}
             </CardTitle>
@@ -505,6 +514,14 @@ function PublicEventCheckoutPage({ params }: PageProps) {
   return (
     <div className="container mx-auto max-w-xl px-4 py-10 pb-16">
       <div className="mb-8 text-center">
+        {detail.logoUrl ? (
+          // eslint-disable-next-line @next/next/no-img-element -- merchant-provided URLs
+          <img
+            src={resolveBannerUrl(detail.logoUrl)}
+            alt=""
+            className="mx-auto mb-4 h-[72px] w-[72px] object-contain"
+          />
+        ) : null}
         <p className="text-xs font-medium uppercase tracking-wide text-gray-500">
           RukaPay event checkout
         </p>

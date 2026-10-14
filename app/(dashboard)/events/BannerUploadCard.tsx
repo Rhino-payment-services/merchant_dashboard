@@ -31,6 +31,7 @@ export type BannerUploadCardProps = {
   selectedFile: File | null
   onFileChange: (file: File | null) => void
   disabled?: boolean
+  variant?: "banner" | "logo"
 }
 
 export function BannerUploadCard({
@@ -38,7 +39,9 @@ export function BannerUploadCard({
   selectedFile,
   onFileChange,
   disabled,
+  variant = "banner",
 }: BannerUploadCardProps) {
+  const isLogo = variant === "logo"
   const inputRef = useRef<HTMLInputElement>(null)
   const [isDragging, setIsDragging] = useState(false)
   const selectedPreviewUrl = useMemo(() => {
@@ -87,7 +90,7 @@ export function BannerUploadCard({
         type="file"
         accept="image/jpeg,image/png,image/webp,image/gif,.jpg,.jpeg,.png,.webp,.gif"
         className="sr-only"
-        aria-label="Choose event banner image"
+        aria-label={isLogo ? "Choose company logo image" : "Choose event banner image"}
         disabled={disabled}
         onChange={(e) => onPickFiles(e.target.files)}
       />
@@ -121,7 +124,11 @@ export function BannerUploadCard({
           "group relative overflow-hidden rounded-xl border-2 border-dashed transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
           isDragging ? "border-primary bg-primary/5" : "border-muted-foreground/25 bg-muted/30",
           disabled ? "cursor-not-allowed opacity-70" : "cursor-pointer hover:border-primary/50 hover:bg-muted/50",
-          hasImage ? "aspect-[21/9] min-h-[140px]" : "aspect-[21/9] min-h-[160px]",
+          isLogo
+            ? "aspect-square w-full max-w-[160px] min-h-[140px]"
+            : hasImage
+              ? "aspect-[21/9] min-h-[140px]"
+              : "aspect-[21/9] min-h-[160px]",
         ].join(" ")}
       >
         {!hasImage ? (
@@ -129,7 +136,9 @@ export function BannerUploadCard({
             <div className="flex h-12 w-12 items-center justify-center rounded-full bg-background shadow-sm">
               <Image className="h-6 w-6 text-muted-foreground" aria-hidden />
             </div>
-            <p className="text-sm font-medium text-foreground">Drop your banner here</p>
+            <p className="text-sm font-medium text-foreground">
+              {isLogo ? "Drop your company logo here" : "Drop your banner here"}
+            </p>
             <p className="text-xs text-muted-foreground max-w-sm">
               or click to browse — JPEG, PNG, WebP, or GIF, up to 5MB
             </p>
@@ -146,7 +155,7 @@ export function BannerUploadCard({
             <img
               src={displaySrc}
               alt=""
-              className="h-full w-full object-cover"
+              className={isLogo ? "h-full w-full object-contain p-3 bg-white" : "h-full w-full object-cover"}
             />
           </>
         ) : null}
@@ -163,7 +172,7 @@ export function BannerUploadCard({
                 if (!disabled) inputRef.current?.click()
               }}
               disabled={disabled}
-              aria-label="Replace banner"
+              aria-label={isLogo ? "Replace logo" : "Replace banner"}
             >
               <Upload className="h-4 w-4" />
             </Button>
@@ -177,7 +186,7 @@ export function BannerUploadCard({
                 handleRemove()
               }}
               disabled={disabled}
-              aria-label="Remove banner"
+              aria-label={isLogo ? "Remove logo" : "Remove banner"}
             >
               <X className="h-4 w-4" />
             </Button>
