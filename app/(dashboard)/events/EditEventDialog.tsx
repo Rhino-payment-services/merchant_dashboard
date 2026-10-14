@@ -483,10 +483,8 @@ export function EditEventDialog({
       const minO = t.minPerOrder.trim() ? Number.parseInt(t.minPerOrder, 10) : 1
       if (minO > 1 || t.minPerOrder.trim()) row.minPerOrder = minO
       if (t.maxPerOrder.trim()) row.maxPerOrder = Number.parseInt(t.maxPerOrder, 10)
-      const tss = datetimeLocalToIso(t.salesStartAt)
-      const tse = datetimeLocalToIso(t.salesEndAt)
-      if (tss) row.salesStartAt = tss
-      if (tse) row.salesEndAt = tse
+      row.salesStartAt = datetimeLocalToIso(t.salesStartAt) || null
+      row.salesEndAt = datetimeLocalToIso(t.salesEndAt) || null
       return row
     })
 
@@ -1025,7 +1023,7 @@ export function EditEventDialog({
                           <Label htmlFor={`ee-t${t.key}-tss`} className="inline-flex flex-wrap items-center gap-x-1">
                             Tier sales start <Opt />
                           </Label>
-                          <FieldHint>Override event-wide sales window for this tier only.</FieldHint>
+                          <FieldHint>Leave blank to sell this tier whenever the event is active. Clearing a saved date removes it.</FieldHint>
                         </div>
                         <Input
                           id={`ee-t${t.key}-tss`}
@@ -1040,7 +1038,7 @@ export function EditEventDialog({
                           <Label htmlFor={`ee-t${t.key}-tse`} className="inline-flex flex-wrap items-center gap-x-1">
                             Tier sales end <Opt />
                           </Label>
-                          <FieldHint>Override event-wide sales end for this tier only.</FieldHint>
+                          <FieldHint>Leave blank so this tier does not stop selling on its own. A past end date closes ticket sales.</FieldHint>
                         </div>
                         <Input
                           id={`ee-t${t.key}-tse`}

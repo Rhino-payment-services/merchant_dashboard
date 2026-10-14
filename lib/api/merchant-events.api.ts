@@ -107,8 +107,8 @@ export interface CreateMerchantEventTierPayload {
   quantity: number
   minPerOrder?: number
   maxPerOrder?: number
-  salesStartAt?: string
-  salesEndAt?: string
+  salesStartAt?: string | null
+  salesEndAt?: string | null
   metadata?: Record<string, unknown>
 }
 
