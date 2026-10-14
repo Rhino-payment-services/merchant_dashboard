@@ -8,6 +8,7 @@ export interface MerchantEventListItem {
   title: string
   description?: string
   bannerUrl?: string
+  logoUrl?: string | null
   location?: string
   startsAt?: string | null
   scheduleNote?: string | null
@@ -120,6 +121,7 @@ export interface CreateMerchantEventWithTiersPayload {
   eventCode?: string
   description?: string
   bannerUrl?: string
+  logoUrl?: string
   location?: string
   endsAt?: string
   salesStartAt?: string
@@ -161,7 +163,8 @@ export async function createMerchantEventWithTiers(
 export interface UpdateMerchantEventWithTiersPayload {
   title?: string
   description?: string
-  bannerUrl?: string
+  bannerUrl?: string | null
+  logoUrl?: string | null
   location?: string
   startsAt?: string | null
   scheduleNote?: string | null
@@ -210,6 +213,41 @@ export async function uploadEventBanner(
 
   const response = await apiClient.post<EventBannerUploadResponse>(
     '/merchant-events/upload-banner',
+    formData,
+    {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+      signal: options?.signal,
+      onUploadProgress: (e) => {
+        const total = e.total
+        if (total && options?.onUploadProgress) {
+          options.onUploadProgress(Math.round((e.loaded * 100) / total))
+        }
+      },
+    }
+  )
+  return response.data
+}
+
+/** POST /merchant-events/upload-logo — multipart field name: `logo` */
+export interface EventLogoUploadResponse {
+  logoUrl: string
+  fileName: string
+  originalName: string
+  mimeType: string
+  size: number
+}
+
+export async function uploadEventLogo(
+  file: File,
+  options?: UploadEventBannerOptions
+): Promise<EventLogoUploadResponse> {
+  const formData = new FormData()
+  formData.append('logo', file)
+
+  const response = await apiClient.post<EventLogoUploadResponse>(
+    '/merchant-events/upload-logo',
     formData,
     {
       headers: {

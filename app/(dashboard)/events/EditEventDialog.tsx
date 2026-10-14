@@ -31,6 +31,7 @@ import {
   getMerchantEventById,
   updateMerchantEventWithTiers,
   uploadEventBanner,
+  uploadEventLogo,
   type CreateMerchantEventTierPayload,
   type MerchantEventDetailResponse,
   type MerchantEventTierFull,
@@ -138,6 +139,7 @@ type FormFields = {
   title: string
   description: string
   bannerUrl: string
+  logoUrl: string
   location: string
   startsAt: string
   scheduleNote: string
@@ -157,6 +159,7 @@ const emptyForm = (): FormFields => ({
   title: "",
   description: "",
   bannerUrl: "",
+  logoUrl: "",
   location: "",
   startsAt: "",
   scheduleNote: "",
@@ -195,6 +198,7 @@ function mapDetailToForm(detail: MerchantEventDetailResponse): FormFields {
     title: detail.title ?? "",
     description: detail.description ?? "",
     bannerUrl: detail.bannerUrl ?? "",
+    logoUrl: detail.logoUrl ?? "",
     location: detail.location ?? "",
     startsAt: isoToDatetimeLocal(detail.startsAt),
     scheduleNote: detail.scheduleNote ?? "",
@@ -300,6 +304,8 @@ export function EditEventDialog({
   const [stepError, setStepError] = useState("")
   const [bannerFile, setBannerFile] = useState<File | null>(null)
   const [uploadingBanner, setUploadingBanner] = useState(false)
+  const [logoFile, setLogoFile] = useState<File | null>(null)
+  const [uploadingLogo, setUploadingLogo] = useState(false)
   const [loadingDetail, setLoadingDetail] = useState(false)
   const [loadError, setLoadError] = useState<string | null>(null)
 
@@ -311,6 +317,8 @@ export function EditEventDialog({
     setSubmitting(false)
     setBannerFile(null)
     setUploadingBanner(false)
+    setLogoFile(null)
+    setUploadingLogo(false)
     setLoadError(null)
   }, [])
 
@@ -328,6 +336,7 @@ export function EditEventDialog({
     setStepError("")
     setStep(1)
     setBannerFile(null)
+    setLogoFile(null)
 
     void getMerchantEventById(eventId)
       .then((data) => {
@@ -436,8 +445,8 @@ export function EditEventDialog({
   }
 
   const goNext = () => {
-    if (uploadingBanner) {
-      setStepError("Please wait for the banner upload to finish.")
+    if (uploadingBanner || uploadingLogo) {
+      setStepError("Please wait for the image upload to finish.")
       return
     }
     const err = validateStep(step)
@@ -460,7 +469,10 @@ export function EditEventDialog({
     return form.categoryPreset
   }
 
-  const buildPayload = (uploadedBannerUrl?: string): UpdateMerchantEventWithTiersPayload => {
+  const buildPayload = (
+    uploadedBannerUrl?: string,
+    uploadedLogoUrl?: string,
+  ): UpdateMerchantEventWithTiersPayload => {
     const metadata: Record<string, unknown> = {}
     const category = resolveCategoryForPayload()
     if (category) metadata.category = category
@@ -505,6 +517,7 @@ export function EditEventDialog({
     if (form.description.trim()) payload.description = form.description.trim()
     const bannerUrl = normalizeBannerPath(uploadedBannerUrl ?? form.bannerUrl)
     if (bannerUrl) payload.bannerUrl = bannerUrl
+    payload.logoUrl = normalizeBannerPath(uploadedLogoUrl ?? form.logoUrl) || null
     if (form.location.trim()) payload.location = form.location.trim()
     if (form.capacity.trim()) payload.capacity = Number.parseInt(form.capacity, 10)
     if (Object.keys(metadata).length) payload.metadata = metadata
@@ -528,8 +541,14 @@ export function EditEventDialog({
         const uploaded = await uploadEventBanner(bannerFile)
         uploadedBannerUrl = normalizeBannerPath(uploaded.bannerUrl)
       }
+      let uploadedLogoUrl = normalizeBannerPath(form.logoUrl)
+      if (logoFile) {
+        setUploadingLogo(true)
+        const uploaded = await uploadEventLogo(logoFile)
+        uploadedLogoUrl = normalizeBannerPath(uploaded.logoUrl)
+      }
 
-      await updateMerchantEventWithTiers(eventId, buildPayload(uploadedBannerUrl))
+      await updateMerchantEventWithTiers(eventId, buildPayload(uploadedBannerUrl, uploadedLogoUrl))
       toast.success("Event updated.")
       onOpenChange(false)
       onUpdated()
@@ -538,6 +557,7 @@ export function EditEventDialog({
       toast.error(getApiErrorMessage(e))
     } finally {
       setUploadingBanner(false)
+      setUploadingLogo(false)
       setSubmitting(false)
     }
   }
@@ -623,10 +643,30 @@ export function EditEventDialog({
                 <div className="space-y-2">
                   <div className="flex items-center gap-1.5">
                     <Label className="inline-flex flex-wrap items-center gap-x-1">
+                      Company logo <Opt />
+                    </Label>
+                    <FieldHint>
+                      Square company mark shown above the event title. JPEG, PNG, WebP, or GIF — max 5MB. PNG with a transparent background works best. Clearing this removes a saved logo.
+                    </FieldHint>
+                  </div>
+                  <BannerUploadCard
+                    variant="logo"
+                    value={form.logoUrl}
+                    selectedFile={logoFile}
+                    onFileChange={(file) => {
+                      setLogoFile(file)
+                      if (!file) updateField("logoUrl", "")
+                    }}
+                    disabled={formDisabled || submitting}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <div className="flex items-center gap-1.5">
+                    <Label className="inline-flex flex-wrap items-center gap-x-1">
                       Event banner <Opt />
                     </Label>
                     <FieldHint>
-                      Upload an image for the event page. JPEG, PNG, WebP, or GIF — max 5MB.
+                      Wide image for the event page. JPEG, PNG, WebP, or GIF — max 5MB.
                     </FieldHint>
                   </div>
                   <BannerUploadCard
@@ -1089,7 +1129,7 @@ export function EditEventDialog({
                     <Button
                       type="button"
                       onClick={goNext}
-                      disabled={formDisabled || submitting || uploadingBanner}
+                      disabled={formDisabled || submitting || uploadingBanner || uploadingLogo}
                     >
                       Next
                     </Button>
@@ -1097,7 +1137,7 @@ export function EditEventDialog({
                     <Button
                       type="button"
                       onClick={handleSubmit}
-                      disabled={formDisabled || submitting || uploadingBanner}
+                      disabled={formDisabled || submitting || uploadingBanner || uploadingLogo}
                     >
                       {submitting ? "Updating…" : "Update event"}
                     </Button>

@@ -31,6 +31,7 @@ import { getMyBusinessWallet } from "@/lib/api/team.api"
 import {
   createMerchantEventWithTiers,
   uploadEventBanner,
+  uploadEventLogo,
   type CreateMerchantEventTierPayload,
   type CreateMerchantEventWithTiersPayload,
 } from "@/lib/api/merchant-events.api"
@@ -108,6 +109,7 @@ type FormFields = {
   eventCode: string
   description: string
   bannerUrl: string
+  logoUrl: string
   location: string
   startsAt: string
   scheduleNote: string
@@ -128,6 +130,7 @@ const emptyForm = (): FormFields => ({
   eventCode: "",
   description: "",
   bannerUrl: "",
+  logoUrl: "",
   location: "",
   startsAt: "",
   scheduleNote: "",
@@ -213,6 +216,8 @@ export function CreateEventDialog({
   const [stepError, setStepError] = useState("")
   const [bannerFile, setBannerFile] = useState<File | null>(null)
   const [uploadingBanner, setUploadingBanner] = useState(false)
+  const [logoFile, setLogoFile] = useState<File | null>(null)
+  const [uploadingLogo, setUploadingLogo] = useState(false)
 
   const reset = useCallback(() => {
     setStep(1)
@@ -223,6 +228,8 @@ export function CreateEventDialog({
     setDefaultWalletId("")
     setBannerFile(null)
     setUploadingBanner(false)
+    setLogoFile(null)
+    setUploadingLogo(false)
   }, [])
 
   useEffect(() => {
@@ -332,8 +339,8 @@ export function CreateEventDialog({
   }
 
   const goNext = () => {
-    if (uploadingBanner) {
-      setStepError("Please wait for the banner upload to finish.")
+    if (uploadingBanner || uploadingLogo) {
+      setStepError("Please wait for the image upload to finish.")
       return
     }
     const err = validateStep(step)
@@ -356,7 +363,10 @@ export function CreateEventDialog({
     return form.categoryPreset
   }
 
-  const buildPayload = (uploadedBannerUrl?: string): CreateMerchantEventWithTiersPayload => {
+  const buildPayload = (
+    uploadedBannerUrl?: string,
+    uploadedLogoUrl?: string,
+  ): CreateMerchantEventWithTiersPayload => {
     const metadata: Record<string, unknown> = {}
     const category = resolveCategoryForPayload()
     if (category) metadata.category = category
@@ -400,6 +410,8 @@ export function CreateEventDialog({
     if (form.description.trim()) payload.description = form.description.trim()
     const bannerUrl = normalizeBannerPath(uploadedBannerUrl ?? form.bannerUrl)
     if (bannerUrl) payload.bannerUrl = bannerUrl
+    const logoUrl = normalizeBannerPath(uploadedLogoUrl ?? form.logoUrl)
+    if (logoUrl) payload.logoUrl = logoUrl
     if (form.location.trim()) payload.location = form.location.trim()
     if (startsAt) payload.startsAt = startsAt
     if (form.scheduleNote.trim()) payload.scheduleNote = form.scheduleNote.trim()
@@ -430,8 +442,14 @@ export function CreateEventDialog({
         const uploaded = await uploadEventBanner(bannerFile)
         uploadedBannerUrl = normalizeBannerPath(uploaded.bannerUrl)
       }
+      let uploadedLogoUrl = normalizeBannerPath(form.logoUrl)
+      if (logoFile) {
+        setUploadingLogo(true)
+        const uploaded = await uploadEventLogo(logoFile)
+        uploadedLogoUrl = normalizeBannerPath(uploaded.logoUrl)
+      }
 
-      await createMerchantEventWithTiers(buildPayload(uploadedBannerUrl))
+      await createMerchantEventWithTiers(buildPayload(uploadedBannerUrl, uploadedLogoUrl))
       toast.success("Event created.")
       onOpenChange(false)
       onCreated()
@@ -440,6 +458,7 @@ export function CreateEventDialog({
       toast.error(getApiErrorMessage(e))
     } finally {
       setUploadingBanner(false)
+      setUploadingLogo(false)
       setSubmitting(false)
     }
   }
@@ -524,10 +543,30 @@ export function CreateEventDialog({
                 <div className="space-y-2">
                   <div className="flex items-center gap-1.5">
                     <Label className="inline-flex flex-wrap items-center gap-x-1">
+                      Company logo <Opt />
+                    </Label>
+                    <FieldHint>
+                      Square company mark shown above the event title. JPEG, PNG, WebP, or GIF — max 5MB. PNG with a transparent background works best.
+                    </FieldHint>
+                  </div>
+                  <BannerUploadCard
+                    variant="logo"
+                    value={form.logoUrl}
+                    selectedFile={logoFile}
+                    onFileChange={(file) => {
+                      setLogoFile(file)
+                      if (!file) updateField("logoUrl", "")
+                    }}
+                    disabled={disabled || submitting}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <div className="flex items-center gap-1.5">
+                    <Label className="inline-flex flex-wrap items-center gap-x-1">
                       Event banner <Opt />
                     </Label>
                     <FieldHint>
-                      Upload an image for the event page. JPEG, PNG, WebP, or GIF — max 5MB.
+                      Wide image for the event page. JPEG, PNG, WebP, or GIF — max 5MB.
                     </FieldHint>
                   </div>
                   <BannerUploadCard
@@ -989,7 +1028,7 @@ export function CreateEventDialog({
                 <Button
                   type="button"
                   onClick={goNext}
-                  disabled={disabled || submitting || uploadingBanner}
+                  disabled={disabled || submitting || uploadingBanner || uploadingLogo}
                   className="cursor-pointer"
                 >
                   Next
@@ -998,7 +1037,7 @@ export function CreateEventDialog({
                 <Button
                   type="button"
                   onClick={handleSubmit}
-                  disabled={disabled || submitting || uploadingBanner}
+                  disabled={disabled || submitting || uploadingBanner || uploadingLogo}
                   className="cursor-pointer"
                 >
                   {submitting ? "Creating…" : "Create event"}
