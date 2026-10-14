@@ -140,6 +140,7 @@ type FormFields = {
   bannerUrl: string
   location: string
   startsAt: string
+  scheduleNote: string
   endsAt: string
   salesStartAt: string
   salesEndAt: string
@@ -158,6 +159,7 @@ const emptyForm = (): FormFields => ({
   bannerUrl: "",
   location: "",
   startsAt: "",
+  scheduleNote: "",
   endsAt: "",
   salesStartAt: "",
   salesEndAt: "",
@@ -195,6 +197,7 @@ function mapDetailToForm(detail: MerchantEventDetailResponse): FormFields {
     bannerUrl: detail.bannerUrl ?? "",
     location: detail.location ?? "",
     startsAt: isoToDatetimeLocal(detail.startsAt),
+    scheduleNote: detail.scheduleNote ?? "",
     endsAt: isoToDatetimeLocal(detail.endsAt),
     salesStartAt: isoToDatetimeLocal(detail.salesStartAt),
     salesEndAt: isoToDatetimeLocal(detail.salesEndAt),
@@ -366,13 +369,17 @@ export function EditEventDialog({
       return null
     }
     if (s === 2) {
-      if (!form.startsAt.trim()) return "Choose an event start date and time."
-      const startIso = datetimeLocalToIso(form.startsAt)
-      if (!startIso) return "Invalid event start date."
+      const note = form.scheduleNote.trim()
+      if (note.length > 120) return "When it happens must be 120 characters or fewer."
+      if (!form.startsAt.trim() && !note) {
+        return "Choose an event start date, or write when it happens (e.g. Every Friday)."
+      }
+      const startIso = form.startsAt.trim() ? datetimeLocalToIso(form.startsAt) : null
+      if (form.startsAt.trim() && !startIso) return "Invalid event start date."
       if (form.endsAt.trim()) {
         const endIso = datetimeLocalToIso(form.endsAt)
         if (!endIso) return "Invalid event end date."
-        if (new Date(endIso) < new Date(startIso)) return "End must be after start."
+        if (startIso && new Date(endIso) < new Date(startIso)) return "End must be after start."
       }
       if (form.salesStartAt.trim() && form.salesEndAt.trim()) {
         const ss = datetimeLocalToIso(form.salesStartAt)
@@ -483,10 +490,14 @@ export function EditEventDialog({
       return row
     })
 
-    const startsAt = datetimeLocalToIso(form.startsAt)!
+    const startsAt = datetimeLocalToIso(form.startsAt)
     const payload: UpdateMerchantEventWithTiersPayload = {
       title: form.title.trim(),
-      startsAt,
+      startsAt: startsAt || null,
+      scheduleNote: form.scheduleNote.trim() || null,
+      endsAt: datetimeLocalToIso(form.endsAt) || null,
+      salesStartAt: datetimeLocalToIso(form.salesStartAt) || null,
+      salesEndAt: datetimeLocalToIso(form.salesEndAt) || null,
       tiers: tierPayloads,
       currency: eventCurrency,
       isPublic: form.isPublic === "true",
@@ -497,12 +508,6 @@ export function EditEventDialog({
     const bannerUrl = normalizeBannerPath(uploadedBannerUrl ?? form.bannerUrl)
     if (bannerUrl) payload.bannerUrl = bannerUrl
     if (form.location.trim()) payload.location = form.location.trim()
-    const endsAt = datetimeLocalToIso(form.endsAt)
-    if (endsAt) payload.endsAt = endsAt
-    const salesS = datetimeLocalToIso(form.salesStartAt)
-    const salesE = datetimeLocalToIso(form.salesEndAt)
-    if (salesS) payload.salesStartAt = salesS
-    if (salesE) payload.salesEndAt = salesE
     if (form.capacity.trim()) payload.capacity = Number.parseInt(form.capacity, 10)
     if (Object.keys(metadata).length) payload.metadata = metadata
 
@@ -656,15 +661,31 @@ export function EditEventDialog({
                 <div className="space-y-2">
                   <div className="flex items-center gap-1.5">
                     <Label htmlFor="ee-starts" className="inline-flex flex-wrap items-center gap-x-1">
-                      Event starts <Req />
+                      Event starts <Opt />
                     </Label>
-                    <FieldHint>When the event itself begins (not necessarily when ticket sales open).</FieldHint>
+                    <FieldHint>Clear this on an existing event and use When it happens instead, for example Every Friday. Leave the end and sales dates blank so tickets stay on sale until you mark the event inactive.</FieldHint>
                   </div>
                   <Input
                     id="ee-starts"
                     type="datetime-local"
                     value={form.startsAt}
                     onChange={(e) => updateField("startsAt", e.target.value)}
+                    disabled={formDisabled}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <div className="flex items-center gap-1.5">
+                    <Label htmlFor="ee-note" className="inline-flex flex-wrap items-center gap-x-1">
+                      When it happens <Opt />
+                    </Label>
+                    <FieldHint>Use this instead of a start date for a repeating event, e.g. Every Friday. Sales stay open until you mark the event inactive.</FieldHint>
+                  </div>
+                  <Input
+                    id="ee-note"
+                    value={form.scheduleNote}
+                    onChange={(e) => updateField("scheduleNote", e.target.value)}
+                    placeholder="Every Friday"
+                    maxLength={120}
                     disabled={formDisabled}
                   />
                 </div>
