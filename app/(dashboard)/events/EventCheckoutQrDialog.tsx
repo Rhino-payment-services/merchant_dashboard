@@ -250,7 +250,7 @@ export function EventCheckoutQrDialog({
                   <p>3. Complete ticket purchase on the checkout page</p>
                 </div>
                 <div class="footer">
-                  <p>Powered by RukaPay</p>
+                  <p>Powered by Rhino Payment Services Limited</p>
                 </div>
               </div>
             </body>
