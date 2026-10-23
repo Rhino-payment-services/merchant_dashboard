@@ -45,6 +45,14 @@ import { API_URL } from "@/lib/config"
 
 const BRAND = "#08163d"
 
+function EventCheckoutFooter() {
+  return (
+    <footer className="mt-10 text-center">
+      <p className="text-xs text-gray-400">Powered by Rhino Payment Services Limited</p>
+    </footer>
+  )
+}
+
 const dateFmt = new Intl.DateTimeFormat("en-UG", {
   dateStyle: "medium",
   timeStyle: "short",
@@ -471,6 +479,7 @@ function PublicEventCheckoutPage({ params }: PageProps) {
             </Button>
           </CardContent>
         </Card>
+        <EventCheckoutFooter />
       </div>
     )
   }
@@ -501,6 +510,7 @@ function PublicEventCheckoutPage({ params }: PageProps) {
             <p className="text-xs text-gray-400">{formatEventWhen(detail.startsAt, detail.endsAt, detail.scheduleNote)}</p>
           </CardContent>
         </Card>
+        <EventCheckoutFooter />
       </div>
     )
   }
@@ -809,7 +819,7 @@ function PublicEventCheckoutPage({ params }: PageProps) {
         </Card>
       ) : null}
 
-      <p className="mt-10 text-center text-xs text-gray-400">Powered by RukaPay</p>
+      <EventCheckoutFooter />
     </div>
   )
 }
