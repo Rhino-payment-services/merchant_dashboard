@@ -22,6 +22,11 @@ import {
   useValidateRukapayWalletRecipient,
 } from "@/lib/api/payment.api";
 import { UGANDAN_BANKS } from "@/app/lib/bankList";
+import {
+  BANK_TRANSFER_PROCESSING_MESSAGE,
+  isBankTransferStillProcessing,
+  mapBankTransferUserMessage,
+} from "@/lib/utils/bank-transfer-status";
 
 const fmt = (n: number, currency = "UGX") =>
   new Intl.NumberFormat("en-UG", {
@@ -438,10 +443,27 @@ export default function LiquidatePage() {
           validatedAt: bankValidation.validatedAt,
         },
       });
-      toast.success(res?.message || "Bank payout initiated");
+      const payload = res?.data ?? res
+      if (
+        isBankTransferStillProcessing({
+          status: payload?.status ?? res?.status,
+          message: payload?.message ?? res?.message,
+          pending: payload?.pending ?? res?.pending,
+        })
+      ) {
+        toast.success(
+          payload?.message ||
+            res?.message ||
+            BANK_TRANSFER_PROCESSING_MESSAGE,
+        )
+      } else {
+        toast.success(res?.message || "Bank payout initiated")
+      }
       await resetPayoutForm();
     } catch (err: any) {
-      toast.error(err?.message || "Failed to initiate payout");
+      toast.error(
+        mapBankTransferUserMessage(err?.message || "Failed to initiate payout"),
+      );
     }
   };
 

@@ -48,6 +48,11 @@ import {
   NWSC_AREAS,
 } from "@/lib/utils/bill-area-field";
 import {
+  BANK_TRANSFER_PROCESSING_MESSAGE,
+  isBankTransferStillProcessing,
+  mapBankTransferUserMessage,
+} from "@/lib/utils/bank-transfer-status";
+import {
   applyValidationToBillPayment,
   isElectricityMeterType,
 } from "@/lib/utils/bill-payment-enrichment";
@@ -643,7 +648,26 @@ export default function BulkPaymentPage() {
           : {}),
       };
       const result = await processSinglePayment(payload, (session?.user as any)?.id);
-      toast.success('Payment processed successfully!');
+      const resultData = (result as any)?.data ?? result
+      const resultStatus = resultData?.status ?? (result as any)?.status
+      const resultMessage = resultData?.message ?? (result as any)?.message
+      const bankPending =
+        payload.mode === 'WALLET_TO_BANK' &&
+        isBankTransferStillProcessing({
+          status: resultStatus,
+          message: resultMessage,
+          pending: resultData?.pending ?? (result as any)?.pending,
+        })
+
+      if (bankPending) {
+        toast.success(resultMessage || BANK_TRANSFER_PROCESSING_MESSAGE)
+      } else {
+        toast.success(
+          resultStatus === 'PROCESSING' || resultStatus === 'PENDING'
+            ? resultMessage || 'Payment initiated and still processing. Check transactions for the final status.'
+            : 'Payment processed successfully!',
+        )
+      }
       console.log('Single payment result:', result);
       
       // Navigate to transactions page after successful payment
@@ -661,7 +685,12 @@ export default function BulkPaymentPage() {
       setValidationInfo(null);
     } catch (error: any) {
       console.error('Error processing single payment:', error);
-      toast.error(error.message || 'Failed to process payment');
+      const errMsg = error.message || 'Failed to process payment'
+      toast.error(
+        singlePayment.mode === 'WALLET_TO_BANK'
+          ? mapBankTransferUserMessage(errMsg)
+          : errMsg,
+      );
     } finally {
       setSinglePaymentLoading(false);
     }
@@ -1212,7 +1241,9 @@ export default function BulkPaymentPage() {
         } else {
           setBulkTransactionId(null);
           setProcessing(false);
-          toast.error('⏰ Bulk payment polling timeout - please check status manually');
+          toast.warning(
+            'Bulk payment is still processing. Please check transactions later — do not retry the same batch.',
+          );
           console.warn('⚠️ Bulk transaction polling timeout after', maxAttempts, 'attempts');
         }
       } catch (error) {
