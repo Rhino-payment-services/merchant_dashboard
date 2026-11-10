@@ -27,12 +27,14 @@ import { AccessDenied } from '@/app/components/AccessDenied';
 import { dataBundlesApi, saveBlob, type UploadResult } from '@/lib/api/data-bundles.api';
 import { useDataBundleProducts, useDiscardBatch, useSubmitBatch } from '@/lib/hooks/useDataBundles';
 import {
+  DATA_BUNDLE_NETWORKS,
+  type DataBundleNetwork,
   apiErrorMessage,
-  bundleOfferLabel,
   canSubmitUpload,
   formatUgx,
-  groupBundleOffers,
+  networkLabel,
   precheckUploadFile,
+  productsByNetwork,
 } from '@/lib/utils/data-bundles';
 import { useDataBundleAccessContext } from '../_components/DataBundleAccessContext';
 import { RowStatusBadge, StatCard } from '../_components/shared';
@@ -42,6 +44,13 @@ type RowFilter = 'ALL' | 'VALID' | 'INVALID' | 'DUPLICATE';
 const PREVIEW_PAGE_SIZE = 25;
 /** Radix Select cannot use an empty value, so "per row" needs its own sentinel. */
 const PER_ROW_BUNDLE = '__per_row__';
+const NO_PAGE_BUNDLES: Record<DataBundleNetwork, string> = {
+  MTN: PER_ROW_BUNDLE,
+  AIRTEL: PER_ROW_BUNDLE,
+  LYCA: PER_ROW_BUNDLE,
+};
+
+const pageBundleValue = (value: string) => (value === PER_ROW_BUNDLE ? undefined : value);
 
 export default function DataBundlesUploadPage() {
   const router = useRouter();
@@ -49,7 +58,7 @@ export default function DataBundlesUploadPage() {
   const inputRef = useRef<HTMLInputElement>(null);
   const [file, setFile] = useState<File | null>(null);
   const [description, setDescription] = useState('');
-  const [batchBundle, setBatchBundle] = useState(PER_ROW_BUNDLE);
+  const [pageBundles, setPageBundles] = useState(NO_PAGE_BUNDLES);
   const [isDragging, setIsDragging] = useState(false);
   const [phase, setPhase] = useState<Phase>('idle');
   const [progress, setProgress] = useState(0);
@@ -61,7 +70,8 @@ export default function DataBundlesUploadPage() {
   const submit = useSubmitBatch();
   const discard = useDiscardBatch();
   const products = useDataBundleProducts(access.can.upload);
-  const offers = useMemo(() => groupBundleOffers(products.data ?? []), [products.data]);
+  const byNetwork = useMemo(() => productsByNetwork(products.data ?? []), [products.data]);
+  const anyPageBundle = DATA_BUNDLE_NETWORKS.some((n) => pageBundles[n] !== PER_ROW_BUNDLE);
 
   const filteredRows = useMemo(
     () => (result?.rows ?? []).filter((r) => filter === 'ALL' || r.status === filter),
@@ -112,7 +122,9 @@ export default function DataBundlesUploadPage() {
         file,
         {
           description: description.trim() || undefined,
-          bundle: batchBundle === PER_ROW_BUNDLE ? undefined : batchBundle,
+          bundleMtn: pageBundleValue(pageBundles.MTN),
+          bundleAirtel: pageBundleValue(pageBundles.AIRTEL),
+          bundleLyca: pageBundleValue(pageBundles.LYCA),
         },
         (p) => {
           setProgress(p);
@@ -143,7 +155,7 @@ export default function DataBundlesUploadPage() {
     setPhase('idle');
     setProgress(0);
     setDescription('');
-    setBatchBundle(PER_ROW_BUNDLE);
+    setPageBundles(NO_PAGE_BUNDLES);
     if (inputRef.current) inputRef.current.value = '';
   };
 
@@ -168,8 +180,9 @@ export default function DataBundlesUploadPage() {
           <div>
             <CardTitle>Upload recipients</CardTitle>
             <CardDescription>
-              Choose a bundle here and upload a file with phone numbers only, or set a bundle per
-              row in the template. Prices come from RukaPay; validation does not send any bundles.
+              Choose a bundle for each network here and upload a file with phone numbers only, or
+              set a bundle per row in the template. Prices come from RukaPay; validation does not
+              send any bundles.
             </CardDescription>
           </div>
           <Button variant="outline" onClick={downloadTemplate} disabled={downloading}>
@@ -182,29 +195,41 @@ export default function DataBundlesUploadPage() {
           </Button>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="space-y-1">
-            <Label htmlFor="batch-bundle">Bundle for all recipients (optional)</Label>
-            <Select
-              value={batchBundle}
-              onValueChange={setBatchBundle}
-              disabled={busy || phase === 'done' || products.isLoading}
-            >
-              <SelectTrigger id="batch-bundle">
-                <SelectValue placeholder={products.isLoading ? 'Loading bundles…' : 'Choose a bundle'} />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value={PER_ROW_BUNDLE}>Set a bundle per row in the file</SelectItem>
-                {offers.map((offer) => (
-                  <SelectItem key={offer.name} value={offer.name}>
-                    {bundleOfferLabel(offer)}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+          <div className="space-y-2">
+            <div className="grid gap-3 md:grid-cols-3">
+              {DATA_BUNDLE_NETWORKS.map((network) => {
+                const options = byNetwork[network];
+                const id = `bundle-${network.toLowerCase()}`;
+                return (
+                  <div key={network} className="space-y-1">
+                    <Label htmlFor={id}>Bundle for {networkLabel(network)} numbers (optional)</Label>
+                    <Select
+                      value={pageBundles[network]}
+                      onValueChange={(value) => setPageBundles((prev) => ({ ...prev, [network]: value }))}
+                      disabled={busy || phase === 'done' || products.isLoading || options.length === 0}
+                    >
+                      <SelectTrigger id={id}>
+                        <SelectValue
+                          placeholder={products.isLoading ? 'Loading bundles…' : 'Choose a bundle'}
+                        />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value={PER_ROW_BUNDLE}>Set per row in the file</SelectItem>
+                        {options.map((p) => (
+                          <SelectItem key={p.bundleCode} value={p.bundleCode}>
+                            {p.displayName}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                );
+              })}
+            </div>
             <p className="text-xs text-gray-500">
-              {batchBundle === PER_ROW_BUNDLE
-                ? 'Each row needs a Bundle (pick from the template list or type the price, e.g. 5000).'
-                : 'Your file only needs a Phone Number column. A Bundle typed on a row overrides this choice.'}
+              {anyPageBundle
+                ? 'Rows with an empty Bundle get the bundle chosen for their network. A Bundle typed on a row overrides it.'
+                : 'Each row needs a Bundle: pick one from the template list or type the type and price, e.g. Daily 2000.'}
             </p>
           </div>
 
@@ -370,7 +395,9 @@ export default function DataBundlesUploadPage() {
                         </TableCell>
                         <TableCell className="whitespace-nowrap">
                           {r.phoneNumber}
-                          {r.network && <div className="text-xs text-gray-500">{r.network}</div>}
+                          {r.network && (
+                            <div className="text-xs text-gray-500">{networkLabel(r.network)}</div>
+                          )}
                         </TableCell>
                         <TableCell>
                           {r.bundleName ?? r.bundleCode ?? '—'}

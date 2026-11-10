@@ -31,6 +31,8 @@ export interface DataBundleProduct {
   quantity: number;
   unit: string;
   validity: string;
+  /** Voice minutes included (Lyca), e.g. 1000 or "Unlimited". */
+  minutes: number | string | null;
   price: string;
   currency: string;
 }
@@ -234,13 +236,15 @@ export const dataBundlesApi = {
   },
   async uploadBatch(
     file: File,
-    options: { description?: string; bundle?: string },
+    options: { description?: string; bundleMtn?: string; bundleAirtel?: string; bundleLyca?: string },
     onProgress?: (percent: number) => void,
   ): Promise<UploadResult> {
     const form = new FormData();
     form.append('file', file);
     if (options.description) form.append('description', options.description);
-    if (options.bundle) form.append('bundle', options.bundle);
+    if (options.bundleMtn) form.append('bundleMtn', options.bundleMtn);
+    if (options.bundleAirtel) form.append('bundleAirtel', options.bundleAirtel);
+    if (options.bundleLyca) form.append('bundleLyca', options.bundleLyca);
     const res = await apiClient.post('/data-bundles/batches/upload', form, {
       headers: { 'Content-Type': 'multipart/form-data' },
       timeout: 120_000,

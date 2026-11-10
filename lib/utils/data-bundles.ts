@@ -96,45 +96,38 @@ export function canSubmitUpload(summary: UploadSummary | null | undefined): bool
   return !!summary && summary.validRows > 0;
 }
 
-export type BundleOffer = {
-  /** Network-neutral display name sent as the batch bundle, e.g. "Freedom UGX 5,000". */
-  name: string;
-  price: number;
-  mtn: string | null;
-  airtel: string | null;
-};
+export type DataBundleNetwork = 'MTN' | 'AIRTEL' | 'LYCA';
 
-/** One offer per display name, so MTN and Airtel packages at one price appear once. */
-export function groupBundleOffers(
-  products: Array<{ displayName: string; network: string; quantity: number; unit: string; price: string }>,
-): BundleOffer[] {
-  const offers = new Map<string, BundleOffer>();
-  for (const p of products) {
-    const key = p.displayName.trim().toLowerCase();
-    const offer = offers.get(key) ?? {
-      name: p.displayName.trim(),
-      price: Number(p.price),
-      mtn: null,
-      airtel: null,
-    };
-    const size = `${Number(p.quantity)}${p.unit}`;
-    const network = p.network.trim().toUpperCase();
-    if (network === 'MTN' && !offer.mtn) offer.mtn = size;
-    if (network === 'AIRTEL' && !offer.airtel) offer.airtel = size;
-    offers.set(key, offer);
-  }
-  return Array.from(offers.values()).sort((a, b) => a.price - b.price || a.name.localeCompare(b.name));
+export const DATA_BUNDLE_NETWORKS: DataBundleNetwork[] = ['MTN', 'AIRTEL', 'LYCA'];
+
+const NETWORK_LABELS: Record<DataBundleNetwork, string> = { MTN: 'MTN', AIRTEL: 'Airtel', LYCA: 'Lyca' };
+
+export function networkLabel(network: string | null | undefined): string {
+  if (!network) return '';
+  return NETWORK_LABELS[network.toUpperCase() as DataBundleNetwork] ?? network;
 }
 
-/** e.g. "Freedom UGX 5,000 - MTN 1.5GB / Airtel 1.3GB" */
-export function bundleOfferLabel(offer: BundleOffer): string {
-  const sizes = [
-    offer.mtn ? `MTN ${offer.mtn}` : null,
-    offer.airtel ? `Airtel ${offer.airtel}` : null,
-  ].filter(Boolean);
-  const onlyOne =
-    offer.mtn && !offer.airtel ? ' (MTN only)' : !offer.mtn && offer.airtel ? ' (Airtel only)' : '';
-  return sizes.length ? `${offer.name} - ${sizes.join(' / ')}${onlyOne}` : offer.name;
+const VALIDITY_ORDER = ['Day', 'Week', 'Month'];
+
+/** Active products split by network, each sorted Daily, Weekly, Monthly then by price. */
+export function productsByNetwork<
+  T extends { network: string; validity: string; price: string },
+>(products: T[]): Record<DataBundleNetwork, T[]> {
+  const grouped: Record<DataBundleNetwork, T[]> = { MTN: [], AIRTEL: [], LYCA: [] };
+  for (const p of products) {
+    const network = p.network.toUpperCase() as DataBundleNetwork;
+    if (grouped[network]) grouped[network].push(p);
+  }
+  const rank = (v: string) => {
+    const i = VALIDITY_ORDER.indexOf(v);
+    return i === -1 ? VALIDITY_ORDER.length : i;
+  };
+  for (const network of DATA_BUNDLE_NETWORKS) {
+    grouped[network].sort(
+      (a, b) => rank(a.validity) - rank(b.validity) || Number(a.price) - Number(b.price),
+    );
+  }
+  return grouped;
 }
 
 export const MAX_UPLOAD_BYTES = 5 * 1024 * 1024;
