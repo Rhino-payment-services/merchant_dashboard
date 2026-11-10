@@ -1,14 +1,18 @@
 "use client"
 
-import React, { Suspense, useEffect, useState } from 'react'
+import React, { Suspense, useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
-import Image from 'next/image'
 import { useSearchParams } from 'next/navigation'
+import { CheckCircle2, Circle, Loader2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { Card } from '@/components/ui/card'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
-import { CheckCircle2, Circle, Eye, EyeOff, ShieldAlert, ShieldCheck } from 'lucide-react'
+import { TextField } from '@/components/ui/text-field'
+import AuthShell from '@/components/auth/AuthShell'
+import AuthHeader from '@/components/auth/AuthHeader'
+import AuthStatus from '@/components/auth/AuthStatus'
+import AuthLoading from '@/components/auth/AuthLoading'
+import FormAlert from '@/components/auth/FormAlert'
+import { authButtonClass, authSecondaryButtonClass } from '@/components/auth/authStyles'
+import { cn } from '@/lib/utils'
 import {
   PASSWORD_RULES,
   classifyResetError,
@@ -33,18 +37,22 @@ const PROBLEM_COPY: Record<Exclude<ResetTokenProblem, null>, { title: string; bo
   },
 }
 
+type PasswordErrors = { password?: string; confirm?: string }
+
 function ResetPasswordContent() {
   const searchParams = useSearchParams()
   const token = searchParams.get('token') || ''
   const [password, setPassword] = useState('')
   const [confirm, setConfirm] = useState('')
-  const [show, setShow] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
+  const [errors, setErrors] = useState<PasswordErrors>({})
   const [error, setError] = useState<string | null>(null)
   const [problem, setProblem] = useState<ResetTokenProblem>(() =>
     !token ? 'invalid' : isResetTokenExpired(token) ? 'expired' : null,
   )
   const [done, setDone] = useState(false)
+  const passwordRef = useRef<HTMLInputElement>(null)
+  const confirmRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     document.title = 'Reset Password - RukaPay Merchant'
@@ -55,9 +63,16 @@ function ResetPasswordContent() {
     setError(null)
     const invalid = validateNewPassword(password, confirm)
     if (invalid) {
-      setError(invalid)
+      if (invalid === 'Passwords do not match') {
+        setErrors({ confirm: invalid })
+        confirmRef.current?.focus()
+      } else {
+        setErrors({ password: invalid })
+        passwordRef.current?.focus()
+      }
       return
     }
+    setErrors({})
     setIsLoading(true)
     try {
       await resetPassword(token, password, confirm)
@@ -72,102 +87,123 @@ function ResetPasswordContent() {
     }
   }
 
-  return (
-    <div className="min-h-screen bg-gradient-to-br from-main-50 via-white to-main-50 flex items-center justify-center p-4">
-      <div className="w-full max-w-md">
-        <div className="text-center mb-8">
-          <div className="flex items-center justify-center mb-6">
-            <div className="w-16 h-16 rounded-xl flex items-center justify-center mr-3 bg-white shadow-md">
-              <Image src="/images/logo.jpg" alt="RukaPay" width={56} height={56} className="rounded-lg" />
-            </div>
-            <span className="text-4xl font-bold text-[#08163d]">RukaPay</span>
-          </div>
-          <h1 className="text-3xl font-bold text-[#08163d] mb-3">Reset password</h1>
-        </div>
+  if (done) {
+    return (
+      <AuthShell>
+        <AuthStatus
+          tone="success"
+          title="Your password has been reset"
+          description="You can now sign in with your new password."
+          actions={
+            <Button asChild className={authButtonClass}>
+              <Link href="/auth/login?tab=team">Go to sign in</Link>
+            </Button>
+          }
+        />
+      </AuthShell>
+    )
+  }
 
-        <Card className="p-8 shadow-xl border-0 bg-white/80 backdrop-blur-sm">
-          {done ? (
-            <div className="space-y-4 text-center">
-              <ShieldCheck className="h-12 w-12 text-green-600 mx-auto" />
-              <p className="font-medium text-gray-900">Your password has been reset</p>
-              <p className="text-sm text-gray-600">You can now sign in with your new password.</p>
-              <Button asChild className="w-full">
-                <Link href="/auth/login?tab=team">Go to sign in</Link>
-              </Button>
-            </div>
-          ) : problem ? (
-            <div className="space-y-4 text-center">
-              <ShieldAlert className="h-12 w-12 text-amber-600 mx-auto" />
-              <p className="font-medium text-gray-900">{PROBLEM_COPY[problem].title}</p>
-              <p className="text-sm text-gray-600">{PROBLEM_COPY[problem].body}</p>
-              <Button asChild className="w-full">
+  if (problem) {
+    return (
+      <AuthShell>
+        <AuthStatus
+          tone="warning"
+          title={PROBLEM_COPY[problem].title}
+          description={PROBLEM_COPY[problem].body}
+          actions={
+            <>
+              <Button asChild className={authButtonClass}>
                 <Link href="/auth/forgot-password">Request a new link</Link>
               </Button>
-              <Button asChild variant="ghost" className="w-full">
+              <Button asChild variant="outline" className={authSecondaryButtonClass}>
                 <Link href="/auth/login?tab=team">Back to sign in</Link>
               </Button>
-            </div>
+            </>
+          }
+        />
+      </AuthShell>
+    )
+  }
+
+  return (
+    <AuthShell>
+      <AuthHeader
+        backHref="/auth/login?tab=team"
+        title="Choose a new password"
+        description="You'll use it the next time you sign in."
+      />
+
+      <form onSubmit={handleSubmit} noValidate className="mt-8 space-y-5">
+        {error && <FormAlert tone="error">{error}</FormAlert>}
+
+        <div>
+          <TextField
+            ref={passwordRef}
+            variant="floating"
+            id="password"
+            type="password"
+            label="New password"
+            autoComplete="new-password"
+            value={password}
+            onChange={(e) => {
+              setPassword(e.target.value)
+              setErrors((current) => ({ ...current, password: undefined }))
+            }}
+            error={errors.password}
+            aria-describedby="password-rules"
+            required
+          />
+          <ul id="password-rules" className="mt-3 grid gap-1.5 text-[13px] sm:grid-cols-2">
+            {PASSWORD_RULES.map((rule) => {
+              const ok = rule.test(password)
+              return (
+                <li
+                  key={rule.label}
+                  className={cn('flex items-center gap-1.5 transition-colors', ok ? 'text-primary' : 'text-slate-500')}
+                >
+                  {ok ? <CheckCircle2 className="size-3.5 shrink-0" aria-hidden /> : <Circle className="size-3.5 shrink-0" aria-hidden />}
+                  {rule.label}
+                </li>
+              )
+            })}
+          </ul>
+        </div>
+
+        <TextField
+          ref={confirmRef}
+          variant="floating"
+          id="confirm"
+          type="password"
+          label="Confirm new password"
+          autoComplete="new-password"
+          value={confirm}
+          onChange={(e) => {
+            setConfirm(e.target.value)
+            setErrors((current) => ({ ...current, confirm: undefined }))
+          }}
+          error={errors.confirm}
+          required
+        />
+
+        <Button type="submit" className={authButtonClass} disabled={isLoading}>
+          {isLoading ? (
+            <>
+              <Loader2 className="animate-spin" aria-hidden />
+              Resetting…
+            </>
           ) : (
-            <form onSubmit={handleSubmit} className="space-y-4" noValidate>
-              <div>
-                <Label htmlFor="password">New password</Label>
-                <div className="relative mt-1">
-                  <Input
-                    id="password"
-                    type={show ? 'text' : 'password'}
-                    autoComplete="new-password"
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    required
-                  />
-                  <button
-                    type="button"
-                    className="absolute right-2 top-2 text-gray-500"
-                    aria-label={show ? 'Hide password' : 'Show password'}
-                    onClick={() => setShow(!show)}
-                  >
-                    {show ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                  </button>
-                </div>
-              </div>
-              <ul className="grid grid-cols-1 gap-1 text-xs">
-                {PASSWORD_RULES.map((rule) => {
-                  const ok = rule.test(password)
-                  return (
-                    <li key={rule.label} className={`flex items-center gap-1 ${ok ? 'text-green-600' : 'text-gray-500'}`}>
-                      {ok ? <CheckCircle2 className="h-3.5 w-3.5" /> : <Circle className="h-3.5 w-3.5" />}
-                      {rule.label}
-                    </li>
-                  )
-                })}
-              </ul>
-              <div>
-                <Label htmlFor="confirm">Confirm new password</Label>
-                <Input
-                  id="confirm"
-                  type={show ? 'text' : 'password'}
-                  autoComplete="new-password"
-                  value={confirm}
-                  onChange={(e) => setConfirm(e.target.value)}
-                  className="mt-1"
-                  required
-                />
-              </div>
-              {error && <p className="text-sm text-red-600">{error}</p>}
-              <Button type="submit" className="w-full" disabled={isLoading}>
-                {isLoading ? 'Resetting…' : 'Reset password'}
-              </Button>
-            </form>
+            'Reset password'
           )}
-        </Card>
-      </div>
-    </div>
+        </Button>
+      </form>
+    </AuthShell>
   )
 }
 
 export default function ResetPasswordPage() {
   return (
-    <Suspense fallback={<div className="min-h-screen flex items-center justify-center">Loading…</div>}>
+    <Suspense fallback={<AuthLoading />}>
       <ResetPasswordContent />
     </Suspense>
   )

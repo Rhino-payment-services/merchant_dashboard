@@ -2,10 +2,12 @@
 
 import React, { useState, useEffect, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
+import { Loader2 } from 'lucide-react';
 import { Button } from '../../../components/ui/button';
-import { Card } from '../../../components/ui/card';
-import { CheckCircle, XCircle, Loader2, Users } from 'lucide-react';
-import Image from 'next/image';
+import AuthShell from '@/components/auth/AuthShell';
+import AuthStatus from '@/components/auth/AuthStatus';
+import AuthLoading from '@/components/auth/AuthLoading';
+import { authButtonClass } from '@/components/auth/authStyles';
 import { toast } from 'sonner';
 
 function AcceptInvitationContent() {
@@ -73,123 +75,51 @@ function AcceptInvitationContent() {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-main-50 via-white to-main-50 flex items-center justify-center p-4">
-        <div className="w-full max-w-md">
-          {/* Page Header */}
-          <div className="text-center mb-8">
-            <div className="flex items-center justify-center mb-6">
-              <div className="w-16 h-16 rounded-xl flex items-center justify-center mr-3 bg-white shadow-md">
-                <Image src="/images/logo.jpg" alt="RukaPay" width={56} height={56} className='rounded-lg' />
-              </div>
-              <span className="text-4xl font-bold text-[#08163d]">RukaPay</span>
-            </div>
-            <h1 className="text-3xl font-bold text-[#08163d] mb-3">Accepting Invitation</h1>
-            <p className="text-gray-600 text-lg">Please wait while we process your invitation...</p>
-          </div>
-
-          <Card className="p-8 shadow-xl border-0 bg-white/80 backdrop-blur-sm">
-            <div className="text-center space-y-6">
-              <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto">
-                <Loader2 className="w-8 h-8 text-blue-600 animate-spin" />
-              </div>
-
-              <div>
-                <h3 className="text-lg font-semibold text-gray-900 mb-2">
-                  Processing Your Invitation
-                </h3>
-                <p className="text-sm text-gray-600">
-                  We're activating your team member account...
-                </p>
-              </div>
-            </div>
-          </Card>
-        </div>
-      </div>
+      <AuthShell>
+        <AuthStatus
+          tone="loading"
+          title="Accepting your invitation"
+          description="Please wait while we activate your team member account…"
+        />
+      </AuthShell>
     );
   }
 
   if (error) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-main-50 via-white to-main-50 flex items-center justify-center p-4">
-        <div className="w-full max-w-md">
-          {/* Page Header */}
-          <div className="text-center mb-8">
-            <div className="flex items-center justify-center mb-6">
-              <div className="w-16 h-16 rounded-xl flex items-center justify-center mr-3 bg-white shadow-md">
-                <Image src="/images/logo.jpg" alt="RukaPay" width={56} height={56} className='rounded-lg' />
-              </div>
-              <span className="text-4xl font-bold text-[#08163d]">RukaPay</span>
-            </div>
-            <h1 className="text-3xl font-bold text-[#08163d] mb-3">Invitation Error</h1>
-            <p className="text-gray-600 text-lg">There was a problem accepting your invitation</p>
-          </div>
-
-          <Card className="p-8 shadow-xl border-0 bg-white/80 backdrop-blur-sm">
-            <div className="text-center space-y-6">
-              <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto">
-                <XCircle className="w-8 h-8 text-red-600" />
-              </div>
-
-              <div>
-                <h3 className="text-lg font-semibold text-gray-900 mb-2">Unable to Accept Invitation</h3>
-                <p className="text-sm text-gray-600 mb-4">
-                  {error}
-                </p>
-                <p className="text-xs text-gray-500">
-                  The invitation link may be expired or invalid. Please contact your team administrator for a new invitation.
-                </p>
-              </div>
-
-              <Button
-                onClick={() => router.push('/auth/login')}
-                className="w-full bg-main-600 hover:bg-main-700 text-white font-medium rounded-lg"
-              >
-                Go to Login
-              </Button>
-            </div>
-          </Card>
-        </div>
-      </div>
+      <AuthShell>
+        <AuthStatus
+          tone="error"
+          title="We couldn't accept this invitation"
+          description={error}
+          actions={
+            <Button onClick={() => router.push('/auth/login')} className={authButtonClass}>
+              Go to login
+            </Button>
+          }
+        >
+          <p className="text-[13px] text-slate-500">
+            The invitation link may be expired or invalid. Please contact your team administrator for a new invitation.
+          </p>
+        </AuthStatus>
+      </AuthShell>
     );
   }
 
   if (isSuccess) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-main-50 via-white to-main-50 flex items-center justify-center p-4">
-        <div className="w-full max-w-md">
-          {/* Page Header */}
-          <div className="text-center mb-8">
-            <div className="flex items-center justify-center mb-6">
-              <div className="w-16 h-16 rounded-xl flex items-center justify-center mr-3 bg-white shadow-md">
-                <Image src="/images/logo.jpg" alt="RukaPay" width={56} height={56} className='rounded-lg' />
-              </div>
-              <span className="text-4xl font-bold text-[#08163d]">RukaPay</span>
-            </div>
-            <h1 className="text-3xl font-bold text-[#08163d] mb-3">Invitation Accepted!</h1>
-            <p className="text-gray-600 text-lg">Your team member account has been activated</p>
-          </div>
-
-          <Card className="p-8 shadow-xl border-0 bg-white/80 backdrop-blur-sm">
-            <div className="text-center space-y-6">
-              <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto">
-                <CheckCircle className="w-8 h-8 text-green-600" />
-              </div>
-
-              <div>
-                <h3 className="text-lg font-semibold text-gray-900 mb-2">Welcome to the Team!</h3>
-                <p className="text-sm text-gray-600 mb-4">
-                  Your account has been successfully activated. You'll be redirected to set up your password.
-                </p>
-              </div>
-
-              <div className="flex items-center justify-center space-x-2 text-sm text-gray-500">
-                <Loader2 className="w-4 h-4 animate-spin" />
-                <span>Redirecting to password setup...</span>
-              </div>
-            </div>
-          </Card>
-        </div>
-      </div>
+      <AuthShell>
+        <AuthStatus
+          tone="success"
+          title="Invitation accepted"
+          description="Your account has been successfully activated. You'll be redirected to set up your password."
+        >
+          <p className="flex items-center gap-2 text-sm text-slate-500">
+            <Loader2 className="size-4 animate-spin" aria-hidden />
+            Redirecting to password setup…
+          </p>
+        </AuthStatus>
+      </AuthShell>
     );
   }
 
@@ -198,11 +128,7 @@ function AcceptInvitationContent() {
 
 export default function AcceptInvitationPage() {
   return (
-    <Suspense fallback={
-      <div className="min-h-screen bg-gradient-to-br from-main-50 via-white to-main-50 flex items-center justify-center">
-        <div className="w-8 h-8 border-2 border-main-600 border-t-transparent rounded-full animate-spin"></div>
-      </div>
-    }>
+    <Suspense fallback={<AuthLoading />}>
       <AcceptInvitationContent />
     </Suspense>
   );

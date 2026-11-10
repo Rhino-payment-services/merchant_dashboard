@@ -1,16 +1,19 @@
 "use client"
 
-import React, { useState, useEffect, Suspense } from 'react';
+import React, { useState, useEffect, useRef, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { signIn } from 'next-auth/react';
 import { Button } from '../../../components/ui/button';
-import { Card } from '../../../components/ui/card';
-import { Input } from '../../../components/ui/input';
-import { PinInput } from '../../../components/ui/pin-input';
+import { TextField } from '../../../components/ui/text-field';
+import { FieldError, FieldHint } from '../../../components/ui/field-message';
 import { PhoneNumberInput } from '../../../components/ui/phone-input';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../../../components/ui/tabs';
-import { Phone, Mail, Lock, Building2 } from 'lucide-react';
-import Image from 'next/image';
+import AuthShell from '@/components/auth/AuthShell';
+import FormAlert from '@/components/auth/FormAlert';
+import AuthLoading from '@/components/auth/AuthLoading';
+import { authButtonClass, authLinkClass, EMAIL_PATTERN } from '@/components/auth/authStyles';
+import { Phone, Mail, Loader2 } from 'lucide-react';
+import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { API_URL } from '@/lib/config';
 import { rememberMerchantOtpPhone, normalizeMerchantPortalPhone } from '@/lib/auth/merchantOtpPhone';
@@ -44,6 +47,19 @@ function LoginContent() {
     email: '',
     password: ''
   });
+  const [fieldErrors, setFieldErrors] = useState<Partial<Record<'phone' | 'pin' | 'email' | 'password', string>>>({});
+
+  const pinRef = useRef<HTMLInputElement>(null);
+  const emailRef = useRef<HTMLInputElement>(null);
+  const passwordRef = useRef<HTMLInputElement>(null);
+
+  const clearFieldError = (field: keyof typeof fieldErrors) =>
+    setFieldErrors((current) => (current[field] ? { ...current, [field]: undefined } : current));
+
+  const showPhoneError = (inputId: string, message: string) => {
+    setFieldErrors({ phone: message });
+    document.getElementById(inputId)?.focus();
+  };
 
   useEffect(() => {
     const phone = normalizeMerchantPortalPhone(ownerData.phoneNumber);
@@ -73,7 +89,7 @@ function LoginContent() {
     e.preventDefault();
     
     if (!ownerData.phoneNumber) {
-      toast.error('Please enter your phone number');
+      showPhoneError('phoneNumber', 'Enter your phone number.');
       return;
     }
 
@@ -82,7 +98,7 @@ function LoginContent() {
     try {
       const phoneNumber = normalizeMerchantPortalPhone(ownerData.phoneNumber);
       if (!phoneNumber) {
-        toast.error('Please enter a valid phone number');
+        showPhoneError('phoneNumber', 'Enter a valid phone number.');
         setIsLoading(false);
         return;
       }
@@ -128,7 +144,7 @@ function LoginContent() {
 
     const phoneNumber = normalizeMerchantPortalPhone(ownerData.phoneNumber);
     if (!phoneNumber) {
-      toast.error('Please enter a valid phone number');
+      showPhoneError('phoneNumberPin', 'Enter a valid phone number.');
       return;
     }
     if (!loginOptions?.pinEnabled) {
@@ -136,7 +152,8 @@ function LoginContent() {
       return;
     }
     if (!portalPin || portalPin.length < 4) {
-      toast.error('Please enter your portal PIN');
+      setFieldErrors({ pin: 'Enter your portal PIN (at least 4 digits).' });
+      pinRef.current?.focus();
       return;
     }
 
@@ -179,13 +196,18 @@ function LoginContent() {
   const handleTeamLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    if (!teamData.email) {
-      toast.error('Please enter your email address');
+    const errors: typeof fieldErrors = {};
+    if (!teamData.email) errors.email = 'Enter your email address.';
+    else if (!EMAIL_PATTERN.test(teamData.email.trim())) errors.email = 'Enter a valid email address.';
+    if (!teamData.password) errors.password = 'Enter your password.';
+    setFieldErrors(errors);
+
+    if (errors.email) {
+      emailRef.current?.focus();
       return;
     }
-
-    if (!teamData.password) {
-      toast.error('Please enter your password');
+    if (errors.password) {
+      passwordRef.current?.focus();
       return;
     }
 
@@ -253,86 +275,93 @@ function LoginContent() {
     }
   };
 
+  const segmentTriggerClass =
+    "h-full gap-2 rounded-md text-slate-500 transition-colors duration-150 hover:text-slate-800 data-[state=active]:bg-white data-[state=active]:text-primary data-[state=active]:shadow-sm";
+
+  const phoneField = (inputId: string, hint?: string) => (
+    <div>
+      <PhoneNumberInput
+        variant="auth"
+        label="Phone number"
+        inputId={inputId}
+        invalid={!!fieldErrors.phone}
+        describedBy={fieldErrors.phone ? 'phone-error' : hint ? `${inputId}-hint` : undefined}
+        value={ownerData.phoneNumber}
+        onChange={(value) => {
+          setOwnerData({ ...ownerData, phoneNumber: value });
+          clearFieldError('phone');
+        }}
+        placeholder="700 123 456"
+        defaultCountry="ug"
+      />
+      <FieldError id="phone-error" message={fieldErrors.phone} />
+      {!fieldErrors.phone && <FieldHint id={`${inputId}-hint`} message={hint} />}
+    </div>
+  );
+
   return (
-    <div className="min-h-screen bg-gradient-to-br from-main-50 via-white to-main-50 flex items-center justify-center p-4">
-      <div className="w-full max-w-md">
-        {/* Page Header - matches OTP page exactly */}
-        <div className="text-center mb-8">
-          <div className="flex items-center justify-center mb-6">
-            <div className="w-16 h-16 rounded-xl flex items-center justify-center mr-3 bg-white shadow-md">
-              <Image src="/images/logo.jpg" alt="RukaPay" width={56} height={56} className='rounded-lg' />
-            </div>
-            <span className="text-4xl font-bold text-[#08163d]">RukaPay</span>
-          </div>
-          <h1 className="text-3xl font-bold text-[#08163d] mb-3">Sign In</h1>
-          <p className="text-gray-600 text-lg">Access your merchant dashboard</p>
-        </div>
+    <AuthShell>
+      <h1 className="text-2xl font-semibold tracking-tight text-primary sm:text-[28px] sm:leading-9">
+        Welcome back
+      </h1>
+      <p className="mt-2 text-[15px] text-slate-500">Sign in to your RukaPay merchant dashboard.</p>
 
-        <Card className="p-8 shadow-xl border-0 bg-white/80 backdrop-blur-sm">
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="mt-8 w-full">
+        <TabsList className="grid h-11 w-full grid-cols-2 rounded-lg bg-slate-100 p-1">
+          <TabsTrigger value="owner" className={segmentTriggerClass}>
+            <Phone className="size-4" aria-hidden />
+            Phone
+          </TabsTrigger>
+          <TabsTrigger value="team" className={segmentTriggerClass}>
+            <Mail className="size-4" aria-hidden />
+            Email
+          </TabsTrigger>
+        </TabsList>
 
-          <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-          <TabsList className="grid w-full grid-cols-2 mb-6">
-            <TabsTrigger value="owner" className="flex items-center gap-2">
-              <Phone className="h-4 w-4" />
-              Phone Login
-            </TabsTrigger>
-            <TabsTrigger value="team" className="flex items-center gap-2">
-              <Mail className="h-4 w-4" />
-              Email Login
-            </TabsTrigger>
-          </TabsList>
-
-          {/* Business Owner Login (Phone + OTP or PIN) */}
-          <TabsContent value="owner">
-            {loginOptions?.pinEnabled && (
-              <Tabs value={ownerLoginMode} onValueChange={(v) => setOwnerLoginMode(v as 'otp' | 'pin')} className="mb-4">
-                <TabsList className="grid w-full grid-cols-2">
-                  <TabsTrigger value="otp">OTP</TabsTrigger>
-                  <TabsTrigger value="pin">PIN</TabsTrigger>
+        {/* Business Owner Login (Phone + OTP or PIN) */}
+        <TabsContent value="owner" className="mt-6">
+          {loginOptions?.pinEnabled && (
+            <div className="mb-5 flex items-center justify-between gap-4">
+              <span className="text-sm text-slate-500">Sign in with</span>
+              <Tabs value={ownerLoginMode} onValueChange={(v) => setOwnerLoginMode(v as 'otp' | 'pin')}>
+                <TabsList className="grid h-9 w-44 grid-cols-2 rounded-md bg-slate-100 p-0.5">
+                  <TabsTrigger value="otp" className={cn(segmentTriggerClass, "rounded-[5px] text-[13px]")}>
+                    SMS code
+                  </TabsTrigger>
+                  <TabsTrigger value="pin" className={cn(segmentTriggerClass, "rounded-[5px] text-[13px]")}>
+                    PIN
+                  </TabsTrigger>
                 </TabsList>
               </Tabs>
-            )}
+            </div>
+          )}
 
-            {ownerLoginMode === 'pin' && loginOptions?.pinEnabled ? (
-              <form onSubmit={handleOwnerPinLogin} className="space-y-4">
-                <div>
-                  <label htmlFor="phoneNumberPin" className="text-sm font-medium text-gray-700">Phone Number</label>
-                  <div className="mt-2">
-                    <PhoneNumberInput
-                      value={ownerData.phoneNumber}
-                      onChange={(value) => setOwnerData({ ...ownerData, phoneNumber: value })}
-                      placeholder="700 123 456"
-                      defaultCountry="ug"
-                    />
-                  </div>
-                </div>
-                <div>
-                  <label htmlFor="portalPin" className="text-sm font-medium text-gray-700">Portal PIN</label>
-                  <div className="mt-2">
-                    <PinInput
-                      id="portalPin"
-                      placeholder="Enter your portal PIN"
-                      value={portalPin}
-                      onChange={setPortalPin}
-                      leftIcon={<Lock className="h-4 w-4" />}
-                      required
-                    />
-                  </div>
-                  {loginOptions?.pinSetupRequired && (
-                    <p className="text-xs text-amber-600 mt-2">
-                      No portal PIN set yet. Sign in with OTP first, or use a temporary PIN from your admin.
-                    </p>
-                  )}
-                </div>
-                <Button
-                  type="submit"
-                  className="w-full py-3 bg-main-600 hover:bg-main-700 text-white font-medium rounded-lg transition-all duration-200"
-                  disabled={isLoading}
-                >
-                  {isLoading ? 'Signing in…' : 'Sign in with PIN'}
-                </Button>
-                <p className="text-xs text-center text-gray-500">
-                  Merchant dashboard PIN only ·{' '}
+          {ownerLoginMode === 'pin' && loginOptions?.pinEnabled ? (
+            <form onSubmit={handleOwnerPinLogin} noValidate className="space-y-5">
+              {phoneField('phoneNumberPin')}
+
+              <div>
+                <TextField
+                  ref={pinRef}
+                  variant="floating"
+                  id="portalPin"
+                  type="password"
+                  label="Portal PIN"
+                  inputMode="numeric"
+                  maxLength={6}
+                  value={portalPin}
+                  onChange={(e) => {
+                    setPortalPin(e.target.value.replace(/\D/g, ''));
+                    clearFieldError('pin');
+                  }}
+                  error={fieldErrors.pin}
+                  aria-describedby={fieldErrors.pin ? undefined : 'portalPin-hint'}
+                  required
+                />
+                <div className="mt-2 flex items-start justify-between gap-3">
+                  <p id="portalPin-hint" className="text-[13px] text-slate-500">
+                    {!fieldErrors.pin && 'Merchant dashboard PIN only.'}
+                  </p>
                   <Link
                     href={
                       ownerData.phoneNumber
@@ -342,130 +371,128 @@ function LoginContent() {
                           )}`
                         : '/auth/forgot-portal-pin'
                     }
-                    className="text-main-600 hover:underline"
+                    className={cn(authLinkClass, "shrink-0 text-[13px]")}
                   >
-                    Forgot portal PIN?
-                  </Link>
-                </p>
-              </form>
-            ) : (
-            <form onSubmit={handleOwnerLogin} className="space-y-4">
-              <div>
-                <label htmlFor="phoneNumber" className="text-sm font-medium text-gray-700">Phone Number</label>
-                <div className="mt-2">
-                  <PhoneNumberInput
-                    value={ownerData.phoneNumber}
-                    onChange={(value) => setOwnerData({ ...ownerData, phoneNumber: value })}
-                    placeholder="700 123 456"
-                    defaultCountry="ug"
-                  />
-                </div>
-                <p className="text-xs text-gray-500 mt-2">
-                  Enter your registered phone number
-                </p>
-              </div>
-
-              <Button
-                type="submit"
-                className="w-full py-3 bg-main-600 hover:bg-main-700 text-white font-medium rounded-lg transition-all duration-200"
-                disabled={isLoading}
-              >
-                {isLoading ? 'Sending OTP...' : 'Send OTP'}
-              </Button>
-
-              <p className="text-xs text-center text-gray-500">
-                You'll receive a 6-digit OTP via SMS
-              </p>
-            </form>
-            )}
-          </TabsContent>
-
-          {/* Team Member Login (Email + Password only) */}
-          <TabsContent value="team">
-            <form onSubmit={handleTeamLogin} className="space-y-4">
-              {/* Email Input */}
-              <div>
-                <label htmlFor="email" className="text-sm font-medium text-gray-700">Email Address</label>
-                <div className="relative mt-2">
-                  <Mail className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
-                  <Input
-                    id="email"
-                    type="email"
-                    placeholder="your.email@company.com"
-                    value={teamData.email}
-                    onChange={(e) => setTeamData({ ...teamData, email: e.target.value })}
-                    className="pl-10"
-                    required
-                  />
-                </div>
-              </div>
-
-              {/* Password Input */}
-              <div>
-                <label htmlFor="password" className="text-sm font-medium text-gray-700">Password</label>
-                <div className="relative mt-2">
-                  <Lock className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
-                  <Input
-                    id="password"
-                    type="password"
-                    placeholder="Enter your password"
-                    value={teamData.password}
-                    onChange={(e) => setTeamData({ ...teamData, password: e.target.value })}
-                    className="pl-10"
-                    required
-                  />
-                </div>
-                <div className="mt-2 text-right">
-                  <Link
-                    href={
-                      teamData.email
-                        ? `/auth/forgot-password?email=${encodeURIComponent(teamData.email)}`
-                        : '/auth/forgot-password'
-                    }
-                    className="text-xs text-main-600 hover:underline"
-                  >
-                    Forgot password?
+                    Forgot PIN?
                   </Link>
                 </div>
+                {loginOptions?.pinSetupRequired && (
+                  <FormAlert tone="warning" className="mt-3">
+                    No portal PIN set yet. Sign in with OTP first, or use a temporary PIN from your admin.
+                  </FormAlert>
+                )}
               </div>
 
-              <Button
-                type="submit"
-                className="w-full py-3 bg-main-600 hover:bg-main-700 text-white font-medium rounded-lg transition-all duration-200"
-                disabled={isLoading}
-              >
-                {isLoading ? 'Signing in...' : 'Sign In'}
+              <Button type="submit" className={authButtonClass} disabled={isLoading}>
+                {isLoading ? (
+                  <>
+                    <Loader2 className="animate-spin" aria-hidden />
+                    Signing in…
+                  </>
+                ) : (
+                  'Sign in with PIN'
+                )}
               </Button>
-
-              <p className="text-xs text-center text-gray-500">
-                Team member access provided by business owner
-              </p>
             </form>
-          </TabsContent>
-          </Tabs>
-        </Card>
+          ) : (
+            <form onSubmit={handleOwnerLogin} noValidate className="space-y-5">
+              {phoneField('phoneNumber', "We'll send a 6-digit verification code to this number by SMS.")}
 
-        {/* Sign Up Link */}
-        <p className="text-center mt-4 text-gray-600">
-          Don't have an account?{' '}
-          <Link href="/auth/signup" className="text-main-600 font-medium hover:underline">
-            Sign Up
-          </Link>
-        </p>
-      </div>
-    </div>
+              <Button type="submit" className={authButtonClass} disabled={isLoading}>
+                {isLoading ? (
+                  <>
+                    <Loader2 className="animate-spin" aria-hidden />
+                    Sending OTP...
+                  </>
+                ) : (
+                  'Send OTP'
+                )}
+              </Button>
+            </form>
+          )}
+        </TabsContent>
+
+        {/* Team Member Login (Email + Password only) */}
+        <TabsContent value="team" className="mt-6">
+          <form onSubmit={handleTeamLogin} noValidate className="space-y-5">
+            <TextField
+              ref={emailRef}
+              variant="floating"
+              id="email"
+              type="email"
+              label="Email address"
+              autoComplete="email"
+              placeholder="you@company.com"
+              value={teamData.email}
+              onChange={(e) => {
+                setTeamData({ ...teamData, email: e.target.value });
+                clearFieldError('email');
+              }}
+              error={fieldErrors.email}
+              required
+            />
+
+            <div>
+              <TextField
+                ref={passwordRef}
+                variant="floating"
+                id="password"
+                type="password"
+                label="Password"
+                autoComplete="current-password"
+                value={teamData.password}
+                onChange={(e) => {
+                  setTeamData({ ...teamData, password: e.target.value });
+                  clearFieldError('password');
+                }}
+                error={fieldErrors.password}
+                required
+              />
+              <div className="mt-2 flex justify-end">
+                <Link
+                  href={
+                    teamData.email
+                      ? `/auth/forgot-password?email=${encodeURIComponent(teamData.email)}`
+                      : '/auth/forgot-password'
+                  }
+                  className={cn(authLinkClass, "text-[13px]")}
+                >
+                  Forgot password?
+                </Link>
+              </div>
+            </div>
+
+            <Button type="submit" className={authButtonClass} disabled={isLoading}>
+              {isLoading ? (
+                <>
+                  <Loader2 className="animate-spin" aria-hidden />
+                  Signing in...
+                </>
+              ) : (
+                'Sign in'
+              )}
+            </Button>
+
+            <p className="text-center text-[13px] text-slate-500">
+              Team member access is provided by your business owner.
+            </p>
+          </form>
+        </TabsContent>
+      </Tabs>
+
+      <p className="mt-8 border-t border-slate-100 pt-6 text-center text-sm text-slate-500">
+        Don&apos;t have an account?{' '}
+        <Link href="/auth/signup" className={authLinkClass}>
+          Create an account
+        </Link>
+      </p>
+    </AuthShell>
   );
 }
 
 export default function EnhancedLoginPage() {
   return (
-    <Suspense fallback={
-      <div className="min-h-screen bg-gradient-to-br from-blue-50 to-blue-100 flex items-center justify-center">
-        <div className="text-center">
-          <h1 className="text-2xl font-bold text-gray-900 mb-2">Loading...</h1>
-        </div>
-      </div>
-    }>
+    <Suspense fallback={<AuthLoading />}>
       <LoginContent />
     </Suspense>
   );

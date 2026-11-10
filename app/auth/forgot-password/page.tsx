@@ -1,14 +1,17 @@
 "use client"
 
-import React, { Suspense, useEffect, useState } from 'react'
+import React, { Suspense, useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
-import Image from 'next/image'
 import { useSearchParams } from 'next/navigation'
+import { Loader2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { Card } from '@/components/ui/card'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
-import { MailCheck } from 'lucide-react'
+import { TextField } from '@/components/ui/text-field'
+import AuthShell from '@/components/auth/AuthShell'
+import AuthHeader from '@/components/auth/AuthHeader'
+import AuthStatus from '@/components/auth/AuthStatus'
+import AuthLoading from '@/components/auth/AuthLoading'
+import FormAlert from '@/components/auth/FormAlert'
+import { authButtonClass, authLinkClass, authSecondaryButtonClass, EMAIL_PATTERN } from '@/components/auth/authStyles'
 import { requestPasswordReset } from '@/lib/auth/passwordReset'
 
 function ForgotPasswordContent() {
@@ -16,7 +19,9 @@ function ForgotPasswordContent() {
   const [email, setEmail] = useState(() => searchParams.get('email') || '')
   const [isLoading, setIsLoading] = useState(false)
   const [sentMessage, setSentMessage] = useState<string | null>(null)
+  const [emailError, setEmailError] = useState<string>()
   const [error, setError] = useState<string | null>(null)
+  const emailRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     document.title = 'Forgot Password - RukaPay Merchant'
@@ -25,8 +30,9 @@ function ForgotPasswordContent() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setError(null)
-    if (!/^\S+@\S+\.\S+$/.test(email.trim())) {
-      setError('Please enter a valid email address')
+    if (!EMAIL_PATTERN.test(email.trim())) {
+      setEmailError(email.trim() ? 'Enter a valid email address.' : 'Enter your email address.')
+      emailRef.current?.focus()
       return
     }
     setIsLoading(true)
@@ -39,77 +45,85 @@ function ForgotPasswordContent() {
     }
   }
 
-  return (
-    <div className="min-h-screen bg-gradient-to-br from-main-50 via-white to-main-50 flex items-center justify-center p-4">
-      <div className="w-full max-w-md">
-        <div className="text-center mb-8">
-          <div className="flex items-center justify-center mb-6">
-            <div className="w-16 h-16 rounded-xl flex items-center justify-center mr-3 bg-white shadow-md">
-              <Image src="/images/logo.jpg" alt="RukaPay" width={56} height={56} className="rounded-lg" />
-            </div>
-            <span className="text-4xl font-bold text-[#08163d]">RukaPay</span>
-          </div>
-          <h1 className="text-3xl font-bold text-[#08163d] mb-3">Forgot password</h1>
-          <p className="text-gray-600">For team members who sign in with email and password.</p>
-        </div>
-
-        <Card className="p-8 shadow-xl border-0 bg-white/80 backdrop-blur-sm">
-          {sentMessage ? (
-            <div className="space-y-4 text-center">
-              <MailCheck className="h-12 w-12 text-green-600 mx-auto" />
-              <p className="text-gray-700">{sentMessage}</p>
-              <p className="text-xs text-gray-500">
-                Didn&apos;t get an email? Check your spam folder or try again in a few minutes.
-              </p>
-              <Button asChild className="w-full">
+  if (sentMessage) {
+    return (
+      <AuthShell>
+        <AuthStatus
+          tone="success"
+          title="Check your email"
+          description={sentMessage}
+          actions={
+            <>
+              <Button asChild className={authButtonClass}>
                 <Link href="/auth/login?tab=team">Back to sign in</Link>
               </Button>
-              <Button
-                type="button"
-                variant="ghost"
-                className="w-full"
-                onClick={() => setSentMessage(null)}
-              >
+              <Button type="button" variant="outline" className={authSecondaryButtonClass} onClick={() => setSentMessage(null)}>
                 Send another link
               </Button>
-            </div>
-          ) : (
-            <form onSubmit={handleSubmit} className="space-y-4" noValidate>
-              <div>
-                <Label htmlFor="email">Email address</Label>
-                <Input
-                  id="email"
-                  type="email"
-                  autoComplete="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="you@business.com"
-                  className="mt-1"
-                  required
-                />
-              </div>
-              {error && <p className="text-sm text-red-600">{error}</p>}
-              <Button type="submit" className="w-full" disabled={isLoading}>
-                {isLoading ? 'Sending…' : 'Send reset link'}
-              </Button>
-            </form>
-          )}
-
-          <p className="text-xs text-center text-gray-500 mt-6">
-            Remember your password?{' '}
-            <Link href="/auth/login?tab=team" className="text-main-600 hover:underline">
-              Back to sign in
-            </Link>
+            </>
+          }
+        >
+          <p className="text-[13px] text-slate-500">
+            Didn&apos;t get an email? Check your spam folder or try again in a few minutes.
           </p>
-        </Card>
-      </div>
-    </div>
+        </AuthStatus>
+      </AuthShell>
+    )
+  }
+
+  return (
+    <AuthShell>
+      <AuthHeader
+        backHref="/auth/login?tab=team"
+        title="Reset your password"
+        description="Enter the email you use to sign in and we'll send you a link to reset your password. For team members who sign in with email and password."
+      />
+
+      <form onSubmit={handleSubmit} noValidate className="mt-8 space-y-5">
+        {error && <FormAlert tone="error">{error}</FormAlert>}
+
+        <TextField
+          ref={emailRef}
+          variant="floating"
+          id="email"
+          type="email"
+          label="Email address"
+          autoComplete="email"
+          placeholder="you@business.com"
+          value={email}
+          onChange={(e) => {
+            setEmail(e.target.value)
+            setEmailError(undefined)
+          }}
+          error={emailError}
+          required
+        />
+
+        <Button type="submit" className={authButtonClass} disabled={isLoading}>
+          {isLoading ? (
+            <>
+              <Loader2 className="animate-spin" aria-hidden />
+              Sending…
+            </>
+          ) : (
+            'Send reset link'
+          )}
+        </Button>
+      </form>
+
+      <p className="mt-8 border-t border-slate-100 pt-6 text-center text-sm text-slate-500">
+        Remember your password?{' '}
+        <Link href="/auth/login?tab=team" className={authLinkClass}>
+          Back to sign in
+        </Link>
+      </p>
+    </AuthShell>
   )
 }
 
 export default function ForgotPasswordPage() {
   return (
-    <Suspense fallback={<div className="min-h-screen flex items-center justify-center">Loading…</div>}>
+    <Suspense fallback={<AuthLoading />}>
       <ForgotPasswordContent />
     </Suspense>
   )
