@@ -73,6 +73,7 @@ import {
 } from '@/app/components/TeamPermissionCheckboxes';
 import {
   canManageTeam,
+  canManageDataBundleUsers,
   getDefaultPermissionsForRole,
   buildUserPermissionSession,
 } from '@/lib/utils/permissions';
@@ -161,6 +162,10 @@ export default function TeamManagementPage() {
       (profile as any)?.merchantData?.liquidationOnlyMode ??
       (profile as any)?.businessWallet?.merchant?.liquidationOnlyMode
     ),
+    featureDataBundleDistribution: !!(
+      (profile as any)?.merchantData?.featureDataBundleDistribution ??
+      (profile as any)?.businessWallet?.merchant?.featureDataBundleDistribution
+    ),
   };
 
   const userSession = buildUserPermissionSession({
@@ -170,6 +175,10 @@ export default function TeamManagementPage() {
       null,
   });
   const canManage = canManageTeam(userSession);
+  const permissionCeiling = {
+    ...featureCeiling,
+    canManageDataBundleUsers: canManageDataBundleUsers(userSession),
+  };
 
   // Get merchant's business wallet directly
   const { data: businessWallet, isLoading: walletLoading, error: walletError } = useMyBusinessWallet();
@@ -352,6 +361,11 @@ export default function TeamManagementPage() {
         canManageEvents: !!member.canManageEvents,
         canManageTeam: !!member.canManageTeam,
         canManageSettings: !!member.canManageSettings,
+        canUploadDataBundles: !!member.canUploadDataBundles,
+        canApproveDataBundles: !!member.canApproveDataBundles,
+        canViewDataBundleReports: !!member.canViewDataBundleReports,
+        canManageDataBundleUsers: !!member.canManageDataBundleUsers,
+        canRetryDataBundles: !!member.canRetryDataBundles,
       },
       paymentSmsNotificationsEnabled: !!member.paymentSmsNotificationsEnabled,
       paymentEmailNotificationsEnabled: !!member.paymentEmailNotificationsEnabled,
@@ -635,7 +649,7 @@ export default function TeamManagementPage() {
                   onChange={(permissions) =>
                     setAddDirectForm({ ...addDirectForm, permissions })
                   }
-                  features={featureCeiling}
+                  features={permissionCeiling}
                 />
 
                 <div className="flex justify-end gap-3 pt-4">
@@ -750,7 +764,7 @@ export default function TeamManagementPage() {
                   onChange={(permissions) =>
                     setInviteForm({ ...inviteForm, permissions })
                   }
-                  features={featureCeiling}
+                  features={permissionCeiling}
                 />
 
                 <div className="flex justify-end gap-3 pt-4">
@@ -956,6 +970,31 @@ export default function TeamManagementPage() {
                         {member.canManageSettings && (
                           <Badge variant="outline" className="text-xs">
                             Settings
+                          </Badge>
+                        )}
+                        {member.canUploadDataBundles && (
+                          <Badge variant="outline" className="text-xs">
+                            Data Bundles Maker
+                          </Badge>
+                        )}
+                        {member.canApproveDataBundles && (
+                          <Badge variant="outline" className="text-xs">
+                            Data Bundles Checker
+                          </Badge>
+                        )}
+                        {member.canViewDataBundleReports && (
+                          <Badge variant="outline" className="text-xs">
+                            Data Bundles Finance
+                          </Badge>
+                        )}
+                        {member.canManageDataBundleUsers && (
+                          <Badge variant="outline" className="text-xs">
+                            Data Bundles Admin
+                          </Badge>
+                        )}
+                        {member.canRetryDataBundles && (
+                          <Badge variant="outline" className="text-xs">
+                            Data Bundles Retry
                           </Badge>
                         )}
                         {member.paymentSmsNotificationsEnabled && (
@@ -1201,7 +1240,7 @@ export default function TeamManagementPage() {
               onChange={(permissions) =>
                 setEditForm({ ...editForm, permissions })
               }
-              features={featureCeiling}
+              features={permissionCeiling}
               disabled={savingEdit}
             />
             <div className="space-y-3 border rounded-lg p-4">

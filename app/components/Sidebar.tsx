@@ -25,7 +25,8 @@ import {
   ShieldCheck,
   Building2,
   Calendar,
-  Droplets
+  Droplets,
+  Wifi
 } from 'lucide-react';
 import Image from 'next/image';
 import { useSession } from 'next-auth/react';
@@ -44,6 +45,7 @@ import {
   canManageSettings,
   buildUserPermissionSession,
 } from '@/lib/utils/permissions';
+import { isDataBundlesAvailable, readDataBundleFeature } from '@/lib/utils/data-bundles';
 
 const navLinks = [
   { section: 'GENERAL', links: [
@@ -60,6 +62,7 @@ const navLinks = [
     { name: 'Team Members', path: '/team', icon: Users },
     { name: 'Payroll', path: '/payroll', icon: Briefcase },
     { name: 'Payroll Approvals', path: '/payroll/approvals', icon: CheckCircle },
+    { name: 'Data Bundles', path: '/data-bundles', icon: Wifi },
   ]},
   { section: 'ACCOUNT', links: [
     { name: 'KYC Verification', path: '/kyc', icon: ShieldCheck },
@@ -116,6 +119,7 @@ export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
     (liveMerchant?.featurePayrollApprovals ?? currentMerchant?.featurePayrollApprovals) === true;
   const liquidationOnlyMode =
     (liveMerchant?.liquidationOnlyMode ?? (currentMerchant as any)?.liquidationOnlyMode) === true;
+  const featureDataBundleDistribution = readDataBundleFeature(liveMerchant, currentMerchant);
 
   // Liquidate + payroll: require featureLiquidation or featureBulkPayments (Payment link is always shown).
   // Liquidation-Only Mode forces Liquidate visible and hides Payment/Payroll.
@@ -168,6 +172,13 @@ export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
           merchantCanLiquidate &&
           canApprovePayments(userSession)
         );
+      }
+      if (link.path === '/data-bundles') {
+        return isDataBundlesAvailable({
+          featureDataBundleDistribution,
+          liquidationOnlyMode,
+          userSession,
+        });
       }
       if (link.path === '/kyc' || link.path === '/settings') {
         return canManageSettings(userSession);

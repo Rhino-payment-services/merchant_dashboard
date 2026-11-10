@@ -415,6 +415,18 @@ function LoginContent() {
                     required
                   />
                 </div>
+                <div className="mt-2 text-right">
+                  <Link
+                    href={
+                      teamData.email
+                        ? `/auth/forgot-password?email=${encodeURIComponent(teamData.email)}`
+                        : '/auth/forgot-password'
+                    }
+                    className="text-xs text-main-600 hover:underline"
+                  >
+                    Forgot password?
+                  </Link>
+                </div>
               </div>
 
               <Button

@@ -12,6 +12,7 @@ export type SlimSessionMerchant = {
   featurePayroll: boolean
   featurePayrollApprovals: boolean
   featurePinLogin: boolean
+  featureDataBundleDistribution: boolean
   liquidationOnlyMode: boolean
 }
 
@@ -36,6 +37,7 @@ export function slimSessionMerchant(merchant: Record<string, unknown>): SlimSess
     featurePayroll: merchant.featurePayroll === true,
     featurePayrollApprovals: merchant.featurePayrollApprovals === true,
     featurePinLogin: merchant.featurePinLogin === true,
+    featureDataBundleDistribution: merchant.featureDataBundleDistribution === true,
     liquidationOnlyMode: merchant.liquidationOnlyMode === true,
   }
 }
