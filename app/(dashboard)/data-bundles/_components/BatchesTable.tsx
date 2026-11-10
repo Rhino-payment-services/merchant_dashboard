@@ -53,7 +53,9 @@ export function BatchesTable({
                 >
                   {b.batchNumber}
                 </Link>
-                {b.fileName && <div className="text-xs text-gray-500 truncate max-w-[180px]">{b.fileName}</div>}
+                <div className="text-xs text-gray-500 truncate max-w-[180px]">
+                  {b.fileName || 'Single purchase'}
+                </div>
               </TableCell>
               <TableCell>
                 <BatchStatusBadge status={b.status} />

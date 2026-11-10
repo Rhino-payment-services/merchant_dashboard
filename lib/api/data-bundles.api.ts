@@ -173,6 +173,20 @@ export interface UploadResult {
   rows: UploadPreviewRow[];
 }
 
+export interface SingleBundlePayload {
+  phoneNumber: string;
+  /** Bundle code from the products list. */
+  bundle: string;
+  network?: 'MTN' | 'AIRTEL' | 'LYCA';
+  note?: string;
+  description?: string;
+}
+
+export interface SingleBundleResult {
+  batch: { id: string; batchNumber: string; status: BatchStatus };
+  row: UploadPreviewRow;
+}
+
 export interface DataBundleSummary {
   batches: {
     total: number;
@@ -255,6 +269,9 @@ export const dataBundlesApi = {
       },
     });
     return res.data;
+  },
+  async createSingle(payload: SingleBundlePayload): Promise<SingleBundleResult> {
+    return (await apiClient.post('/data-bundles/single', payload)).data;
   },
   async listBatches(params: ListParams): Promise<Paged<DataBundleBatch>> {
     return (await apiClient.get('/data-bundles/batches', { params: clean(params) })).data;

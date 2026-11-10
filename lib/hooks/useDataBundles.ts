@@ -5,6 +5,7 @@ import {
   dataBundlesApi,
   type DataBundleAccess,
   type ListParams,
+  type SingleBundlePayload,
 } from '../api/data-bundles.api';
 import { apiErrorMessage } from '../utils/data-bundles';
 
@@ -142,6 +143,18 @@ export function useSubmitBatch() {
       invalidate();
     },
     onError: (error) => toast.error(apiErrorMessage(error, 'Failed to submit batch')),
+  });
+}
+
+/** Errors are left to the caller so the form can show them inline. */
+export function useCreateSingleBundle() {
+  const invalidate = useInvalidateAll();
+  return useMutation({
+    mutationFn: (payload: SingleBundlePayload) => dataBundlesApi.createSingle(payload),
+    onSuccess: () => {
+      toast.success('Bundle submitted for approval');
+      invalidate();
+    },
   });
 }
 

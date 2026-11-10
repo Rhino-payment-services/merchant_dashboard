@@ -123,7 +123,7 @@ export default function DataBundleBatchDetailPage() {
               <BatchStatusBadge status={batch.status} />
             </div>
             <p className="text-sm text-gray-500">
-              {batch.fileName}
+              {batch.fileName || 'Single purchase'}
               {batch.description ? ` · ${batch.description}` : ''}
             </p>
           </div>

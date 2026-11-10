@@ -107,6 +107,28 @@ export function networkLabel(network: string | null | undefined): string {
   return NETWORK_LABELS[network.toUpperCase() as DataBundleNetwork] ?? network;
 }
 
+// Keep in sync with rdbs_core/src/data-bundles/utils/phone.util.ts.
+const LYCA_PREFIXES = ['726', '727'];
+const MTN_PREFIXES = ['77', '78', '76', '79', '31', '39'];
+const AIRTEL_PREFIXES = ['70', '71', '73', '74', '75', '20'];
+
+/** Network from a Ugandan number (07…, 7…, 256…, +256…); null when unknown or incomplete. */
+export function detectNetwork(phone: string): DataBundleNetwork | null {
+  let digits = phone.replace(/[\s\-().]/g, '');
+  if (digits.startsWith('+')) digits = digits.slice(1);
+  if (digits.startsWith('00')) digits = digits.slice(2);
+  if (!/^\d+$/.test(digits)) return null;
+  let national: string;
+  if (digits.startsWith('256')) national = digits.slice(3);
+  else if (digits.startsWith('0')) national = digits.slice(1);
+  else national = digits;
+  if (national.length < 3) return null;
+  if (LYCA_PREFIXES.includes(national.slice(0, 3))) return 'LYCA';
+  if (MTN_PREFIXES.includes(national.slice(0, 2))) return 'MTN';
+  if (AIRTEL_PREFIXES.includes(national.slice(0, 2))) return 'AIRTEL';
+  return null;
+}
+
 const VALIDITY_ORDER = ['Day', 'Week', 'Month'];
 
 /** Active products split by network, each sorted Daily, Weekly, Monthly then by price. */

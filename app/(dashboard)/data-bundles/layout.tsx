@@ -20,6 +20,7 @@ type Tab = {
 const TABS: Tab[] = [
   { href: '/data-bundles', label: 'Overview', visible: (c) => c.view },
   { href: '/data-bundles/upload', label: 'New Upload', visible: (c) => c.upload },
+  { href: '/data-bundles/single', label: 'Buy for One', visible: (c) => c.upload },
   { href: '/data-bundles/batches', label: 'Batches', visible: (c) => c.view },
   { href: '/data-bundles/approvals', label: 'Approvals', visible: (c) => c.approve },
   { href: '/data-bundles/failed', label: 'Failed Records', visible: (c) => c.view },
@@ -70,7 +71,7 @@ export default function DataBundlesLayout({ children }: { children: React.ReactN
         <div className="mb-6">
           <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">Data Bundles</h1>
           <p className="text-gray-600 mt-1 text-sm sm:text-base">
-            Distribute mobile data bundles in bulk with maker-checker approval.
+            Distribute mobile data bundles to one person or in bulk, with maker-checker approval.
           </p>
         </div>
         <nav className="mb-6 -mx-4 px-4 overflow-x-auto">
