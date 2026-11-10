@@ -8,6 +8,13 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import {
   Table,
   TableBody,
   TableCell,
@@ -18,11 +25,13 @@ import {
 import { Download, FileSpreadsheet, Loader2, Send, Trash2, UploadCloud } from 'lucide-react';
 import { AccessDenied } from '@/app/components/AccessDenied';
 import { dataBundlesApi, saveBlob, type UploadResult } from '@/lib/api/data-bundles.api';
-import { useDiscardBatch, useSubmitBatch } from '@/lib/hooks/useDataBundles';
+import { useDataBundleProducts, useDiscardBatch, useSubmitBatch } from '@/lib/hooks/useDataBundles';
 import {
   apiErrorMessage,
+  bundleOfferLabel,
   canSubmitUpload,
   formatUgx,
+  groupBundleOffers,
   precheckUploadFile,
 } from '@/lib/utils/data-bundles';
 import { useDataBundleAccessContext } from '../_components/DataBundleAccessContext';
@@ -31,6 +40,8 @@ import { RowStatusBadge, StatCard } from '../_components/shared';
 type Phase = 'idle' | 'uploading' | 'validating' | 'done';
 type RowFilter = 'ALL' | 'VALID' | 'INVALID' | 'DUPLICATE';
 const PREVIEW_PAGE_SIZE = 25;
+/** Radix Select cannot use an empty value, so "per row" needs its own sentinel. */
+const PER_ROW_BUNDLE = '__per_row__';
 
 export default function DataBundlesUploadPage() {
   const router = useRouter();
@@ -38,6 +49,7 @@ export default function DataBundlesUploadPage() {
   const inputRef = useRef<HTMLInputElement>(null);
   const [file, setFile] = useState<File | null>(null);
   const [description, setDescription] = useState('');
+  const [batchBundle, setBatchBundle] = useState(PER_ROW_BUNDLE);
   const [isDragging, setIsDragging] = useState(false);
   const [phase, setPhase] = useState<Phase>('idle');
   const [progress, setProgress] = useState(0);
@@ -48,6 +60,8 @@ export default function DataBundlesUploadPage() {
   const [downloading, setDownloading] = useState(false);
   const submit = useSubmitBatch();
   const discard = useDiscardBatch();
+  const products = useDataBundleProducts(access.can.upload);
+  const offers = useMemo(() => groupBundleOffers(products.data ?? []), [products.data]);
 
   const filteredRows = useMemo(
     () => (result?.rows ?? []).filter((r) => filter === 'ALL' || r.status === filter),
@@ -94,10 +108,17 @@ export default function DataBundlesUploadPage() {
     setPhase('uploading');
     setProgress(0);
     try {
-      const res = await dataBundlesApi.uploadBatch(file, description.trim() || undefined, (p) => {
-        setProgress(p);
-        if (p >= 100) setPhase('validating');
-      });
+      const res = await dataBundlesApi.uploadBatch(
+        file,
+        {
+          description: description.trim() || undefined,
+          bundle: batchBundle === PER_ROW_BUNDLE ? undefined : batchBundle,
+        },
+        (p) => {
+          setProgress(p);
+          if (p >= 100) setPhase('validating');
+        },
+      );
       setResult(res);
       setFilter(res.summary.invalidRows + res.summary.duplicateRows > 0 ? 'ALL' : 'VALID');
       setPreviewPage(1);
@@ -122,6 +143,7 @@ export default function DataBundlesUploadPage() {
     setPhase('idle');
     setProgress(0);
     setDescription('');
+    setBatchBundle(PER_ROW_BUNDLE);
     if (inputRef.current) inputRef.current.value = '';
   };
 
@@ -146,8 +168,8 @@ export default function DataBundlesUploadPage() {
           <div>
             <CardTitle>Upload recipients</CardTitle>
             <CardDescription>
-              Use the template. Prices come from the approved bundle catalogue; prices in the file
-              are ignored. Validation does not send any bundles.
+              Choose a bundle here and upload a file with phone numbers only, or set a bundle per
+              row in the template. Prices come from RukaPay; validation does not send any bundles.
             </CardDescription>
           </div>
           <Button variant="outline" onClick={downloadTemplate} disabled={downloading}>
@@ -160,6 +182,32 @@ export default function DataBundlesUploadPage() {
           </Button>
         </CardHeader>
         <CardContent className="space-y-4">
+          <div className="space-y-1">
+            <Label htmlFor="batch-bundle">Bundle for all recipients (optional)</Label>
+            <Select
+              value={batchBundle}
+              onValueChange={setBatchBundle}
+              disabled={busy || phase === 'done' || products.isLoading}
+            >
+              <SelectTrigger id="batch-bundle">
+                <SelectValue placeholder={products.isLoading ? 'Loading bundles…' : 'Choose a bundle'} />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={PER_ROW_BUNDLE}>Set a bundle per row in the file</SelectItem>
+                {offers.map((offer) => (
+                  <SelectItem key={offer.name} value={offer.name}>
+                    {bundleOfferLabel(offer)}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-gray-500">
+              {batchBundle === PER_ROW_BUNDLE
+                ? 'Each row needs a Bundle (pick from the template list or type the price, e.g. 5000).'
+                : 'Your file only needs a Phone Number column. A Bundle typed on a row overrides this choice.'}
+            </p>
+          </div>
+
           <input
             ref={inputRef}
             type="file"
@@ -309,7 +357,7 @@ export default function DataBundlesUploadPage() {
                       <TableHead>Phone</TableHead>
                       <TableHead>Bundle</TableHead>
                       <TableHead className="text-right">Price</TableHead>
-                      <TableHead>Reference</TableHead>
+                      <TableHead>Name / Note</TableHead>
                       <TableHead>Errors</TableHead>
                     </TableRow>
                   </TableHeader>
@@ -325,16 +373,18 @@ export default function DataBundlesUploadPage() {
                           {r.network && <div className="text-xs text-gray-500">{r.network}</div>}
                         </TableCell>
                         <TableCell>
-                          {r.bundleCode ?? r.bundleName ?? '—'}
-                          <div className="text-xs text-gray-500">
-                            {r.quantity}
-                            {r.unit} {r.validity && `/ ${r.validity}`}
-                          </div>
+                          {r.bundleName ?? r.bundleCode ?? '—'}
+                          {r.bundleCode && (
+                            <div className="text-xs text-gray-500">
+                              {r.quantity}
+                              {r.unit} {r.validity && `/ ${r.validity}`}
+                            </div>
+                          )}
                         </TableCell>
                         <TableCell className="text-right whitespace-nowrap">
                           {r.unitPrice ? formatUgx(r.unitPrice) : '—'}
                         </TableCell>
-                        <TableCell className="text-xs">{r.clientReference ?? 'auto'}</TableCell>
+                        <TableCell className="text-xs">{r.recipientNote ?? '—'}</TableCell>
                         <TableCell className="text-xs text-red-600 min-w-[200px]">
                           {r.errors.join('; ')}
                         </TableCell>

@@ -278,7 +278,12 @@ export default function DataBundleBatchDetailPage() {
                     {rows.data.items.map((r) => (
                       <TableRow key={r.id}>
                         <TableCell>{r.rowNumber}</TableCell>
-                        <TableCell className="whitespace-nowrap">{r.phoneNumber}</TableCell>
+                        <TableCell className="whitespace-nowrap">
+                          {r.phoneNumber}
+                          {r.recipientNote && (
+                            <div className="text-xs text-gray-500">{r.recipientNote}</div>
+                          )}
+                        </TableCell>
                         <TableCell>
                           {r.bundleCode ?? r.bundleInput}
                           {r.unit && (

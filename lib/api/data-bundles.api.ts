@@ -104,6 +104,7 @@ export interface DataBundleRow {
   validity: string | null;
   unitPrice: string | null;
   clientReference: string | null;
+  recipientNote: string | null;
   status: RowStatus;
   validationErrors: string[] | null;
   attemptCount: number;
@@ -152,6 +153,7 @@ export interface UploadPreviewRow {
   validity: string;
   unitPrice: string | null;
   clientReference: string | null;
+  recipientNote: string | null;
   status: 'VALID' | 'INVALID' | 'DUPLICATE';
   errors: string[];
 }
@@ -232,12 +234,13 @@ export const dataBundlesApi = {
   },
   async uploadBatch(
     file: File,
-    description: string | undefined,
+    options: { description?: string; bundle?: string },
     onProgress?: (percent: number) => void,
   ): Promise<UploadResult> {
     const form = new FormData();
     form.append('file', file);
-    if (description) form.append('description', description);
+    if (options.description) form.append('description', options.description);
+    if (options.bundle) form.append('bundle', options.bundle);
     const res = await apiClient.post('/data-bundles/batches/upload', form, {
       headers: { 'Content-Type': 'multipart/form-data' },
       timeout: 120_000,

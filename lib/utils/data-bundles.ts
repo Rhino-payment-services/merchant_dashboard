@@ -96,6 +96,47 @@ export function canSubmitUpload(summary: UploadSummary | null | undefined): bool
   return !!summary && summary.validRows > 0;
 }
 
+export type BundleOffer = {
+  /** Network-neutral display name sent as the batch bundle, e.g. "Freedom UGX 5,000". */
+  name: string;
+  price: number;
+  mtn: string | null;
+  airtel: string | null;
+};
+
+/** One offer per display name, so MTN and Airtel packages at one price appear once. */
+export function groupBundleOffers(
+  products: Array<{ displayName: string; network: string; quantity: number; unit: string; price: string }>,
+): BundleOffer[] {
+  const offers = new Map<string, BundleOffer>();
+  for (const p of products) {
+    const key = p.displayName.trim().toLowerCase();
+    const offer = offers.get(key) ?? {
+      name: p.displayName.trim(),
+      price: Number(p.price),
+      mtn: null,
+      airtel: null,
+    };
+    const size = `${Number(p.quantity)}${p.unit}`;
+    const network = p.network.trim().toUpperCase();
+    if (network === 'MTN' && !offer.mtn) offer.mtn = size;
+    if (network === 'AIRTEL' && !offer.airtel) offer.airtel = size;
+    offers.set(key, offer);
+  }
+  return Array.from(offers.values()).sort((a, b) => a.price - b.price || a.name.localeCompare(b.name));
+}
+
+/** e.g. "Freedom UGX 5,000 - MTN 1.5GB / Airtel 1.3GB" */
+export function bundleOfferLabel(offer: BundleOffer): string {
+  const sizes = [
+    offer.mtn ? `MTN ${offer.mtn}` : null,
+    offer.airtel ? `Airtel ${offer.airtel}` : null,
+  ].filter(Boolean);
+  const onlyOne =
+    offer.mtn && !offer.airtel ? ' (MTN only)' : !offer.mtn && offer.airtel ? ' (Airtel only)' : '';
+  return sizes.length ? `${offer.name} - ${sizes.join(' / ')}${onlyOne}` : offer.name;
+}
+
 export const MAX_UPLOAD_BYTES = 5 * 1024 * 1024;
 
 /** Client-side pre-check; the server re-validates everything. */

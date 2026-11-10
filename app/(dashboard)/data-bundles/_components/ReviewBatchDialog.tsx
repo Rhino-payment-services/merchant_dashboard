@@ -113,6 +113,7 @@ export function ReviewBatchDialog({
                 <TableHead>Phone</TableHead>
                 <TableHead>Bundle</TableHead>
                 <TableHead className="text-right">Price</TableHead>
+                <TableHead>Name / Note</TableHead>
                 <TableHead>Reference</TableHead>
               </TableRow>
             </TableHeader>
@@ -129,6 +130,7 @@ export function ReviewBatchDialog({
                     </div>
                   </TableCell>
                   <TableCell className="text-right">{formatUgx(r.unitPrice)}</TableCell>
+                  <TableCell className="text-xs">{r.recipientNote ?? '—'}</TableCell>
                   <TableCell className="text-xs">{r.clientReference}</TableCell>
                 </TableRow>
               ))}
