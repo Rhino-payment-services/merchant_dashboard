@@ -1,16 +1,18 @@
 "use client"
 
-import React, { useState, useEffect, Suspense } from 'react'
+import React, { useState, useEffect, useRef, Suspense } from 'react'
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
+import { Loader2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { Card } from '@/components/ui/card'
-import { Input } from '@/components/ui/input'
-import { PinInput } from '@/components/ui/pin-input'
+import { TextField } from '@/components/ui/text-field'
+import { FieldError } from '@/components/ui/field-message'
 import { PhoneNumberInput } from '@/components/ui/phone-input'
-import { Label } from '@/components/ui/label'
+import AuthShell from '@/components/auth/AuthShell'
+import AuthHeader from '@/components/auth/AuthHeader'
+import AuthLoading from '@/components/auth/AuthLoading'
+import { authButtonClass, authLinkClass } from '@/components/auth/authStyles'
 import { toast } from 'sonner'
-import Image from 'next/image'
 import {
   normalizeMerchantPortalPhone,
   rememberMerchantOtpPhone,
@@ -19,6 +21,8 @@ import {
   requestMerchantPortalPinResetOtp,
   resetMerchantPortalPinWithOtp,
 } from '@/lib/auth/merchantPortalAuth'
+
+type ResetErrors = { otp?: string; newPin?: string; confirmPin?: string }
 
 function ForgotPortalPinContent() {
   const router = useRouter()
@@ -31,16 +35,25 @@ function ForgotPortalPinContent() {
   const [confirmPin, setConfirmPin] = useState('')
   const [step, setStep] = useState<'phone' | 'reset'>('phone')
   const [isLoading, setIsLoading] = useState(false)
+  const [phoneError, setPhoneError] = useState<string>()
+  const [errors, setErrors] = useState<ResetErrors>({})
+  const otpRef = useRef<HTMLInputElement>(null)
+  const newPinRef = useRef<HTMLInputElement>(null)
+  const confirmPinRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     document.title = 'Reset Portal PIN - RukaPay Merchant'
   }, [])
 
+  const clearError = (field: keyof ResetErrors) =>
+    setErrors((current) => (current[field] ? { ...current, [field]: undefined } : current))
+
   const handleSendOtp = async (e: React.FormEvent) => {
     e.preventDefault()
     const normalized = normalizeMerchantPortalPhone(phoneNumber)
     if (!normalized) {
-      toast.error('Please enter a valid phone number')
+      setPhoneError('Enter a valid phone number.')
+      document.getElementById('phone')?.focus()
       return
     }
 
@@ -61,21 +74,19 @@ function ForgotPortalPinContent() {
     e.preventDefault()
     const normalized = normalizeMerchantPortalPhone(phoneNumber)
     if (!normalized) {
-      toast.error('Please enter a valid phone number')
+      setPhoneError('Enter a valid phone number.')
+      setStep('phone')
       return
     }
-    if (!otp || otp.replace(/\D/g, '').length !== 6) {
-      toast.error('Please enter the 6-digit OTP')
-      return
-    }
-    if (newPin.length < 4 || newPin.length > 6) {
-      toast.error('PIN must be 4 to 6 digits')
-      return
-    }
-    if (newPin !== confirmPin) {
-      toast.error('PINs do not match')
-      return
-    }
+
+    const nextErrors: ResetErrors = {}
+    if (!otp || otp.replace(/\D/g, '').length !== 6) nextErrors.otp = 'Enter the 6-digit OTP.'
+    if (newPin.length < 4 || newPin.length > 6) nextErrors.newPin = 'PIN must be 4 to 6 digits.'
+    else if (newPin !== confirmPin) nextErrors.confirmPin = 'PINs do not match.'
+    setErrors(nextErrors)
+    if (nextErrors.otp) return otpRef.current?.focus()
+    if (nextErrors.newPin) return newPinRef.current?.focus()
+    if (nextErrors.confirmPin) return confirmPinRef.current?.focus()
 
     setIsLoading(true)
     try {
@@ -94,104 +105,146 @@ function ForgotPortalPinContent() {
     }
   }
 
-  return (
-    <div className="min-h-screen bg-gradient-to-br from-main-50 via-white to-main-50 flex items-center justify-center p-4">
-      <div className="w-full max-w-md">
-        <div className="text-center mb-8">
-          <div className="flex items-center justify-center mb-6">
-            <div className="w-16 h-16 rounded-xl flex items-center justify-center mr-3 bg-white shadow-md">
-              <Image src="/images/logo.jpg" alt="RukaPay" width={56} height={56} className="rounded-lg" />
-            </div>
-            <span className="text-4xl font-bold text-[#08163d]">RukaPay</span>
-          </div>
-          <h1 className="text-3xl font-bold text-[#08163d] mb-3">Reset portal PIN</h1>
-        </div>
+  const pinField = (
+    id: 'newPin' | 'confirmPin',
+    label: string,
+    value: string,
+    setValue: (value: string) => void,
+    ref: React.RefObject<HTMLInputElement | null>,
+  ) => (
+    <TextField
+      ref={ref}
+      variant="floating"
+      id={id}
+      type="password"
+      label={label}
+      inputMode="numeric"
+      maxLength={6}
+      value={value}
+      onChange={(e) => {
+        setValue(e.target.value.replace(/\D/g, ''))
+        clearError(id)
+      }}
+      error={errors[id]}
+      required
+    />
+  )
 
-        <Card className="p-8 shadow-xl border-0 bg-white/80 backdrop-blur-sm">
-          {step === 'phone' ? (
-            <form onSubmit={handleSendOtp} className="space-y-4">
-              <div>
-                <Label htmlFor="phone">Phone number</Label>
-                <div className="mt-2">
-                  <PhoneNumberInput
-                    value={phoneNumber}
-                    onChange={setPhoneNumber}
-                    placeholder="700 123 456"
-                    defaultCountry="ug"
-                  />
-                </div>
-              </div>
-              <Button type="submit" className="w-full" disabled={isLoading}>
-                {isLoading ? 'Sending OTP…' : 'Send OTP'}
-              </Button>
-            </form>
-          ) : (
-            <form onSubmit={handleResetPin} className="space-y-4">
-              <div>
-                <Label htmlFor="otp">OTP code</Label>
-                <Input
-                  id="otp"
-                  inputMode="numeric"
-                  maxLength={6}
-                  value={otp}
-                  onChange={(e) => setOtp(e.target.value.replace(/\D/g, ''))}
-                  placeholder="6-digit OTP"
-                  className="mt-1"
-                  required
-                />
-              </div>
-              <div>
-                <Label htmlFor="newPin">New portal PIN</Label>
-                <div className="mt-1">
-                  <PinInput
-                    id="newPin"
-                    value={newPin}
-                    onChange={setNewPin}
-                    required
-                  />
-                </div>
-              </div>
-              <div>
-                <Label htmlFor="confirmPin">Confirm new portal PIN</Label>
-                <div className="mt-1">
-                  <PinInput
-                    id="confirmPin"
-                    value={confirmPin}
-                    onChange={setConfirmPin}
-                    required
-                  />
-                </div>
-              </div>
-              <Button type="submit" className="w-full" disabled={isLoading}>
-                {isLoading ? 'Resetting…' : 'Reset portal PIN'}
-              </Button>
-              <Button
+  const displayPhone = normalizeMerchantPortalPhone(phoneNumber) || phoneNumber
+
+  return (
+    <AuthShell>
+      {step === 'phone' ? (
+        <>
+          <AuthHeader
+            backHref="/auth/login"
+            title="Reset portal PIN"
+            description="Enter the phone number linked to your merchant account and we'll send you a 6-digit code."
+          />
+
+          <form onSubmit={handleSendOtp} noValidate className="mt-8 space-y-5">
+            <div>
+              <PhoneNumberInput
+                variant="auth"
+                label="Phone number"
+                inputId="phone"
+                invalid={!!phoneError}
+                describedBy={phoneError ? 'phone-error' : undefined}
+                value={phoneNumber}
+                onChange={(value) => {
+                  setPhoneNumber(value)
+                  setPhoneError(undefined)
+                }}
+                placeholder="700 123 456"
+                defaultCountry="ug"
+              />
+              <FieldError id="phone-error" message={phoneError} />
+            </div>
+            <Button type="submit" className={authButtonClass} disabled={isLoading}>
+              {isLoading ? (
+                <>
+                  <Loader2 className="animate-spin" aria-hidden />
+                  Sending OTP…
+                </>
+              ) : (
+                'Send OTP'
+              )}
+            </Button>
+          </form>
+        </>
+      ) : (
+        <>
+          <AuthHeader
+            onBack={() => setStep('phone')}
+            backLabel="Change phone number"
+            title="Choose a new PIN"
+            description={
+              <>
+                Enter the code sent to{' '}
+                <span className="font-medium text-slate-800">+{displayPhone.replace(/^\+/, '')}</span> and your new portal PIN.
+              </>
+            }
+          />
+
+          <form onSubmit={handleResetPin} noValidate className="mt-8 space-y-5">
+            <TextField
+              ref={otpRef}
+              variant="floating"
+              id="otp"
+              label="6-digit code"
+              inputMode="numeric"
+              maxLength={6}
+              value={otp}
+              onChange={(e) => {
+                setOtp(e.target.value.replace(/\D/g, ''))
+                clearError('otp')
+              }}
+              error={errors.otp}
+              className="tracking-[0.35em]"
+              required
+            />
+            {pinField('newPin', 'New portal PIN', newPin, setNewPin, newPinRef)}
+            {pinField('confirmPin', 'Confirm new portal PIN', confirmPin, setConfirmPin, confirmPinRef)}
+
+            <Button type="submit" className={authButtonClass} disabled={isLoading}>
+              {isLoading ? (
+                <>
+                  <Loader2 className="animate-spin" aria-hidden />
+                  Resetting…
+                </>
+              ) : (
+                'Reset portal PIN'
+              )}
+            </Button>
+
+            <p className="text-center text-sm text-slate-500">
+              Didn&apos;t get the code?{' '}
+              <button
                 type="button"
-                variant="ghost"
-                className="w-full"
                 onClick={() => setStep('phone')}
                 disabled={isLoading}
+                className={`${authLinkClass} cursor-pointer disabled:opacity-50`}
               >
                 Resend OTP
-              </Button>
-            </form>
-          )}
+              </button>
+            </p>
+          </form>
+        </>
+      )}
 
-          <p className="text-xs text-center text-gray-500 mt-6">
-            Remember your PIN?{' '}
-            <Link href="/auth/login" className="text-main-600 hover:underline">
-              Back to sign in
-            </Link>
-          </p>
-        </Card>
-      </div>
-    </div>
+      <p className="mt-8 border-t border-slate-100 pt-6 text-center text-sm text-slate-500">
+        Remember your PIN?{' '}
+        <Link href="/auth/login" className={authLinkClass}>
+          Back to sign in
+        </Link>
+      </p>
+    </AuthShell>
   )
 }
 
 export default function ForgotPortalPinPage() {
   return (
-    <Suspense fallback={<div className="min-h-screen flex items-center justify-center">Loading…</div>}>
+    <Suspense fallback={<AuthLoading />}>
       <ForgotPortalPinContent />
     </Suspense>
   )

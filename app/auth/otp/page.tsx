@@ -4,9 +4,13 @@ import React, { useState, useRef, useEffect, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { signIn } from 'next-auth/react';
 import { Button } from '../../../components/ui/button';
-import { Card } from '../../../components/ui/card';
-import { ArrowLeft, ArrowRight, Building2 } from 'lucide-react';
-import Image from 'next/image';
+import AuthShell from '@/components/auth/AuthShell';
+import AuthHeader from '@/components/auth/AuthHeader';
+import AuthLoading from '@/components/auth/AuthLoading';
+import { authButtonClass } from '@/components/auth/authStyles';
+import { FieldError } from '@/components/ui/field-message';
+import { ArrowRight, Loader2 } from 'lucide-react';
+import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { API_URL } from '@/lib/config';
 import {
@@ -29,6 +33,7 @@ function OTPContent() {
   const [otp, setOtp] = useState(['', '', '', '', '', '']); // 6-digit OTP
   const [countdown, setCountdown] = useState(60); // Start countdown with 60 seconds
   const [canResend, setCanResend] = useState(false);
+  const [otpError, setOtpError] = useState<string>();
 
   // Refs for OTP input boxes
   const otpRefs = useRef<(HTMLInputElement | null)[]>([]);
@@ -51,6 +56,7 @@ function OTPContent() {
     newOtp[index] = digit;
     
     setOtp(newOtp);
+    setOtpError(undefined);
 
     // Auto-advance to next input
     if (digit && index < 5) {
@@ -69,8 +75,10 @@ function OTPContent() {
     e.preventDefault();
     
     // Validate OTP is complete
-    if (otp.some(digit => digit === '')) {
-      toast.error('Please enter complete 6-digit OTP');
+    const firstEmpty = otp.findIndex(digit => digit === '');
+    if (firstEmpty !== -1) {
+      setOtpError('Enter the complete 6-digit code.');
+      otpRefs.current[firstEmpty]?.focus();
       return;
     }
     
@@ -84,7 +92,7 @@ function OTPContent() {
     
     const otpCode = otp.join('').replace(/\D/g, '');
     if (otpCode.length !== 6) {
-      toast.error('Please enter complete 6-digit OTP');
+      setOtpError('Enter the complete 6-digit code.');
       setIsLoading(false);
       return;
     }
@@ -125,6 +133,7 @@ function OTPContent() {
     setCountdown(30);
     setCanResend(false);
     setOtp(['', '', '', '', '','']);
+    setOtpError(undefined);
     // Focus on first input
     otpRefs.current[0]?.focus();
     
@@ -155,107 +164,85 @@ function OTPContent() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-main-50 via-white to-main-50 flex items-center justify-center p-4">
-      <div className="w-full max-w-md">
-        {/* Page Header */}
-        <div className="text-center mb-8">
-          <div className="flex items-center justify-center mb-6">
-            <div className="w-16 h-16 rounded-xl flex items-center justify-center mr-3 bg-white shadow-md">
-              <Image src="/images/logo.jpg" alt="RukaPay" width={56} height={56} className='rounded-lg' />
-            </div>
-            <span className="text-4xl font-bold text-[#08163d]">RukaPay</span>
-          </div>
-          <h1 className="text-3xl font-bold text-[#08163d] mb-3">Verify OTP</h1>
-          <p className="text-gray-600 text-lg">
-            Enter the 6-digit code sent to <br />
-            <span className="font-semibold text-[#08163d]">{phoneNumber}</span>
-          </p>
-        </div>
+    <AuthShell>
+      <AuthHeader
+        onBack={handleBackToLogin}
+        title="Verify your phone"
+        description={
+          <>
+            Enter the 6-digit code sent to{' '}
+            <span className="font-medium text-slate-800">{phoneNumber ? `+${phoneNumber.replace(/^\+/, '')}` : 'your phone'}</span>
+          </>
+        }
+      />
 
-        <Card className="p-8 shadow-xl border-0 bg-white/80 backdrop-blur-sm">
-
-          <form onSubmit={handleSubmit} className="space-y-6">
-            <div className="space-y-4">
-              <label className="text-sm font-medium text-gray-700 text-center block">
-                Enter 6-digit OTP
-              </label>
-              <div className="flex gap-2 justify-center">
-                {otp.map((digit, index) => (
-                  <input
-                    key={index}
-                    ref={(el) => {
-                      otpRefs.current[index] = el;
-                    }}
-                    type="text"
-                    inputMode="numeric"
-                    maxLength={1}
-                    value={digit}
-                    onChange={(e) => handleOtpChange(index, e.target.value)}
-                    onKeyDown={(e) => handleOtpKeyDown(index, e)}
-                    className="w-12 h-12 text-center border border-gray-300 rounded-lg focus:ring-2 focus:ring-main-500 focus:border-transparent transition-all duration-200 text-lg font-semibold"
-                    placeholder=""
-                  />
-                ))}
-              </div>
-            </div>
-
-            <div className="text-center space-y-4">
-              <p className="text-sm text-gray-600">
-                Didn't receive the code?{' '}
-                {canResend ? (
-                  <button
-                    type="button"
-                    onClick={handleResendOTP}
-                    className="text-main-600 hover:text-main-700 font-medium"
-                  >
-                    Resend OTP
-                  </button>
-                ) : (
-                  <span className="text-gray-500">
-                    Resend in {countdown}s
-                  </span>
+      <form onSubmit={handleSubmit} noValidate className="mt-8 space-y-6">
+        <fieldset aria-describedby={otpError ? 'otp-error' : undefined}>
+          <legend className={cn("block text-sm font-medium", otpError ? "text-error" : "text-slate-700")}>
+            Verification code
+          </legend>
+          <div className="mt-2 flex justify-between gap-2 sm:gap-3">
+            {otp.map((digit, index) => (
+              <input
+                key={index}
+                ref={(el) => {
+                  otpRefs.current[index] = el;
+                }}
+                type="text"
+                inputMode="numeric"
+                aria-label={`Digit ${index + 1}`}
+                aria-invalid={otpError && !digit ? true : undefined}
+                maxLength={1}
+                value={digit}
+                onChange={(e) => handleOtpChange(index, e.target.value)}
+                onKeyDown={(e) => handleOtpKeyDown(index, e)}
+                className={cn(
+                  "h-12 w-full min-w-0 rounded-lg border bg-white text-center text-lg font-semibold text-primary transition-[border-color,box-shadow] duration-150 outline-none hover:border-slate-300 focus:border-primary focus:ring-[3px] focus:ring-primary/10 sm:h-14 sm:text-xl",
+                  digit ? "border-primary/40" : otpError ? "border-error focus:border-error focus:ring-error/15" : "border-slate-200"
                 )}
-              </p>
-            </div>
+                placeholder=""
+              />
+            ))}
+          </div>
+          <FieldError id="otp-error" message={otpError} />
+        </fieldset>
 
-            <Button
-              type="submit"
-              disabled={isLoading}
-              className="w-full py-3 bg-main-600 hover:bg-main-700 text-white font-medium rounded-lg transition-all duration-200 flex items-center justify-center gap-2"
+        <Button type="submit" disabled={isLoading} className={authButtonClass}>
+          {isLoading ? (
+            <>
+              <Loader2 className="animate-spin" aria-hidden />
+              Verifying...
+            </>
+          ) : (
+            <>
+              Verify & Continue
+              <ArrowRight className="size-4" aria-hidden />
+            </>
+          )}
+        </Button>
+
+        <p className="text-center text-sm text-slate-500">
+          Didn&apos;t receive the code?{' '}
+          {canResend ? (
+            <button
+              type="button"
+              onClick={handleResendOTP}
+              className="cursor-pointer font-medium text-primary underline-offset-4 transition-colors hover:underline"
             >
-              {isLoading ? (
-                <>
-                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                  Verifying...
-                </>
-              ) : (
-                <>
-                  Verify & Continue
-                  <ArrowRight className="w-4 h-4" />
-                </>
-              )}
-            </Button>
-
-            <div className="text-center">
-              <button
-                type="button"
-                onClick={handleBackToLogin}
-                className="text-sm text-gray-600 hover:text-gray-800 font-medium flex items-center justify-center gap-1 mx-auto"
-              >
-                <ArrowLeft className="w-4 h-4" />
-                Back to Login
-              </button>
-            </div>
-          </form>
-        </Card>
-      </div>
-    </div>
+              Resend code
+            </button>
+          ) : (
+            <span className="tabular-nums text-slate-400">Resend in {countdown}s</span>
+          )}
+        </p>
+      </form>
+    </AuthShell>
   );
 }
 
 export default function OTPPage() {
   return (
-    <Suspense fallback={<div>Loading...</div>}>
+    <Suspense fallback={<AuthLoading />}>
       <OTPContent />
     </Suspense>
   );

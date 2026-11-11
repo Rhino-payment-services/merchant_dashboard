@@ -1,14 +1,19 @@
 "use client"
 
-import React, { useState, useEffect, Suspense } from 'react'
+import React, { useState, useEffect, useRef, Suspense } from 'react'
 import { useSession } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
+import { Loader2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { Card } from '@/components/ui/card'
-import { PinInput } from '@/components/ui/pin-input'
-import { Label } from '@/components/ui/label'
+import { TextField } from '@/components/ui/text-field'
+import AuthShell from '@/components/auth/AuthShell'
+import AuthHeader from '@/components/auth/AuthHeader'
+import AuthLoading from '@/components/auth/AuthLoading'
+import { authButtonClass } from '@/components/auth/authStyles'
 import { toast } from 'sonner'
 import { setupMerchantPortalPin } from '@/lib/auth/merchantPortalAuth'
+
+type PinErrors = { currentPin?: string; newPin?: string; confirmPin?: string }
 
 function SetupPortalPinContent() {
   const { data: session, status, update } = useSession()
@@ -16,7 +21,11 @@ function SetupPortalPinContent() {
   const [newPin, setNewPin] = useState('')
   const [confirmPin, setConfirmPin] = useState('')
   const [currentPin, setCurrentPin] = useState('')
+  const [errors, setErrors] = useState<PinErrors>({})
   const [isLoading, setIsLoading] = useState(false)
+  const currentRef = useRef<HTMLInputElement>(null)
+  const newRef = useRef<HTMLInputElement>(null)
+  const confirmRef = useRef<HTMLInputElement>(null)
 
   const accessToken = (session as { accessToken?: string } | null)?.accessToken
   const userData = (session?.user as { userData?: { merchantPortalPinSet?: boolean } })?.userData
@@ -32,8 +41,43 @@ function SetupPortalPinContent() {
     }
   }, [status, router])
 
+  const pinField = (
+    id: keyof PinErrors,
+    label: string,
+    value: string,
+    setValue: (value: string) => void,
+    ref: React.RefObject<HTMLInputElement | null>,
+  ) => (
+    <TextField
+      ref={ref}
+      variant="floating"
+      id={id}
+      type="password"
+      label={label}
+      inputMode="numeric"
+      maxLength={6}
+      value={value}
+      onChange={(e) => {
+        setValue(e.target.value.replace(/\D/g, ''))
+        setErrors((current) => ({ ...current, [id]: undefined }))
+      }}
+      error={errors[id]}
+      required
+    />
+  )
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+
+    const nextErrors: PinErrors = {}
+    if (portalPinSet && !currentPin) nextErrors.currentPin = 'Enter your current portal PIN.'
+    if (!newPin) nextErrors.newPin = 'Enter a portal PIN.'
+    if (!confirmPin) nextErrors.confirmPin = 'Confirm your portal PIN.'
+    setErrors(nextErrors)
+    if (nextErrors.currentPin) return currentRef.current?.focus()
+    if (nextErrors.newPin) return newRef.current?.focus()
+    if (nextErrors.confirmPin) return confirmRef.current?.focus()
+
     if (!accessToken) {
       toast.error('Session expired. Please sign in again.')
       router.replace('/auth/login')
@@ -68,71 +112,39 @@ function SetupPortalPinContent() {
   }
 
   if (status === 'loading') {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <p className="text-gray-600">Loading…</p>
-      </div>
-    )
+    return <AuthLoading />
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-main-50 via-white to-main-50 flex items-center justify-center p-4">
-      <Card className="w-full max-w-md p-8 shadow-xl border-0">
-        <h1 className="text-2xl font-bold text-[#08163d] mb-2">
-          {portalPinSet ? 'Change portal PIN' : 'Set up portal PIN'}
-        </h1>
-        <p className="text-sm text-gray-600 mb-6">
-          This PIN is for signing in to the merchant dashboard only. It is separate from your mobile app PIN.
-        </p>
+    <AuthShell>
+      <AuthHeader
+        title={portalPinSet ? 'Change portal PIN' : 'Set up portal PIN'}
+        description="This PIN is for signing in to the merchant dashboard only. It is separate from your mobile app PIN."
+      />
 
-        <form onSubmit={handleSubmit} className="space-y-4">
-          {portalPinSet && (
-            <div>
-              <Label htmlFor="currentPin">Current portal PIN</Label>
-              <div className="mt-1">
-                <PinInput
-                  id="currentPin"
-                  value={currentPin}
-                  onChange={setCurrentPin}
-                  required
-                />
-              </div>
-            </div>
+      <form onSubmit={handleSubmit} noValidate className="mt-8 space-y-5">
+        {portalPinSet && pinField('currentPin', 'Current portal PIN', currentPin, setCurrentPin, currentRef)}
+        {pinField('newPin', portalPinSet ? 'New portal PIN' : 'Portal PIN (4–6 digits)', newPin, setNewPin, newRef)}
+        {pinField('confirmPin', 'Confirm portal PIN', confirmPin, setConfirmPin, confirmRef)}
+
+        <Button type="submit" className={authButtonClass} disabled={isLoading}>
+          {isLoading ? (
+            <>
+              <Loader2 className="animate-spin" aria-hidden />
+              Saving…
+            </>
+          ) : (
+            'Save portal PIN'
           )}
-          <div>
-            <Label htmlFor="newPin">{portalPinSet ? 'New portal PIN' : 'Portal PIN (4–6 digits)'}</Label>
-            <div className="mt-1">
-              <PinInput
-                id="newPin"
-                value={newPin}
-                onChange={setNewPin}
-                required
-              />
-            </div>
-          </div>
-          <div>
-            <Label htmlFor="confirmPin">Confirm portal PIN</Label>
-            <div className="mt-1">
-              <PinInput
-                id="confirmPin"
-                value={confirmPin}
-                onChange={setConfirmPin}
-                required
-              />
-            </div>
-          </div>
-          <Button type="submit" className="w-full" disabled={isLoading}>
-            {isLoading ? 'Saving…' : 'Save portal PIN'}
-          </Button>
-        </form>
-      </Card>
-    </div>
+        </Button>
+      </form>
+    </AuthShell>
   )
 }
 
 export default function SetupPortalPinPage() {
   return (
-    <Suspense fallback={<div className="min-h-screen flex items-center justify-center">Loading…</div>}>
+    <Suspense fallback={<AuthLoading />}>
       <SetupPortalPinContent />
     </Suspense>
   )

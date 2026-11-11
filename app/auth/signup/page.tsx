@@ -3,16 +3,21 @@
 import React, { useState, useEffect, Suspense } from 'react'
 import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
-import { Card } from '@/components/ui/card'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
+import { TextField } from '@/components/ui/text-field'
+import { SelectField } from '@/components/ui/select-field'
+import { FieldError } from '@/components/ui/field-message'
 import { PhoneNumberInput } from '@/components/ui/phone-input'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Phone, User, Building2, ArrowLeft, ArrowRight, CheckCircle, Loader2, AlertCircle, Mail, MapPin, Search } from 'lucide-react'
-import Image from 'next/image'
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import AuthShell from '@/components/auth/AuthShell'
+import AuthHeader from '@/components/auth/AuthHeader'
+import AuthStatus from '@/components/auth/AuthStatus'
+import AuthLoading from '@/components/auth/AuthLoading'
+import FormAlert from '@/components/auth/FormAlert'
+import { authButtonClass, authLinkClass, authSecondaryButtonClass } from '@/components/auth/authStyles'
+import { Phone, ArrowLeft, ArrowRight, Loader2, Mail, Search } from 'lucide-react'
 import { toast } from 'sonner'
 import { API_URL } from '@/lib/config'
-import { normalizePhoneForSearch } from '@/lib/utils'
+import { cn, normalizePhoneForSearch } from '@/lib/utils'
 import Link from 'next/link'
 
 interface SignupFormData {
@@ -35,6 +40,40 @@ interface SignupFormData {
   businessCountry: string
 }
 
+const STEP1_FIELDS: Array<keyof SignupFormData> = ['firstName', 'lastName', 'dateOfBirth', 'gender', 'nationalId', 'phoneNumber', 'email']
+const STEP2_FIELDS: Array<keyof SignupFormData> = ['businessTradeName', 'registeredBusinessName', 'businessType', 'businessAddress', 'businessCity']
+
+const GENDER_OPTIONS = [
+  { value: 'MALE', label: 'Male' },
+  { value: 'FEMALE', label: 'Female' },
+  { value: 'OTHER', label: 'Other' },
+]
+
+const BUSINESS_TYPE_OPTIONS = [
+  { value: 'SOLE_PROPRIETORSHIP', label: 'Sole Proprietorship' },
+  { value: 'PARTNERSHIP', label: 'Partnership' },
+  { value: 'LIMITED_COMPANY', label: 'Limited Liability Company' },
+  { value: 'PUBLIC_COMPANY', label: 'Public Company' },
+  { value: 'COOPERATIVE', label: 'Cooperative' },
+  { value: 'NGO', label: 'NGO' },
+  { value: 'OTHER', label: 'Other' },
+]
+
+const COUNTRY_OPTIONS = [
+  { value: 'UG', label: 'Uganda' },
+  { value: 'KE', label: 'Kenya' },
+  { value: 'TZ', label: 'Tanzania' },
+  { value: 'RW', label: 'Rwanda' },
+]
+
+const segmentTriggerClass =
+  "h-full gap-2 rounded-[5px] text-[13px] text-slate-500 transition-colors duration-150 hover:text-slate-800 data-[state=active]:bg-white data-[state=active]:text-primary data-[state=active]:shadow-sm"
+
+function focusFirstError(errors: Record<string, string>, order: Array<keyof SignupFormData>) {
+  const first = order.find((field) => errors[field])
+  if (first) document.getElementById(first)?.focus()
+}
+
 function SignupContent() {
   const router = useRouter()
   const [step, setStep] = useState<number>(1)
@@ -46,6 +85,7 @@ function SignupContent() {
   const [successMessage, setSuccessMessage] = useState<string | null>(null)
   const [isLookingUp, setIsLookingUp] = useState(false)
   const [searchBy, setSearchBy] = useState<'phone' | 'email'>('phone')
+  const [lookupError, setLookupError] = useState<string>()
   const [formData, setFormData] = useState<SignupFormData>({
     firstName: '',
     lastName: '',
@@ -78,18 +118,23 @@ function SignupContent() {
       })
     }
     setApiError(null)
+    if ((field === 'phoneNumber' || field === 'email') && lookupError) setLookupError(undefined)
   }
 
   const handleLookup = async () => {
     const searchValue = searchBy === 'phone' ? formData.phoneNumber.trim() : formData.email.trim()
+    const lookupFieldId = searchBy === 'phone' ? 'lookupPhone' : 'lookupEmail'
     if (!searchValue) {
-      toast.error(`Enter your ${searchBy === 'phone' ? 'phone number' : 'email'} to search`)
+      setLookupError(`Enter your ${searchBy === 'phone' ? 'phone number' : 'email'} to search.`)
+      document.getElementById(lookupFieldId)?.focus()
       return
     }
     if (searchBy === 'email' && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(searchValue)) {
-      toast.error('Please enter a valid email address')
+      setLookupError('Enter a valid email address.')
+      document.getElementById(lookupFieldId)?.focus()
       return
     }
+    setLookupError(undefined)
     setIsLookingUp(true)
     setApiError(null)
     try {
@@ -138,6 +183,7 @@ function SignupContent() {
     }
     
     setFormErrors(errors)
+    focusFirstError(errors, STEP1_FIELDS)
     return Object.keys(errors).length === 0
   }
 
@@ -151,6 +197,7 @@ function SignupContent() {
     if (!formData.businessCity.trim()) errors.businessCity = 'City is required'
     
     setFormErrors(errors)
+    focusFirstError(errors, STEP2_FIELDS)
     return Object.keys(errors).length === 0
   }
 
@@ -326,418 +373,265 @@ function SignupContent() {
     }
   }
 
-  const steps = [
-    { number: 1, title: 'Personal Info', icon: User },
-    { number: 2, title: 'Business Info', icon: Building2 },
-    { number: 3, title: 'Complete', icon: CheckCircle }
-  ]
+  const textField = (field: keyof SignupFormData, label: string, props: React.ComponentProps<typeof TextField> = {}) => (
+    <TextField
+      variant="floating"
+      id={field}
+      label={label}
+      value={formData[field]}
+      onChange={(e) => handleChange(field, e.target.value)}
+      error={formErrors[field]}
+      {...props}
+    />
+  )
+
+  if (step === 3) {
+    return (
+      <AuthShell width="wide">
+        <AuthStatus
+          tone="success"
+          title="Registration successful"
+          description={
+            existingAccountUsed
+              ? (successMessage || 'Your new business has been linked to your existing account. Please login to complete KYC.')
+              : 'Your merchant account has been created. You can now login with your phone number to access your dashboard.'
+          }
+          actions={
+            <Button onClick={() => router.push('/auth/login')} className={authButtonClass}>
+              Go to login
+            </Button>
+          }
+        >
+          <div className="space-y-4">
+            {existingAccountUsed && (
+              <FormAlert tone="warning" title="Existing account detected">
+                Your phone number or email is already registered. Your new business has been linked to that account. Use your existing credentials to login.
+              </FormAlert>
+            )}
+            <div className="rounded-lg border border-slate-200 px-4 py-4">
+              <p className="text-sm font-medium text-slate-800">Next steps</p>
+              <ol className="mt-3 space-y-2.5 text-sm text-slate-600">
+                {[
+                  'Login to your merchant dashboard',
+                  'Complete your KYC verification by uploading required documents',
+                  'Start accepting payments!',
+                ].map((item, index) => (
+                  <li key={item} className="flex gap-3">
+                    <span className="flex size-5 shrink-0 items-center justify-center rounded-full bg-primary/5 text-xs font-semibold text-primary">
+                      {index + 1}
+                    </span>
+                    {item}
+                  </li>
+                ))}
+              </ol>
+            </div>
+          </div>
+        </AuthStatus>
+      </AuthShell>
+    )
+  }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-main-50 via-white to-main-50 flex items-center justify-center p-4">
-      <div className="w-full max-w-lg">
-        {/* Page Header */}
-        <div className="text-center mb-6">
-          <div className="flex items-center justify-center mb-4">
-            <div className="w-14 h-14 rounded-xl flex items-center justify-center mr-3 bg-white shadow-md">
-              <Image src="/images/logo.jpg" alt="RukaPay" width={48} height={48} className='rounded-lg' />
-            </div>
-            <span className="text-3xl font-bold text-[#08163d]">RukaPay</span>
-          </div>
-          <h1 className="text-2xl font-bold text-[#08163d] mb-2">Merchant Registration</h1>
-          <p className="text-gray-600">Join RukaPay and start accepting payments</p>
-        </div>
+    <AuthShell width="wide">
+      <AuthHeader
+        title="Create your merchant account"
+        description="Join RukaPay and start accepting payments."
+      />
 
-        {/* Progress Steps */}
-        <div className="flex justify-between mb-6 px-4">
-          {steps.map((s, index) => {
-            const StepIcon = s.icon
-            const isActive = step === s.number
-            const isCompleted = step > s.number
-            
-            return (
-              <div key={s.number} className="flex flex-col items-center relative">
-                <div className={`w-10 h-10 rounded-full flex items-center justify-center transition-all ${
-                  isCompleted ? 'bg-green-500 text-white' :
-                  isActive ? 'bg-main-600 text-white' : 'bg-gray-200 text-gray-500'
-                }`}>
-                  {isCompleted ? <CheckCircle className="w-5 h-5" /> : <StepIcon className="w-5 h-5" />}
-                </div>
-                <span className={`text-xs mt-1 ${isActive ? 'text-main-600 font-medium' : 'text-gray-500'}`}>
-                  {s.title}
-                </span>
-                {index < steps.length - 1 && (
-                  <div className={`absolute top-5 left-[50px] w-[calc(100%-20px)] h-0.5 ${
-                    isCompleted ? 'bg-green-500' : 'bg-gray-200'
-                  }`} style={{ width: '80px' }} />
+      <div className="mt-8">
+        <div className="flex items-center justify-between text-[13px]">
+          <span className="font-medium text-slate-700">
+            Step {step} of 2 · {step === 1 ? 'Personal information' : 'Business information'}
+          </span>
+          <span className="text-slate-400">{step === 1 ? 'Next: Business' : 'Almost done'}</span>
+        </div>
+        <div className="mt-2 grid grid-cols-2 gap-1.5" aria-hidden>
+          <span className="h-1 rounded-full bg-primary" />
+          <span className={cn("h-1 rounded-full transition-colors duration-300", step === 2 ? "bg-primary" : "bg-slate-200")} />
+        </div>
+      </div>
+
+      {apiError && (
+        <FormAlert tone="error" className="mt-6">
+          {apiError}
+        </FormAlert>
+      )}
+
+      {step === 1 && (
+        <form
+          noValidate
+          onSubmit={(e) => {
+            e.preventDefault()
+            handleNextStep()
+          }}
+          className="mt-8"
+        >
+          <section>
+            <h2 className="text-sm font-medium text-slate-800">Find your existing account</h2>
+            <p className="mt-1 text-[13px] leading-5 text-slate-500">
+              Enter your phone or email to search for your existing account and prefill your details.
+            </p>
+
+            <Tabs value={searchBy} onValueChange={(v) => { setSearchBy(v as 'phone' | 'email'); setLookupError(undefined) }} className="mt-4">
+              <TabsList className="grid h-9 w-44 grid-cols-2 rounded-md bg-slate-100 p-0.5">
+                <TabsTrigger value="phone" className={segmentTriggerClass}>
+                  <Phone className="size-3.5" aria-hidden />
+                  Phone
+                </TabsTrigger>
+                <TabsTrigger value="email" className={segmentTriggerClass}>
+                  <Mail className="size-3.5" aria-hidden />
+                  Email
+                </TabsTrigger>
+              </TabsList>
+            </Tabs>
+
+            <div className="mt-4 flex items-start gap-2">
+              <div className="min-w-0 flex-1">
+                {searchBy === 'phone' ? (
+                  <PhoneNumberInput
+                    variant="auth"
+                    label="Phone number"
+                    inputId="lookupPhone"
+                    invalid={!!lookupError}
+                    describedBy={lookupError ? 'lookup-error' : undefined}
+                    value={formData.phoneNumber}
+                    onChange={(value) => handleChange('phoneNumber', value)}
+                    placeholder="700 123 456"
+                    defaultCountry="ug"
+                  />
+                ) : (
+                  <TextField
+                    variant="floating"
+                    id="lookupEmail"
+                    type="email"
+                    label="Email address"
+                    placeholder="merchant@example.com"
+                    value={formData.email}
+                    onChange={(e) => handleChange('email', e.target.value)}
+                    aria-invalid={lookupError ? true : undefined}
+                    aria-describedby={lookupError ? 'lookup-error' : undefined}
+                    className={lookupError ? 'border-error hover:border-error focus-visible:border-error focus-visible:ring-error/15' : undefined}
+                  />
                 )}
               </div>
-            )
-          })}
-        </div>
-
-        <Card className="p-6 shadow-xl border-0 bg-white/80 backdrop-blur-sm">
-          {apiError && (
-            <div className="mb-4 p-3 rounded-lg bg-red-50 border border-red-200 flex items-start gap-2">
-              <AlertCircle className="h-4 w-4 text-red-600 mt-0.5 flex-shrink-0" />
-              <p className="text-sm text-red-700">{apiError}</p>
-            </div>
-          )}
-
-          {/* Step 1: Personal Information */}
-          {step === 1 && (
-            <div className="space-y-4">
-              <h2 className="text-lg font-semibold text-gray-900 mb-4">Personal Information</h2>
-              <p className="text-sm text-gray-600 mb-4">Enter your phone or email to search for your existing account and prefill your details.</p>
-              
-              <div className="flex gap-2 mb-3">
-                <Button
-                  type="button"
-                  variant={searchBy === 'phone' ? 'default' : 'outline'}
-                  size="sm"
-                  onClick={() => setSearchBy('phone')}
-                >
-                  <Phone className="w-4 h-4 mr-2" />
-                  Phone
-                </Button>
-                <Button
-                  type="button"
-                  variant={searchBy === 'email' ? 'default' : 'outline'}
-                  size="sm"
-                  onClick={() => setSearchBy('email')}
-                >
-                  <Mail className="w-4 h-4 mr-2" />
-                  Email
-                </Button>
-              </div>
-              
-              <div className="flex gap-2">
-                <div className="flex-1">
-                  {searchBy === 'phone' ? (
-                    <PhoneNumberInput
-                      value={formData.phoneNumber}
-                      onChange={(value) => handleChange('phoneNumber', value)}
-                      placeholder="700 123 456"
-                      defaultCountry="ug"
-                    />
-                  ) : (
-                    <div className="relative">
-                      <Mail className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
-                      <Input
-                        id="searchEmail"
-                        type="email"
-                        value={formData.email}
-                        onChange={(e) => handleChange('email', e.target.value)}
-                        placeholder="merchant@example.com"
-                        className="pl-10"
-                      />
-                    </div>
-                  )}
-                </div>
-                <Button
-                  type="button"
-                  onClick={handleLookup}
-                  disabled={isLookingUp || (searchBy === 'phone' ? !formData.phoneNumber.trim() : !formData.email.trim())}
-                >
-                  {isLookingUp ? (
-                    <>
-                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                      Searching...
-                    </>
-                  ) : (
-                    <>
-                      <Search className="w-4 h-4 mr-2" />
-                      Search
-                    </>
-                  )}
-                </Button>
-              </div>
-              
-              <div className="border-t pt-4 mt-4">
-                <p className="text-sm font-medium text-gray-700 mb-3">Your details</p>
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="space-y-1">
-                    <Label htmlFor="firstName">First Name *</Label>
-                    <Input
-                      id="firstName"
-                      value={formData.firstName}
-                      onChange={(e) => handleChange('firstName', e.target.value)}
-                      placeholder="John"
-                      className={formErrors.firstName ? 'border-red-500' : ''}
-                    />
-                    {formErrors.firstName && <p className="text-xs text-red-500">{formErrors.firstName}</p>}
-                  </div>
-                  
-                  <div className="space-y-1">
-                    <Label htmlFor="lastName">Last Name *</Label>
-                    <Input
-                      id="lastName"
-                      value={formData.lastName}
-                      onChange={(e) => handleChange('lastName', e.target.value)}
-                      placeholder="Doe"
-                      className={formErrors.lastName ? 'border-red-500' : ''}
-                    />
-                    {formErrors.lastName && <p className="text-xs text-red-500">{formErrors.lastName}</p>}
-                  </div>
-                </div>
-                
-                <div className="grid grid-cols-2 gap-3 mt-3">
-                  <div className="space-y-1">
-                    <Label htmlFor="middleName">Middle Name</Label>
-                    <Input
-                      id="middleName"
-                      value={formData.middleName}
-                      onChange={(e) => handleChange('middleName', e.target.value)}
-                      placeholder="Optional"
-                    />
-                  </div>
-                  
-                  <div className="space-y-1">
-                    <Label htmlFor="dateOfBirth">Date of Birth *</Label>
-                    <Input
-                      id="dateOfBirth"
-                      type="date"
-                      value={formData.dateOfBirth}
-                      onChange={(e) => handleChange('dateOfBirth', e.target.value)}
-                      className={formErrors.dateOfBirth ? 'border-red-500' : ''}
-                    />
-                    {formErrors.dateOfBirth && <p className="text-xs text-red-500">{formErrors.dateOfBirth}</p>}
-                  </div>
-                </div>
-                
-                <div className="grid grid-cols-2 gap-3 mt-3">
-                  <div className="space-y-1">
-                    <Label htmlFor="gender">Gender *</Label>
-                    <Select value={formData.gender} onValueChange={(value) => handleChange('gender', value)}>
-                      <SelectTrigger className={formErrors.gender ? 'border-red-500' : ''}>
-                        <SelectValue placeholder="Select" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="MALE">Male</SelectItem>
-                        <SelectItem value="FEMALE">Female</SelectItem>
-                        <SelectItem value="OTHER">Other</SelectItem>
-                      </SelectContent>
-                    </Select>
-                    {formErrors.gender && <p className="text-xs text-red-500">{formErrors.gender}</p>}
-                  </div>
-                  
-                  <div className="space-y-1">
-                    <Label htmlFor="nationalId">National ID *</Label>
-                    <Input
-                      id="nationalId"
-                      value={formData.nationalId}
-                      onChange={(e) => handleChange('nationalId', e.target.value)}
-                      placeholder="CM12345678ABC"
-                      className={formErrors.nationalId ? 'border-red-500' : ''}
-                    />
-                    {formErrors.nationalId && <p className="text-xs text-red-500">{formErrors.nationalId}</p>}
-                  </div>
-                </div>
-                
-                <div className="grid grid-cols-2 gap-3 mt-3">
-                  <div className="space-y-1">
-                    <Label htmlFor="phoneNumber">Phone Number *</Label>
-                    <PhoneNumberInput
-                      value={formData.phoneNumber}
-                      onChange={(value) => handleChange('phoneNumber', value)}
-                      placeholder="700 123 456"
-                      defaultCountry="ug"
-                    />
-                    {formErrors.phoneNumber && <p className="text-xs text-red-500">{formErrors.phoneNumber}</p>}
-                  </div>
-                  <div className="space-y-1">
-                    <Label htmlFor="email">Email Address *</Label>
-                    <div className="relative">
-                      <Mail className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
-                      <Input
-                        id="email"
-                        type="email"
-                        value={formData.email}
-                        onChange={(e) => handleChange('email', e.target.value)}
-                        placeholder="merchant@example.com"
-                        className={`pl-10 ${formErrors.email ? 'border-red-500' : ''}`}
-                      />
-                    </div>
-                    {formErrors.email && <p className="text-xs text-red-500">{formErrors.email}</p>}
-                  </div>
-                </div>
-              </div>
-              
-              <Button onClick={handleNextStep} className="w-full mt-4">
-                Next: Business Info
-                <ArrowRight className="w-4 h-4 ml-2" />
+              <Button
+                type="button"
+                onClick={handleLookup}
+                disabled={isLookingUp}
+                className={cn(authSecondaryButtonClass, "h-12 w-auto shrink-0 px-4")}
+              >
+                {isLookingUp ? <Loader2 className="animate-spin" aria-hidden /> : <Search aria-hidden />}
+                {isLookingUp ? 'Searching...' : 'Search'}
               </Button>
             </div>
-          )}
+            <FieldError id="lookup-error" message={lookupError} />
+          </section>
 
-          {/* Step 2: Business Information */}
-          {step === 2 && (
-            <div className="space-y-4">
-              <h2 className="text-lg font-semibold text-gray-900 mb-4">Business Information</h2>
-              
-              <div className="space-y-1">
-                <Label htmlFor="businessTradeName">Business Trade Name *</Label>
-                <Input
-                  id="businessTradeName"
-                  value={formData.businessTradeName}
-                  onChange={(e) => handleChange('businessTradeName', e.target.value)}
-                  placeholder="e.g., John's Electronics"
-                  className={formErrors.businessTradeName ? 'border-red-500' : ''}
+          <section className="mt-8 border-t border-slate-100 pt-8">
+            <h2 className="text-sm font-medium text-slate-800">Your details</h2>
+            <div className="mt-5 grid gap-x-4 gap-y-5 sm:grid-cols-2">
+              {textField('firstName', 'First name', { autoComplete: 'given-name' })}
+              {textField('lastName', 'Last name', { autoComplete: 'family-name' })}
+              {textField('middleName', 'Middle name (optional)', { autoComplete: 'additional-name' })}
+              {textField('dateOfBirth', 'Date of birth', { type: 'date', autoComplete: 'bday' })}
+              <SelectField
+                id="gender"
+                label="Gender"
+                value={formData.gender}
+                onValueChange={(value) => handleChange('gender', value)}
+                options={GENDER_OPTIONS}
+                error={formErrors.gender}
+              />
+              {textField('nationalId', 'National ID', { placeholder: 'CM12345678ABC' })}
+              <div>
+                <PhoneNumberInput
+                  variant="auth"
+                  label="Phone number"
+                  inputId="phoneNumber"
+                  invalid={!!formErrors.phoneNumber}
+                  describedBy={formErrors.phoneNumber ? 'phoneNumber-error' : undefined}
+                  value={formData.phoneNumber}
+                  onChange={(value) => handleChange('phoneNumber', value)}
+                  placeholder="700 123 456"
+                  defaultCountry="ug"
                 />
-                {formErrors.businessTradeName && <p className="text-xs text-red-500">{formErrors.businessTradeName}</p>}
+                <FieldError id="phoneNumber-error" message={formErrors.phoneNumber} />
               </div>
-              
-              <div className="space-y-1">
-                <Label htmlFor="registeredBusinessName">Registered Business Name *</Label>
-                <Input
-                  id="registeredBusinessName"
-                  value={formData.registeredBusinessName}
-                  onChange={(e) => handleChange('registeredBusinessName', e.target.value)}
-                  placeholder="e.g., John's Electronics Ltd"
-                  className={formErrors.registeredBusinessName ? 'border-red-500' : ''}
-                />
-                {formErrors.registeredBusinessName && <p className="text-xs text-red-500">{formErrors.registeredBusinessName}</p>}
-              </div>
-              
-              <div className="space-y-1">
-                <Label htmlFor="businessType">Business Type *</Label>
-                <Select value={formData.businessType} onValueChange={(value) => handleChange('businessType', value)}>
-                  <SelectTrigger className={formErrors.businessType ? 'border-red-500' : ''}>
-                    <SelectValue placeholder="Select business type" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="SOLE_PROPRIETORSHIP">Sole Proprietorship</SelectItem>
-                    <SelectItem value="PARTNERSHIP">Partnership</SelectItem>
-                    <SelectItem value="LIMITED_COMPANY">Limited Liability Company</SelectItem>
-                    <SelectItem value="PUBLIC_COMPANY">Public Company</SelectItem>
-                    <SelectItem value="COOPERATIVE">Cooperative</SelectItem>
-                    <SelectItem value="NGO">NGO</SelectItem>
-                    <SelectItem value="OTHER">Other</SelectItem>
-                  </SelectContent>
-                </Select>
-                {formErrors.businessType && <p className="text-xs text-red-500">{formErrors.businessType}</p>}
-              </div>
-              
-              <div className="space-y-1">
-                <Label htmlFor="businessAddress">Business Address *</Label>
-                <div className="relative">
-                  <MapPin className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
-                  <Input
-                    id="businessAddress"
-                    value={formData.businessAddress}
-                    onChange={(e) => handleChange('businessAddress', e.target.value)}
-                    placeholder="Street address"
-                    className={`pl-10 ${formErrors.businessAddress ? 'border-red-500' : ''}`}
-                  />
-                </div>
-                {formErrors.businessAddress && <p className="text-xs text-red-500">{formErrors.businessAddress}</p>}
-              </div>
-              
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-1">
-                  <Label htmlFor="businessCity">City *</Label>
-                  <Input
-                    id="businessCity"
-                    value={formData.businessCity}
-                    onChange={(e) => handleChange('businessCity', e.target.value)}
-                    placeholder="Kampala"
-                    className={formErrors.businessCity ? 'border-red-500' : ''}
-                  />
-                  {formErrors.businessCity && <p className="text-xs text-red-500">{formErrors.businessCity}</p>}
-                </div>
-                
-                <div className="space-y-1">
-                  <Label htmlFor="businessCountry">Country</Label>
-                  <Select value={formData.businessCountry} onValueChange={(value) => handleChange('businessCountry', value)}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="UG">Uganda</SelectItem>
-                      <SelectItem value="KE">Kenya</SelectItem>
-                      <SelectItem value="TZ">Tanzania</SelectItem>
-                      <SelectItem value="RW">Rwanda</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-              
-              <div className="flex gap-3 mt-4">
-                <Button variant="outline" onClick={handlePrevStep} className="flex-1">
-                  <ArrowLeft className="w-4 h-4 mr-2" />
-                  Back
-                </Button>
-                <Button onClick={handleSubmit} disabled={isSubmitting} className="flex-1">
-                  {isSubmitting ? (
-                    <>
-                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                      Creating...
-                    </>
-                  ) : (
-                    'Create Account'
-                  )}
-                </Button>
-              </div>
+              {textField('email', 'Email address', { type: 'email', autoComplete: 'email', placeholder: 'merchant@example.com' })}
             </div>
-          )}
+          </section>
 
-          {/* Step 3: Success */}
-          {step === 3 && (
-            <div className="text-center py-6">
-              <div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                <CheckCircle className="w-10 h-10 text-green-600" />
-              </div>
-              <h2 className="text-2xl font-bold text-gray-900 mb-2">Registration Successful!</h2>
-              <p className="text-gray-600 mb-4">
-                {existingAccountUsed
-                  ? (successMessage || 'Your new business has been linked to your existing account. Please login to complete KYC.')
-                  : 'Your merchant account has been created. You can now login with your phone number to access your dashboard.'}
-              </p>
-              {existingAccountUsed && (
-                <div className="mb-4 p-4 rounded-lg bg-amber-50 border border-amber-200 text-left">
-                  <p className="text-sm text-amber-800">
-                    <strong>Existing account detected:</strong> Your phone number or email is already registered. Your new business has been linked to that account. Use your existing credentials to login.
-                  </p>
-                </div>
+          <Button type="submit" className={cn(authButtonClass, "mt-8")}>
+            Continue to business info
+            <ArrowRight aria-hidden />
+          </Button>
+        </form>
+      )}
+
+      {step === 2 && (
+        <form
+          noValidate
+          onSubmit={(e) => {
+            e.preventDefault()
+            handleSubmit()
+          }}
+          className="mt-8"
+        >
+          <div className="grid gap-x-4 gap-y-5 sm:grid-cols-2">
+            {textField('businessTradeName', 'Business trade name', { placeholder: "e.g., John's Electronics", containerClassName: 'sm:col-span-2' })}
+            {textField('registeredBusinessName', 'Registered business name', { placeholder: "e.g., John's Electronics Ltd", containerClassName: 'sm:col-span-2' })}
+            <SelectField
+              id="businessType"
+              label="Business type"
+              value={formData.businessType}
+              onValueChange={(value) => handleChange('businessType', value)}
+              options={BUSINESS_TYPE_OPTIONS}
+              error={formErrors.businessType}
+              containerClassName="sm:col-span-2"
+            />
+            {textField('businessAddress', 'Business address', { placeholder: 'Street address', autoComplete: 'street-address', containerClassName: 'sm:col-span-2' })}
+            {textField('businessCity', 'City', { placeholder: 'Kampala', autoComplete: 'address-level2' })}
+            <SelectField
+              id="businessCountry"
+              label="Country"
+              value={formData.businessCountry}
+              onValueChange={(value) => handleChange('businessCountry', value)}
+              options={COUNTRY_OPTIONS}
+            />
+          </div>
+
+          <div className="mt-8 grid grid-cols-2 gap-3">
+            <Button type="button" variant="outline" onClick={handlePrevStep} className={authSecondaryButtonClass}>
+              <ArrowLeft aria-hidden />
+              Back
+            </Button>
+            <Button type="submit" disabled={isSubmitting} className={authButtonClass}>
+              {isSubmitting ? (
+                <>
+                  <Loader2 className="animate-spin" aria-hidden />
+                  Creating...
+                </>
+              ) : (
+                'Create account'
               )}
-              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6 text-left">
-                <h4 className="font-medium text-blue-900 mb-2">Next Steps:</h4>
-                <ol className="text-sm text-blue-800 space-y-2">
-                  <li>1. Login to your merchant dashboard</li>
-                  <li>2. Complete your KYC verification by uploading required documents</li>
-                  <li>3. Start accepting payments!</li>
-                </ol>
-              </div>
-              <Button onClick={() => router.push('/auth/login')} className="w-full">
-                Go to Login
-              </Button>
-            </div>
-          )}
-        </Card>
+            </Button>
+          </div>
+        </form>
+      )}
 
-        {/* Login Link */}
-        {step !== 3 && (
-          <p className="text-center mt-4 text-gray-600">
-            Already have an account?{' '}
-            <Link href="/auth/login" className="text-main-600 font-medium hover:underline">
-              Sign In
-            </Link>
-          </p>
-        )}
-      </div>
-    </div>
+      <p className="mt-8 border-t border-slate-100 pt-6 text-center text-sm text-slate-500">
+        Already have an account?{' '}
+        <Link href="/auth/login" className={authLinkClass}>
+          Sign in
+        </Link>
+      </p>
+    </AuthShell>
   )
 }
 
 export default function SignupPage() {
   return (
-    <Suspense fallback={
-      <div className="min-h-screen bg-gradient-to-br from-main-50 via-white to-main-50 flex items-center justify-center">
-        <div className="text-center">
-          <Loader2 className="w-8 h-8 animate-spin text-main-600 mx-auto mb-2" />
-          <p className="text-gray-600">Loading...</p>
-        </div>
-      </div>
-    }>
+    <Suspense fallback={<AuthLoading />}>
       <SignupContent />
     </Suspense>
   )
