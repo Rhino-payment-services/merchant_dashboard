@@ -1,5 +1,5 @@
 import apiClient from './client';
-import type { BatchStatus, RowStatus } from '@/lib/utils/data-bundles';
+import type { BatchStatus, ProductType, RowStatus } from '@/lib/utils/data-bundles';
 
 export interface DataBundleAccess {
   merchantCode: string;
@@ -20,6 +20,7 @@ export interface DataBundleAccess {
     retry: boolean;
     manageUsers: boolean;
   };
+  airtimeLimits?: { min: number; max: number };
 }
 
 export interface DataBundleProduct {
@@ -52,6 +53,10 @@ export interface DataBundleBatch {
   validRows: number;
   invalidRows: number;
   duplicateRows: number;
+  airtimeRows: number;
+  bundleRows: number;
+  /** Single purchase sent without a checker. */
+  autoApproved: boolean;
   totalAmount: string;
   successAmount: string;
   currency: string;
@@ -96,10 +101,12 @@ export interface DataBundleRow {
   batchId: string;
   batchNumber: string;
   rowNumber: number;
+  productType: ProductType;
   phoneNumber: string | null;
   network: string | null;
   bundleCode: string | null;
   bundleInput: string | null;
+  amountInput: string | null;
   productName: string | null;
   quantity: number | string | null;
   unit: string | null;
@@ -127,7 +134,9 @@ export interface RetryHistoryEntry {
   rowId: string;
   rowNumber: number;
   phoneNumber: string | null;
+  productType: ProductType;
   bundleCode: string | null;
+  unitPrice: string | null;
   attemptNo: number;
   reference: string;
   status: RowStatus;
@@ -146,10 +155,12 @@ export interface Paged<T> {
 
 export interface UploadPreviewRow {
   rowNumber: number;
+  productType: ProductType;
   phoneNumber: string | null;
   network: string | null;
   bundleCode: string | null;
   bundleName: string | null;
+  amountInput: string | null;
   quantity: number | string;
   unit: string;
   validity: string;
@@ -174,17 +185,29 @@ export interface UploadResult {
 }
 
 export interface SingleBundlePayload {
+  productType: ProductType;
   phoneNumber: string;
-  /** Bundle code from the products list. */
-  bundle: string;
+  /** Data only: bundle code from the products list. */
+  bundle?: string;
+  /** Airtime only: amount in UGX. */
+  amount?: number;
   network?: 'MTN' | 'AIRTEL' | 'LYCA';
   note?: string;
   description?: string;
+  /** Unique per purchase so a repeated submit is rejected by the server. */
+  clientReference?: string;
 }
 
 export interface SingleBundleResult {
   batch: { id: string; batchNumber: string; status: BatchStatus };
   row: UploadPreviewRow;
+}
+
+export interface ProductSummary {
+  sent: number;
+  delivered: number;
+  failed: number;
+  deliveredValue: string;
 }
 
 export interface DataBundleSummary {
@@ -206,6 +229,7 @@ export interface DataBundleSummary {
     inProgress: number;
   };
   value: { approved: string; pendingApproval: string; delivered: string; currency: string };
+  byProduct?: Record<'airtime' | 'dataBundles', ProductSummary>;
   recentBatches: DataBundleBatch[];
 }
 

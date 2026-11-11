@@ -71,6 +71,24 @@ export const ROW_STATUS_META: Record<RowStatus, { label: string; variant: BadgeV
   NEEDS_RECONCILIATION: { label: 'Needs reconciliation', variant: 'warning' },
 };
 
+export type ProductType = 'DATA_BUNDLE' | 'AIRTIME';
+
+export const PRODUCT_TYPE_META: Record<ProductType, { label: string; variant: BadgeVariant }> = {
+  AIRTIME: { label: 'Airtime', variant: 'info' },
+  DATA_BUNDLE: { label: 'Data', variant: 'neutral' },
+};
+
+/** Defaults to data so rows from before airtime support still display. */
+export function productTypeOf(row: { productType?: ProductType | null }): ProductType {
+  return row.productType === 'AIRTIME' ? 'AIRTIME' : 'DATA_BUNDLE';
+}
+
+export function airtimeLabel(amount: string | number | null | undefined): string {
+  return `Airtime ${formatUgx(amount)}`;
+}
+
+export const DEFAULT_AIRTIME_LIMITS = { min: 500, max: 200000 };
+
 export function formatUgx(value: string | number | null | undefined): string {
   const n = Number(value ?? 0);
   return `UGX ${Number.isFinite(n) ? n.toLocaleString('en-UG', { maximumFractionDigits: 0 }) : '0'}`;

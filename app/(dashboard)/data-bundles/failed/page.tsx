@@ -21,14 +21,16 @@ import {
 } from '@/components/ui/table';
 import { Loader2, RotateCcw } from 'lucide-react';
 import { useDataBundleBatches, useFailedRecords, useRetryRecords } from '@/lib/hooks/useDataBundles';
-import { formatDateTime } from '@/lib/utils/data-bundles';
+import { formatDateTime, productTypeOf } from '@/lib/utils/data-bundles';
 import { useDataBundleAccessContext } from '../_components/DataBundleAccessContext';
 import {
   LoadingBlock,
   Pagination,
+  ProductTypeBadge,
   RowStatusBadge,
   SearchInput,
   EmptyBlock,
+  rowProductText,
   useDebounced,
 } from '../_components/shared';
 
@@ -182,7 +184,8 @@ export default function DataBundleFailedRecordsPage() {
                       </TableHead>
                     )}
                     <TableHead>Phone</TableHead>
-                    <TableHead>Bundle</TableHead>
+                    <TableHead>Type</TableHead>
+                    <TableHead>Airtime / Bundle</TableHead>
                     <TableHead>Batch</TableHead>
                     <TableHead>Transaction ref</TableHead>
                     <TableHead>Failure reason</TableHead>
@@ -209,11 +212,16 @@ export default function DataBundleFailedRecordsPage() {
                       )}
                       <TableCell className="whitespace-nowrap">{r.phoneNumber}</TableCell>
                       <TableCell>
-                        {r.bundleCode}
-                        <div className="text-xs text-gray-500">
-                          {r.quantity}
-                          {r.unit} / {r.validity}
-                        </div>
+                        <ProductTypeBadge type={r.productType} />
+                      </TableCell>
+                      <TableCell>
+                        {rowProductText(r)}
+                        {productTypeOf(r) === 'DATA_BUNDLE' && (
+                          <div className="text-xs text-gray-500">
+                            {r.quantity}
+                            {r.unit} / {r.validity}
+                          </div>
+                        )}
                       </TableCell>
                       <TableCell>
                         <Link href={`/data-bundles/batches/${r.batchId}`} className="text-primary hover:underline">

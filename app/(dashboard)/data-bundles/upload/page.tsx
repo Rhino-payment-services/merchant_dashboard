@@ -37,7 +37,7 @@ import {
   productsByNetwork,
 } from '@/lib/utils/data-bundles';
 import { useDataBundleAccessContext } from '../_components/DataBundleAccessContext';
-import { RowStatusBadge, StatCard } from '../_components/shared';
+import { ProductTypeBadge, RowStatusBadge, StatCard, rowProductText } from '../_components/shared';
 
 type Phase = 'idle' | 'uploading' | 'validating' | 'done';
 type RowFilter = 'ALL' | 'VALID' | 'INVALID' | 'DUPLICATE';
@@ -84,7 +84,7 @@ export default function DataBundlesUploadPage() {
   const previewPages = Math.max(1, Math.ceil(filteredRows.length / PREVIEW_PAGE_SIZE));
 
   if (!access.can.upload) {
-    return <AccessDenied description="You do not have permission to upload data bundle batches." />;
+    return <AccessDenied description="You do not have permission to upload airtime and bundle batches." />;
   }
 
   const pickFile = (files: FileList | null) => {
@@ -104,7 +104,7 @@ export default function DataBundlesUploadPage() {
   const downloadTemplate = async () => {
     try {
       setDownloading(true);
-      saveBlob(await dataBundlesApi.downloadTemplate(), 'data-bundles-template.xlsx');
+      saveBlob(await dataBundlesApi.downloadTemplate(), 'airtime-and-bundles-template.xlsx');
     } catch (e) {
       toast.error(apiErrorMessage(e, 'Failed to download the template'));
     } finally {
@@ -180,9 +180,10 @@ export default function DataBundlesUploadPage() {
           <div>
             <CardTitle>Upload recipients</CardTitle>
             <CardDescription>
-              Choose a bundle for each network here and upload a file with phone numbers only, or
-              set a bundle per row in the template. Prices come from RukaPay; validation does not
-              send any bundles.
+              One file can mix airtime and data bundles. For airtime, set Type to Airtime and enter
+              an Amount. For data, choose a bundle per row, or choose one per network here and leave
+              the Bundle column empty. Bundle prices come from RukaPay; validation does not send
+              anything, and the batch goes to a checker for approval.
             </CardDescription>
           </div>
           <Button variant="outline" onClick={downloadTemplate} disabled={downloading}>
@@ -228,8 +229,8 @@ export default function DataBundlesUploadPage() {
             </div>
             <p className="text-xs text-gray-500">
               {anyPageBundle
-                ? 'Rows with an empty Bundle get the bundle chosen for their network. A Bundle typed on a row overrides it.'
-                : 'Each row needs a Bundle: pick one from the template list or type the type and price, e.g. Daily 2000.'}
+                ? 'Data rows with an empty Bundle get the bundle chosen for their network. A Bundle typed on a row overrides it. Airtime rows are not affected.'
+                : 'Each data row needs a Bundle: pick one from the template list or type the type and price, e.g. Daily 2000. Airtime rows need an Amount instead.'}
             </p>
           </div>
 
@@ -297,7 +298,7 @@ export default function DataBundlesUploadPage() {
               value={description}
               maxLength={255}
               disabled={busy || phase === 'done'}
-              placeholder="e.g. November staff data allowance"
+              placeholder="e.g. November staff airtime and data allowance"
               onChange={(e) => setDescription(e.target.value)}
             />
           </div>
@@ -380,8 +381,9 @@ export default function DataBundlesUploadPage() {
                       <TableHead>Row</TableHead>
                       <TableHead>Status</TableHead>
                       <TableHead>Phone</TableHead>
-                      <TableHead>Bundle</TableHead>
-                      <TableHead className="text-right">Price</TableHead>
+                      <TableHead>Type</TableHead>
+                      <TableHead>Airtime / Bundle</TableHead>
+                      <TableHead className="text-right">Amount</TableHead>
                       <TableHead>Name / Note</TableHead>
                       <TableHead>Errors</TableHead>
                     </TableRow>
@@ -400,7 +402,10 @@ export default function DataBundlesUploadPage() {
                           )}
                         </TableCell>
                         <TableCell>
-                          {r.bundleName ?? r.bundleCode ?? '—'}
+                          <ProductTypeBadge type={r.productType} />
+                        </TableCell>
+                        <TableCell>
+                          {rowProductText(r)}
                           {r.bundleCode && (
                             <div className="text-xs text-gray-500">
                               {r.quantity}

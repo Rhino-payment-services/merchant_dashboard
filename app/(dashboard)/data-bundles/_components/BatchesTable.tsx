@@ -12,7 +12,7 @@ import {
 } from '@/components/ui/table';
 import type { DataBundleBatch } from '@/lib/api/data-bundles.api';
 import { formatDateTime, formatUgx } from '@/lib/utils/data-bundles';
-import { BatchStatusBadge, EmptyBlock } from './shared';
+import { BatchStatusBadge, EmptyBlock, batchMixText, checkerText } from './shared';
 
 export function BatchesTable({
   batches,
@@ -60,7 +60,12 @@ export function BatchesTable({
               <TableCell>
                 <BatchStatusBadge status={b.status} />
               </TableCell>
-              <TableCell className="text-right">{b.validRows}</TableCell>
+              <TableCell className="text-right">
+                {b.validRows}
+                {batchMixText(b) && (
+                  <div className="text-xs text-gray-500 whitespace-nowrap">{batchMixText(b)}</div>
+                )}
+              </TableCell>
               <TableCell className="text-right whitespace-nowrap">{formatUgx(b.totalAmount)}</TableCell>
               {showResults && (
                 <TableCell className="text-right whitespace-nowrap">
@@ -71,7 +76,7 @@ export function BatchesTable({
                 </TableCell>
               )}
               <TableCell className="whitespace-nowrap">{b.maker.name ?? '—'}</TableCell>
-              <TableCell className="whitespace-nowrap">{b.checker?.name ?? '—'}</TableCell>
+              <TableCell className="whitespace-nowrap">{checkerText(b)}</TableCell>
               <TableCell className="whitespace-nowrap">{formatDateTime(b.createdAt)}</TableCell>
               <TableCell className="whitespace-nowrap">{formatDateTime(b.approvedAt)}</TableCell>
               {actions && <TableCell className="text-right whitespace-nowrap">{actions(b)}</TableCell>}

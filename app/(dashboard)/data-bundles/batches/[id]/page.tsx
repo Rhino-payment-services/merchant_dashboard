@@ -34,6 +34,7 @@ import {
   apiErrorMessage,
   formatDateTime,
   formatUgx,
+  productTypeOf,
   ROW_STATUS_META,
   type RowStatus,
 } from '@/lib/utils/data-bundles';
@@ -43,9 +44,13 @@ import {
   BatchStatusBadge,
   LoadingBlock,
   Pagination,
+  ProductTypeBadge,
   RowStatusBadge,
   SearchInput,
   StatCard,
+  batchMixText,
+  checkerText,
+  rowProductText,
   useDebounced,
 } from '../../_components/shared';
 
@@ -53,6 +58,7 @@ const AUDIT_LABELS: Record<string, string> = {
   UPLOADED: 'Uploaded and validated',
   SUBMITTED: 'Submitted for approval',
   APPROVED: 'Approved',
+  AUTO_APPROVED: 'Sent instantly (single purchase, no approval needed)',
   REJECTED: 'Rejected',
   PROCESSING_STARTED: 'Delivery started',
   EXECUTION_FAILED: 'Could not queue delivery',
@@ -102,7 +108,7 @@ export default function DataBundleBatchDetailPage() {
         format: 'xlsx',
         batchId: batch.id,
       });
-      saveBlob(blob, `data-bundles-${batch.batchNumber}-recipients.xlsx`);
+      saveBlob(blob, `airtime-bundles-${batch.batchNumber}-recipients.xlsx`);
     } catch (e) {
       toast.error(apiErrorMessage(e, 'Export failed'));
     } finally {
@@ -183,7 +189,13 @@ export default function DataBundleBatchDetailPage() {
       )}
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <StatCard label="Recipients" value={batch.validRows} hint={`${batch.totalRows} rows in file`} />
+        <StatCard
+          label="Recipients"
+          value={batch.validRows}
+          hint={[batchMixText(batch), batch.fileName ? `${batch.totalRows} rows in file` : '']
+            .filter(Boolean)
+            .join(' · ')}
+        />
         <StatCard label="Total value" value={formatUgx(batch.totalAmount)} tone="text-blue-600" />
         <StatCard
           label="Delivered"
@@ -206,7 +218,7 @@ export default function DataBundleBatchDetailPage() {
           <Detail label="Maker" value={batch.maker.name} />
           <Detail label="Uploaded" value={formatDateTime(batch.createdAt)} />
           <Detail label="Submitted" value={formatDateTime(batch.submittedAt)} />
-          <Detail label="Checker" value={batch.checker?.name} />
+          <Detail label="Checker" value={checkerText(batch)} />
           <Detail
             label={batch.rejectedAt ? 'Rejected' : 'Approved'}
             value={formatDateTime(batch.rejectedAt ?? batch.approvedAt)}
@@ -230,7 +242,7 @@ export default function DataBundleBatchDetailPage() {
                 setSearch(v);
                 setPage(1);
               }}
-              placeholder="Phone, reference, bundle"
+              placeholder="Phone, reference, bundle, note"
             />
             <Select
               value={rowStatus}
@@ -264,8 +276,9 @@ export default function DataBundleBatchDetailPage() {
                     <TableRow>
                       <TableHead>Row</TableHead>
                       <TableHead>Phone</TableHead>
-                      <TableHead>Bundle</TableHead>
-                      <TableHead className="text-right">Price</TableHead>
+                      <TableHead>Type</TableHead>
+                      <TableHead>Airtime / Bundle</TableHead>
+                      <TableHead className="text-right">Amount</TableHead>
                       <TableHead>Status</TableHead>
                       <TableHead>Transaction ref</TableHead>
                       <TableHead>Provider</TableHead>
@@ -285,8 +298,11 @@ export default function DataBundleBatchDetailPage() {
                           )}
                         </TableCell>
                         <TableCell>
-                          {r.bundleCode ?? r.bundleInput}
-                          {r.unit && (
+                          <ProductTypeBadge type={r.productType} />
+                        </TableCell>
+                        <TableCell>
+                          {rowProductText(r)}
+                          {r.unit && productTypeOf(r) === 'DATA_BUNDLE' && (
                             <div className="text-xs text-gray-500">
                               {r.quantity}
                               {r.unit} / {r.validity}

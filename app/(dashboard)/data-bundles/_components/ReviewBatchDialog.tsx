@@ -23,8 +23,8 @@ import {
 import { Loader2 } from 'lucide-react';
 import type { DataBundleBatch } from '@/lib/api/data-bundles.api';
 import { useApproveBatch, useDataBundleRows, useRejectBatch } from '@/lib/hooks/useDataBundles';
-import { formatDateTime, formatUgx } from '@/lib/utils/data-bundles';
-import { Pagination } from './shared';
+import { formatDateTime, formatUgx, productTypeOf } from '@/lib/utils/data-bundles';
+import { Pagination, ProductTypeBadge, batchMixText, rowProductText } from './shared';
 
 export function ReviewBatchDialog({
   batch,
@@ -75,8 +75,8 @@ export function ReviewBatchDialog({
         <DialogHeader>
           <DialogTitle>Review batch {batch.batchNumber}</DialogTitle>
           <DialogDescription>
-            Check the totals and recipients. Approving delivers the bundles immediately and debits
-            the disbursement wallet.
+            Check the totals and recipients. Approving sends the airtime and bundles immediately and
+            debits the disbursement wallet.
           </DialogDescription>
         </DialogHeader>
 
@@ -84,6 +84,7 @@ export function ReviewBatchDialog({
           <div className="rounded-md border p-3">
             <p className="text-gray-500">Recipients</p>
             <p className="text-lg font-semibold">{batch.validRows}</p>
+            {batchMixText(batch) && <p className="text-xs text-gray-500">{batchMixText(batch)}</p>}
           </div>
           <div className="rounded-md border p-3">
             <p className="text-gray-500">Total value</p>
@@ -111,8 +112,8 @@ export function ReviewBatchDialog({
               <TableRow>
                 <TableHead>Row</TableHead>
                 <TableHead>Phone</TableHead>
-                <TableHead>Bundle</TableHead>
-                <TableHead className="text-right">Price</TableHead>
+                <TableHead>Airtime / Bundle</TableHead>
+                <TableHead className="text-right">Amount</TableHead>
                 <TableHead>Name / Note</TableHead>
                 <TableHead>Reference</TableHead>
               </TableRow>
@@ -123,11 +124,16 @@ export function ReviewBatchDialog({
                   <TableCell>{r.rowNumber}</TableCell>
                   <TableCell>{r.phoneNumber}</TableCell>
                   <TableCell>
-                    {r.bundleCode}
-                    <div className="text-xs text-gray-500">
-                      {r.quantity}
-                      {r.unit} / {r.validity}
+                    <div className="flex items-center gap-2">
+                      <ProductTypeBadge type={r.productType} />
+                      <span>{rowProductText(r)}</span>
                     </div>
+                    {productTypeOf(r) === 'DATA_BUNDLE' && (
+                      <div className="text-xs text-gray-500">
+                        {r.quantity}
+                        {r.unit} / {r.validity}
+                      </div>
+                    )}
                   </TableCell>
                   <TableCell className="text-right">{formatUgx(r.unitPrice)}</TableCell>
                   <TableCell className="text-xs">{r.recipientNote ?? '—'}</TableCell>

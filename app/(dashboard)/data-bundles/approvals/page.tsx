@@ -21,7 +21,7 @@ export default function DataBundleApprovalsPage() {
   );
 
   if (!access.can.approve) {
-    return <AccessDenied description="You do not have permission to approve data bundle batches." />;
+    return <AccessDenied description="You do not have permission to approve airtime and bundle batches." />;
   }
 
   return (

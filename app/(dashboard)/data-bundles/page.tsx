@@ -10,8 +10,11 @@ import {
   CheckCircle,
   Clock,
   Layers,
+  Phone,
+  Send,
   Upload,
   Wallet,
+  Wifi,
   XCircle,
 } from 'lucide-react';
 import { useDataBundleSummary } from '@/lib/hooks/useDataBundles';
@@ -72,9 +75,35 @@ export default function DataBundlesOverviewPage() {
         />
       </div>
 
+      {summary.byProduct && (
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <StatCard
+            label="Airtime delivered"
+            value={formatUgx(summary.byProduct.airtime.deliveredValue)}
+            icon={Phone}
+            tone="text-green-600"
+            hint={`${summary.byProduct.airtime.delivered} delivered · ${summary.byProduct.airtime.failed} failed`}
+          />
+          <StatCard
+            label="Data bundles delivered"
+            value={formatUgx(summary.byProduct.dataBundles.deliveredValue)}
+            icon={Wifi}
+            tone="text-green-600"
+            hint={`${summary.byProduct.dataBundles.delivered} delivered · ${summary.byProduct.dataBundles.failed} failed`}
+          />
+        </div>
+      )}
+
       <div className="flex flex-wrap gap-3">
         {access.can.upload && (
           <Button asChild>
+            <Link href="/data-bundles/single">
+              <Send className="h-4 w-4 mr-2" /> Buy for one
+            </Link>
+          </Button>
+        )}
+        {access.can.upload && (
+          <Button variant="outline" asChild>
             <Link href="/data-bundles/upload">
               <Upload className="h-4 w-4 mr-2" /> New upload
             </Link>

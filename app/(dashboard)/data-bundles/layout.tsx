@@ -43,10 +43,10 @@ export default function DataBundlesLayout({ children }: { children: React.ReactN
   if (!session || accessQuery.isError || !accessQuery.data) {
     return (
       <AccessDenied
-        title="Data Bundles unavailable"
+        title="Airtime & Bundles unavailable"
         description={apiErrorMessage(
           accessQuery.error,
-          'Data Bundles Distribution is not available for your account.',
+          'Airtime & Bundles is not available for your account.',
         )}
       />
     );
@@ -57,8 +57,8 @@ export default function DataBundlesLayout({ children }: { children: React.ReactN
   if (tabs.length === 0) {
     return (
       <AccessDenied
-        title="Data Bundles unavailable"
-        description="You do not have a data bundle role for this merchant."
+        title="Airtime & Bundles unavailable"
+        description="You do not have an airtime and bundles role for this merchant."
       />
     );
   }
@@ -69,9 +69,10 @@ export default function DataBundlesLayout({ children }: { children: React.ReactN
     <DataBundleAccessProvider value={access}>
       <div className="container mx-auto py-6 px-4 sm:py-8">
         <div className="mb-6">
-          <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">Data Bundles</h1>
+          <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">Airtime &amp; Bundles</h1>
           <p className="text-gray-600 mt-1 text-sm sm:text-base">
-            Distribute mobile data bundles to one person or in bulk, with maker-checker approval.
+            Send airtime and mobile data bundles. Buying for one person is instant; bulk uploads
+            go to a checker for approval.
           </p>
         </div>
         <nav className="mb-6 -mx-4 px-4 overflow-x-auto">

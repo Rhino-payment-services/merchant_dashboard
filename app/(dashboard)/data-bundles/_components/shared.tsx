@@ -8,10 +8,51 @@ import { Input } from '@/components/ui/input';
 import { ChevronLeft, ChevronRight, Loader2, Search } from 'lucide-react';
 import {
   BATCH_STATUS_META,
+  PRODUCT_TYPE_META,
   ROW_STATUS_META,
+  airtimeLabel,
+  productTypeOf,
   type BatchStatus,
+  type ProductType,
   type RowStatus,
 } from '@/lib/utils/data-bundles';
+
+export function ProductTypeBadge({ type }: { type?: ProductType | null }) {
+  const meta = PRODUCT_TYPE_META[productTypeOf({ productType: type })];
+  return <Badge variant={meta.variant}>{meta.label}</Badge>;
+}
+
+/** e.g. "3 airtime · 2 data"; empty when the batch has no valid rows. */
+export function batchMixText(batch: { airtimeRows?: number; bundleRows?: number }): string {
+  const parts: string[] = [];
+  if (batch.airtimeRows) parts.push(`${batch.airtimeRows} airtime`);
+  if (batch.bundleRows) parts.push(`${batch.bundleRows} data`);
+  return parts.join(' · ');
+}
+
+export function checkerText(batch: {
+  checker: { name: string | null } | null;
+  autoApproved?: boolean;
+}): string {
+  if (batch.checker?.name) return batch.checker.name;
+  return batch.autoApproved ? 'Not required' : '—';
+}
+
+/** Airtime rows show the amount; data rows show the bundle name or code. */
+export function rowProductText(row: {
+  productType?: ProductType | null;
+  unitPrice?: string | null;
+  amountInput?: string | null;
+  bundleName?: string | null;
+  bundleCode?: string | null;
+  bundleInput?: string | null;
+}): string {
+  if (productTypeOf(row) === 'AIRTIME') {
+    if (row.unitPrice) return airtimeLabel(row.unitPrice);
+    return row.amountInput ? `Airtime ${row.amountInput}` : 'Airtime';
+  }
+  return row.bundleName || row.bundleCode || row.bundleInput || '—';
+}
 
 export function BatchStatusBadge({ status }: { status: BatchStatus }) {
   const meta = BATCH_STATUS_META[status] ?? { label: status, variant: 'neutral' as const };

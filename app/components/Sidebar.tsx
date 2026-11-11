@@ -62,7 +62,7 @@ const navLinks = [
     { name: 'Team Members', path: '/team', icon: Users },
     { name: 'Payroll', path: '/payroll', icon: Briefcase },
     { name: 'Payroll Approvals', path: '/payroll/approvals', icon: CheckCircle },
-    { name: 'Data Bundles', path: '/data-bundles', icon: Wifi },
+    { name: 'Airtime & Bundles', path: '/data-bundles', icon: Wifi },
   ]},
   { section: 'ACCOUNT', links: [
     { name: 'KYC Verification', path: '/kyc', icon: ShieldCheck },

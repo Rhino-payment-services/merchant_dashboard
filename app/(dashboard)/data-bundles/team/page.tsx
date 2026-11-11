@@ -82,13 +82,13 @@ export default function DataBundleRolesPage() {
   const { data, isLoading } = useDataBundleTeam(access.can.manageUsers);
 
   if (!access.can.manageUsers) {
-    return <AccessDenied description="You do not have permission to manage data bundle roles." />;
+    return <AccessDenied description="You do not have permission to manage airtime and bundle roles." />;
   }
 
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Data bundle roles</CardTitle>
+        <CardTitle>Airtime &amp; bundle roles</CardTitle>
         <CardDescription>
           Assign Maker, Checker and Finance roles to existing team members. A maker can never approve
           their own batch, and a System Administrator cannot upload, approve or retry. Add new people

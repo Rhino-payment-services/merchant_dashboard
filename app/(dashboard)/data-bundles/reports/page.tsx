@@ -43,9 +43,11 @@ import {
   EmptyBlock,
   LoadingBlock,
   Pagination,
+  ProductTypeBadge,
   RowStatusBadge,
   SearchInput,
   StatCard,
+  rowProductText,
   useDebounced,
 } from '../_components/shared';
 
@@ -81,7 +83,7 @@ export default function DataBundleReportsPage() {
   const retries = useRetryHistory({ ...filters, page, limit: 20 }, enabled && tab === 'retries');
 
   if (!enabled) {
-    return <AccessDenied description="You do not have permission to view data bundle reports." />;
+    return <AccessDenied description="You do not have permission to view airtime and bundle reports." />;
   }
 
   const doExport = async (report: ExportReport, format: 'xlsx' | 'csv') => {
@@ -93,7 +95,7 @@ export default function DataBundleReportsPage() {
         ...filters,
         status: report === 'batches' && status !== 'ALL' ? status : undefined,
       });
-      saveBlob(blob, `data-bundles-${report}-${new Date().toISOString().slice(0, 10)}.${format}`);
+      saveBlob(blob, `airtime-bundles-${report}-${new Date().toISOString().slice(0, 10)}.${format}`);
     } catch (e) {
       toast.error(apiErrorMessage(e, 'Export failed'));
     } finally {
@@ -154,11 +156,27 @@ export default function DataBundleReportsPage() {
           <StatCard label="Partially completed" value={s.batches.partiallyCompleted} tone="text-amber-600" />
           <StatCard label="Failed batches" value={s.batches.failed} tone="text-red-600" />
           <StatCard
-            label="Total bundle value"
+            label="Total approved value"
             value={formatUgx(s.value.approved)}
             hint={`Delivered ${formatUgx(s.value.delivered)}`}
             tone="text-blue-600"
           />
+          {s.byProduct && (
+            <>
+              <StatCard
+                label="Airtime delivered"
+                value={formatUgx(s.byProduct.airtime.deliveredValue)}
+                hint={`${s.byProduct.airtime.delivered} delivered · ${s.byProduct.airtime.failed} failed`}
+                tone="text-green-600"
+              />
+              <StatCard
+                label="Data bundles delivered"
+                value={formatUgx(s.byProduct.dataBundles.deliveredValue)}
+                hint={`${s.byProduct.dataBundles.delivered} delivered · ${s.byProduct.dataBundles.failed} failed`}
+                tone="text-green-600"
+              />
+            </>
+          )}
         </div>
       )}
 
@@ -222,7 +240,8 @@ export default function DataBundleReportsPage() {
                         <TableRow>
                           <TableHead>Batch</TableHead>
                           <TableHead>Phone</TableHead>
-                          <TableHead>Bundle</TableHead>
+                          <TableHead>Type</TableHead>
+                          <TableHead>Airtime / Bundle</TableHead>
                           <TableHead>Status</TableHead>
                           <TableHead>Transaction ref</TableHead>
                           <TableHead>Provider</TableHead>
@@ -235,7 +254,8 @@ export default function DataBundleReportsPage() {
                           <TableRow key={r.id}>
                             <TableCell>{r.batchNumber}</TableCell>
                             <TableCell>{r.phoneNumber}</TableCell>
-                            <TableCell>{r.bundleCode}</TableCell>
+                            <TableCell><ProductTypeBadge type={r.productType} /></TableCell>
+                            <TableCell>{rowProductText(r)}</TableCell>
                             <TableCell><RowStatusBadge status={r.status} /></TableCell>
                             <TableCell className="text-xs">{r.transactionReference ?? '—'}</TableCell>
                             <TableCell className="text-xs">{r.providerStatus ?? '—'}</TableCell>

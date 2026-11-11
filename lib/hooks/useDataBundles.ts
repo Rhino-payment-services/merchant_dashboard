@@ -151,8 +151,8 @@ export function useCreateSingleBundle() {
   const invalidate = useInvalidateAll();
   return useMutation({
     mutationFn: (payload: SingleBundlePayload) => dataBundlesApi.createSingle(payload),
-    onSuccess: () => {
-      toast.success('Bundle submitted for approval');
+    onSuccess: (_result, payload) => {
+      toast.success(payload.productType === 'AIRTIME' ? 'Airtime sent' : 'Bundle sent');
       invalidate();
     },
   });
