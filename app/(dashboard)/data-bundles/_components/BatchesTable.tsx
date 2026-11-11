@@ -12,7 +12,38 @@ import {
 } from '@/components/ui/table';
 import type { DataBundleBatch } from '@/lib/api/data-bundles.api';
 import { formatDateTime, formatUgx } from '@/lib/utils/data-bundles';
-import { BatchStatusBadge, EmptyBlock, batchMixText, checkerText } from './shared';
+import {
+  BatchStatusBadge,
+  EmptyBlock,
+  TableSkeleton,
+  batchMixText,
+  checkerText,
+  type SkeletonColumn,
+} from './shared';
+
+export function BatchesTableSkeleton({
+  showResults = true,
+  withActions = false,
+  rows,
+}: {
+  showResults?: boolean;
+  withActions?: boolean;
+  rows?: number;
+}) {
+  const columns: SkeletonColumn[] = [
+    { label: 'Batch', twoLine: true },
+    { label: 'Status', kind: 'badge' },
+    { label: 'Recipients', align: 'right', twoLine: true },
+    { label: 'Value', align: 'right' },
+    ...(showResults ? [{ label: 'Delivered / Failed', align: 'right' } as const] : []),
+    { label: 'Maker' },
+    { label: 'Checker' },
+    { label: 'Uploaded' },
+    { label: 'Approved' },
+    ...(withActions ? [{ label: 'Actions', align: 'right', kind: 'button' } as const] : []),
+  ];
+  return <TableSkeleton columns={columns} rows={rows} label="Loading batches…" />;
+}
 
 export function BatchesTable({
   batches,

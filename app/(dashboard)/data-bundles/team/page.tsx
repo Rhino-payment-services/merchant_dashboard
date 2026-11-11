@@ -20,7 +20,7 @@ import {
   violatesDataBundleRoleSeparation,
 } from '@/lib/utils/permissions';
 import { useDataBundleAccessContext } from '../_components/DataBundleAccessContext';
-import { EmptyBlock, LoadingBlock } from '../_components/shared';
+import { EmptyBlock, TableSkeleton, type SkeletonColumn } from '../_components/shared';
 
 type Perms = DataBundleAccess['permissions'];
 
@@ -30,6 +30,12 @@ const COLUMNS: Array<{ key: keyof Perms; label: string; help: string }> = [
   { key: 'canViewDataBundleReports', label: 'Finance', help: 'View reports and exports' },
   { key: 'canRetryDataBundles', label: 'Retry', help: 'Retry failed records' },
   { key: 'canManageDataBundleUsers', label: 'System Admin', help: 'Manage these roles only' },
+];
+
+const SKELETON_COLUMNS: SkeletonColumn[] = [
+  { label: 'Member', twoLine: true },
+  ...COLUMNS.map((c) => ({ label: c.label, align: 'center', kind: 'checkbox' }) as const),
+  { align: 'right', kind: 'button' },
 ];
 
 function MemberRow({ member }: { member: DataBundleTeamMember }) {
@@ -97,7 +103,7 @@ export default function DataBundleRolesPage() {
       </CardHeader>
       <CardContent>
         {isLoading || !data ? (
-          <LoadingBlock />
+          <TableSkeleton columns={SKELETON_COLUMNS} rows={6} label="Loading team members…" withPagination={false} />
         ) : data.members.length === 0 ? (
           <EmptyBlock title="No team members yet" description="Invite team members from the Team Members page." />
         ) : (

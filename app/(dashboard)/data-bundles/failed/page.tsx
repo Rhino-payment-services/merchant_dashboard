@@ -24,14 +24,16 @@ import { useDataBundleBatches, useFailedRecords, useRetryRecords } from '@/lib/h
 import { formatDateTime, productTypeOf } from '@/lib/utils/data-bundles';
 import { useDataBundleAccessContext } from '../_components/DataBundleAccessContext';
 import {
-  LoadingBlock,
   Pagination,
   ProductTypeBadge,
+  Refetching,
   RowStatusBadge,
   SearchInput,
   EmptyBlock,
+  TableSkeleton,
   rowProductText,
   useDebounced,
+  type SkeletonColumn,
 } from '../_components/shared';
 
 export default function DataBundleFailedRecordsPage() {
@@ -49,7 +51,7 @@ export default function DataBundleFailedRecordsPage() {
     limit: 100,
     status: 'PROCESSING,COMPLETED,PARTIALLY_COMPLETED,FAILED',
   });
-  const { data, isLoading } = useFailedRecords({
+  const { data, isLoading, isPlaceholderData } = useFailedRecords({
     page,
     limit: 25,
     search: debouncedSearch,
@@ -82,6 +84,21 @@ export default function DataBundleFailedRecordsPage() {
   };
 
   const selectedBatch = batches.data?.items.find((b) => b.id === batchId);
+
+  const skeletonColumns: SkeletonColumn[] = [
+    ...(access.can.retry ? [{ kind: 'checkbox' } as const] : []),
+    { label: 'Phone' },
+    { label: 'Type', kind: 'badge' },
+    { label: 'Airtime / Bundle', twoLine: true },
+    { label: 'Batch', twoLine: true },
+    { label: 'Transaction ref' },
+    { label: 'Failure reason' },
+    { label: 'Provider status' },
+    { label: 'Attempts', align: 'right' },
+    { label: 'Last attempt' },
+    { label: 'Retryable', kind: 'badge' },
+    ...(access.can.retry ? [{ kind: 'button' } as const] : []),
+  ];
 
   return (
     <Card>
@@ -161,11 +178,11 @@ export default function DataBundleFailedRecordsPage() {
         )}
 
         {isLoading || !data ? (
-          <LoadingBlock />
+          <TableSkeleton columns={skeletonColumns} label="Loading failed records…" />
         ) : items.length === 0 ? (
           <EmptyBlock title="No failed records" description="Everything has been delivered or is still in progress." />
         ) : (
-          <>
+          <Refetching active={isPlaceholderData}>
             <div className="overflow-x-auto">
               <Table>
                 <TableHeader>
@@ -270,7 +287,7 @@ export default function DataBundleFailedRecordsPage() {
                 setSelected(new Set());
               }}
             />
-          </>
+          </Refetching>
         )}
       </CardContent>
     </Card>

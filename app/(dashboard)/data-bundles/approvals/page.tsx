@@ -7,15 +7,15 @@ import { AccessDenied } from '@/app/components/AccessDenied';
 import type { DataBundleBatch } from '@/lib/api/data-bundles.api';
 import { useDataBundleBatches } from '@/lib/hooks/useDataBundles';
 import { useDataBundleAccessContext } from '../_components/DataBundleAccessContext';
-import { BatchesTable } from '../_components/BatchesTable';
+import { BatchesTable, BatchesTableSkeleton } from '../_components/BatchesTable';
 import { ReviewBatchDialog } from '../_components/ReviewBatchDialog';
-import { LoadingBlock, Pagination } from '../_components/shared';
+import { Pagination, Refetching } from '../_components/shared';
 
 export default function DataBundleApprovalsPage() {
   const access = useDataBundleAccessContext();
   const [page, setPage] = useState(1);
   const [selected, setSelected] = useState<DataBundleBatch | null>(null);
-  const { data, isLoading } = useDataBundleBatches(
+  const { data, isLoading, isPlaceholderData } = useDataBundleBatches(
     { page, limit: 20, status: 'PENDING_APPROVAL' },
     access.can.approve,
   );
@@ -34,9 +34,9 @@ export default function DataBundleApprovalsPage() {
       </CardHeader>
       <CardContent>
         {isLoading || !data ? (
-          <LoadingBlock />
+          <BatchesTableSkeleton showResults={false} withActions />
         ) : (
-          <>
+          <Refetching active={isPlaceholderData}>
             <BatchesTable
               batches={data.items}
               showResults={false}
@@ -57,7 +57,7 @@ export default function DataBundleApprovalsPage() {
               limit={data.pagination.limit}
               onPageChange={setPage}
             />
-          </>
+          </Refetching>
         )}
       </CardContent>
       <ReviewBatchDialog

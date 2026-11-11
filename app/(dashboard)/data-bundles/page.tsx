@@ -20,8 +20,32 @@ import {
 import { useDataBundleSummary } from '@/lib/hooks/useDataBundles';
 import { formatUgx } from '@/lib/utils/data-bundles';
 import { useDataBundleAccessContext } from './_components/DataBundleAccessContext';
-import { BatchesTable } from './_components/BatchesTable';
-import { LoadingBlock, StatCard } from './_components/shared';
+import { Skeleton } from '@/components/ui/skeleton';
+import { BatchesTable, BatchesTableSkeleton } from './_components/BatchesTable';
+import { SkeletonRegion, StatCard, StatGridSkeleton } from './_components/shared';
+
+function OverviewSkeleton() {
+  return (
+    <SkeletonRegion label="Loading overview…" className="space-y-6">
+      <StatGridSkeleton count={4} className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4" withHint />
+      <StatGridSkeleton count={4} withIcon={false} />
+      <StatGridSkeleton count={2} className="grid grid-cols-1 sm:grid-cols-2 gap-4" withHint />
+      <div className="flex flex-wrap gap-3">
+        <Skeleton className="h-9 w-32" />
+        <Skeleton className="h-9 w-32" />
+      </div>
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between">
+          <CardTitle>Recent batches</CardTitle>
+          <Skeleton className="h-4 w-14" />
+        </CardHeader>
+        <CardContent>
+          <BatchesTableSkeleton rows={5} />
+        </CardContent>
+      </Card>
+    </SkeletonRegion>
+  );
+}
 
 export default function DataBundlesOverviewPage() {
   const router = useRouter();
@@ -36,7 +60,7 @@ export default function DataBundlesOverviewPage() {
   }, [access, router]);
 
   if (!access.can.view) return null;
-  if (isLoading || !summary) return <LoadingBlock />;
+  if (isLoading || !summary) return <OverviewSkeleton />;
 
   return (
     <div className="space-y-6">

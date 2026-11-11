@@ -38,20 +38,47 @@ import {
   type BatchStatus,
 } from '@/lib/utils/data-bundles';
 import { useDataBundleAccessContext } from '../_components/DataBundleAccessContext';
-import { BatchesTable } from '../_components/BatchesTable';
+import { BatchesTable, BatchesTableSkeleton } from '../_components/BatchesTable';
 import {
   EmptyBlock,
-  LoadingBlock,
   Pagination,
   ProductTypeBadge,
+  Refetching,
   RowStatusBadge,
   SearchInput,
+  SkeletonRegion,
   StatCard,
+  StatGridSkeleton,
+  TableSkeleton,
   rowProductText,
   useDebounced,
+  type SkeletonColumn,
 } from '../_components/shared';
 
 type TabId = 'batches' | 'recipients' | 'retries';
+
+const FAILED_SKELETON_COLUMNS: SkeletonColumn[] = [
+  { label: 'Batch' },
+  { label: 'Phone' },
+  { label: 'Type', kind: 'badge' },
+  { label: 'Airtime / Bundle' },
+  { label: 'Status', kind: 'badge' },
+  { label: 'Transaction ref' },
+  { label: 'Provider' },
+  { label: 'Attempts', align: 'right' },
+  { label: 'Reason' },
+];
+
+const RETRY_SKELETON_COLUMNS: SkeletonColumn[] = [
+  { label: 'When' },
+  { label: 'Batch' },
+  { label: 'Phone' },
+  { label: 'Attempt' },
+  { label: 'Reference' },
+  { label: 'Status', kind: 'badge' },
+  { label: 'Retried by' },
+  { label: 'Reason' },
+];
 
 /**
  * Finance view. Read-only: approval and retry actions live on their own pages
@@ -145,7 +172,9 @@ export default function DataBundleReportsPage() {
       </Card>
 
       {!s ? (
-        <LoadingBlock />
+        <SkeletonRegion label="Loading report summary…">
+          <StatGridSkeleton count={10} withIcon={false} />
+        </SkeletonRegion>
       ) : (
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
           <StatCard label="Total batches" value={s.batches.total} />
@@ -218,22 +247,22 @@ export default function DataBundleReportsPage() {
           <CardContent>
             <TabsContent value="batches" className="mt-0">
               {batches.isLoading || !batches.data ? (
-                <LoadingBlock />
+                <BatchesTableSkeleton />
               ) : (
-                <>
+                <Refetching active={batches.isPlaceholderData}>
                   <BatchesTable batches={batches.data.items} />
                   <Pagination {...batches.data.pagination} onPageChange={setPage} />
-                </>
+                </Refetching>
               )}
             </TabsContent>
 
             <TabsContent value="recipients" className="mt-0">
               {failed.isLoading || !failed.data ? (
-                <LoadingBlock />
+                <TableSkeleton columns={FAILED_SKELETON_COLUMNS} label="Loading failed recipients…" />
               ) : failed.data.items.length === 0 ? (
                 <EmptyBlock title="No failed recipients" />
               ) : (
-                <>
+                <Refetching active={failed.isPlaceholderData}>
                   <div className="overflow-x-auto">
                     <Table>
                       <TableHeader>
@@ -267,17 +296,17 @@ export default function DataBundleReportsPage() {
                     </Table>
                   </div>
                   <Pagination {...failed.data.pagination} onPageChange={setPage} />
-                </>
+                </Refetching>
               )}
             </TabsContent>
 
             <TabsContent value="retries" className="mt-0">
               {retries.isLoading || !retries.data ? (
-                <LoadingBlock />
+                <TableSkeleton columns={RETRY_SKELETON_COLUMNS} label="Loading retry history…" />
               ) : retries.data.items.length === 0 ? (
                 <EmptyBlock title="No retries yet" />
               ) : (
-                <>
+                <Refetching active={retries.isPlaceholderData}>
                   <div className="overflow-x-auto">
                     <Table>
                       <TableHeader>
@@ -309,7 +338,7 @@ export default function DataBundleReportsPage() {
                     </Table>
                   </div>
                   <Pagination {...retries.data.pagination} onPageChange={setPage} />
-                </>
+                </Refetching>
               )}
             </TabsContent>
           </CardContent>

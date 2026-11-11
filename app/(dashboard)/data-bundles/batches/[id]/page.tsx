@@ -40,19 +40,104 @@ import {
 } from '@/lib/utils/data-bundles';
 import { useDataBundleAccessContext } from '../../_components/DataBundleAccessContext';
 import { ReviewBatchDialog } from '../../_components/ReviewBatchDialog';
+import { Skeleton } from '@/components/ui/skeleton';
 import {
   BatchStatusBadge,
-  LoadingBlock,
+  DetailsSkeleton,
   Pagination,
   ProductTypeBadge,
+  Refetching,
   RowStatusBadge,
   SearchInput,
+  SkeletonRegion,
   StatCard,
+  StatGridSkeleton,
+  TableSkeleton,
   batchMixText,
   checkerText,
   rowProductText,
   useDebounced,
+  type SkeletonColumn,
 } from '../../_components/shared';
+
+const ROW_SKELETON_COLUMNS: SkeletonColumn[] = [
+  { label: 'Row' },
+  { label: 'Phone', twoLine: true },
+  { label: 'Type', kind: 'badge' },
+  { label: 'Airtime / Bundle', twoLine: true },
+  { label: 'Amount', align: 'right' },
+  { label: 'Status', kind: 'badge' },
+  { label: 'Transaction ref' },
+  { label: 'Provider', twoLine: true },
+  { label: 'Attempts', align: 'right' },
+  { label: 'Reason' },
+  {},
+];
+
+function RecipientsTableSkeleton() {
+  return <TableSkeleton columns={ROW_SKELETON_COLUMNS} label="Loading recipients…" />;
+}
+
+function BatchDetailSkeleton() {
+  return (
+    <SkeletonRegion label="Loading batch…" className="space-y-6">
+      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+        <div className="flex items-center gap-3">
+          <Skeleton className="h-8 w-9" />
+          <div className="space-y-2">
+            <div className="flex items-center gap-2">
+              <Skeleton className="h-6 w-40" />
+              <Skeleton className="h-5 w-20 rounded-full" />
+            </div>
+            <Skeleton className="h-4 w-56 bg-gray-100" />
+          </div>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <Skeleton className="h-9 w-36" />
+          <Skeleton className="h-9 w-24" />
+        </div>
+      </div>
+
+      <StatGridSkeleton count={4} withIcon={false} withHint />
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Details</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <DetailsSkeleton items={8} />
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+          <CardTitle>Recipients</CardTitle>
+          <div className="flex flex-col sm:flex-row gap-2">
+            <Skeleton className="h-9 w-full sm:w-64" />
+            <Skeleton className="h-9 w-full sm:w-48" />
+          </div>
+        </CardHeader>
+        <CardContent>
+          <RecipientsTableSkeleton />
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Audit trail</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          {Array.from({ length: 3 }).map((_, i) => (
+            <div key={i} className="flex flex-col sm:flex-row gap-1 sm:gap-4">
+              <Skeleton className="h-4 w-36 sm:w-44 shrink-0 bg-gray-100" />
+              <Skeleton className="h-4 w-64" />
+            </div>
+          ))}
+        </CardContent>
+      </Card>
+    </SkeletonRegion>
+  );
+}
 
 const AUDIT_LABELS: Record<string, string> = {
   UPLOADED: 'Uploaded and validated',
@@ -89,7 +174,7 @@ export default function DataBundleBatchDetailPage() {
   const discard = useDiscardBatch();
   const retry = useRetryRecords();
 
-  if (isLoading) return <LoadingBlock />;
+  if (isLoading) return <BatchDetailSkeleton />;
   if (error || !batch) {
     return (
       <Card>
@@ -267,9 +352,9 @@ export default function DataBundleBatchDetailPage() {
         </CardHeader>
         <CardContent>
           {rows.isLoading || !rows.data ? (
-            <LoadingBlock />
+            <RecipientsTableSkeleton />
           ) : (
-            <>
+            <Refetching active={rows.isPlaceholderData}>
               <div className="overflow-x-auto">
                 <Table>
                   <TableHeader>
@@ -350,7 +435,7 @@ export default function DataBundleBatchDetailPage() {
                 limit={rows.data.pagination.limit}
                 onPageChange={setPage}
               />
-            </>
+            </Refetching>
           )}
         </CardContent>
       </Card>

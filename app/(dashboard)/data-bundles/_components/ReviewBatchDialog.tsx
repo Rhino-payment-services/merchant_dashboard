@@ -24,7 +24,23 @@ import { Loader2 } from 'lucide-react';
 import type { DataBundleBatch } from '@/lib/api/data-bundles.api';
 import { useApproveBatch, useDataBundleRows, useRejectBatch } from '@/lib/hooks/useDataBundles';
 import { formatDateTime, formatUgx, productTypeOf } from '@/lib/utils/data-bundles';
-import { Pagination, ProductTypeBadge, batchMixText, rowProductText } from './shared';
+import {
+  Pagination,
+  ProductTypeBadge,
+  TableRowsSkeleton,
+  batchMixText,
+  rowProductText,
+  type SkeletonColumn,
+} from './shared';
+
+const ROW_SKELETON_COLUMNS: SkeletonColumn[] = [
+  {},
+  {},
+  { twoLine: true },
+  { align: 'right' },
+  {},
+  {},
+];
 
 export function ReviewBatchDialog({
   batch,
@@ -118,7 +134,8 @@ export function ReviewBatchDialog({
                 <TableHead>Reference</TableHead>
               </TableRow>
             </TableHeader>
-            <TableBody>
+            <TableBody aria-busy={rows.isLoading || undefined}>
+              {rows.isLoading && <TableRowsSkeleton columns={ROW_SKELETON_COLUMNS} rows={5} />}
               {(rows.data?.items ?? []).map((r) => (
                 <TableRow key={r.id}>
                   <TableCell>{r.rowNumber}</TableCell>
@@ -142,7 +159,6 @@ export function ReviewBatchDialog({
               ))}
             </TableBody>
           </Table>
-          {rows.isLoading && <p className="py-4 text-center text-sm text-gray-500">Loading recipients…</p>}
           {rows.data && (
             <Pagination
               page={rows.data.pagination.page}

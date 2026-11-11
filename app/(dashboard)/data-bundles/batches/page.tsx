@@ -12,8 +12,8 @@ import {
 } from '@/components/ui/select';
 import { useDataBundleBatches } from '@/lib/hooks/useDataBundles';
 import { BATCH_STATUS_META, type BatchStatus } from '@/lib/utils/data-bundles';
-import { BatchesTable } from '../_components/BatchesTable';
-import { LoadingBlock, Pagination, SearchInput, useDebounced } from '../_components/shared';
+import { BatchesTable, BatchesTableSkeleton } from '../_components/BatchesTable';
+import { Pagination, Refetching, SearchInput, useDebounced } from '../_components/shared';
 
 const PAGE_SIZE = 20;
 
@@ -25,7 +25,7 @@ export default function DataBundleBatchesPage() {
   const [page, setPage] = useState(1);
   const debouncedSearch = useDebounced(search);
 
-  const { data, isLoading } = useDataBundleBatches({
+  const { data, isLoading, isPlaceholderData } = useDataBundleBatches({
     page,
     limit: PAGE_SIZE,
     search: debouncedSearch,
@@ -89,9 +89,9 @@ export default function DataBundleBatchesPage() {
           </div>
         </div>
         {isLoading || !data ? (
-          <LoadingBlock />
+          <BatchesTableSkeleton />
         ) : (
-          <>
+          <Refetching active={isPlaceholderData}>
             <BatchesTable batches={data.items} />
             <Pagination
               page={data.pagination.page}
@@ -100,7 +100,7 @@ export default function DataBundleBatchesPage() {
               limit={data.pagination.limit}
               onPageChange={setPage}
             />
-          </>
+          </Refetching>
         )}
       </CardContent>
     </Card>
