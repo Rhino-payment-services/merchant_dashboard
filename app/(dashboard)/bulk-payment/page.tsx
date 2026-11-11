@@ -25,12 +25,14 @@ import {
   CircleHelp,
 } from "lucide-react";
 import { useSession } from "next-auth/react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useUserProfile } from "../UserProfileProvider";
 import { toast } from 'sonner';
 import { AccessDenied } from '@/app/components/AccessDenied';
 import { useTeamPermissionSession } from '@/lib/hooks/useTeamPermissionSession';
 import { canInitiatePayments } from '@/lib/utils/permissions';
+import { isDataBundlesAvailable, readDataBundleFeature } from '@/lib/utils/data-bundles';
 import { readSheetFromBinaryString, writeWorkbookToFile } from "@/lib/excel-utils";
 import { processBulkTransactionAsync, validateBulkRecipients, getBulkTransactionStatus, BulkTransactionItem, BulkTransactionItemResult } from "@/lib/api/bulk-payment.api";
 import { SinglePaymentDto, FeePreviewResponseDto, processSinglePayment, validateTransaction } from "@/lib/api/single-payment.api";
@@ -89,6 +91,17 @@ function FieldHint({ children }: { children: React.ReactNode }) {
         {children}
       </TooltipContent>
     </Tooltip>
+  );
+}
+
+function AirtimeMovedNotice() {
+  return (
+    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 rounded-md border border-blue-200 bg-blue-50 p-3 text-sm text-blue-800">
+      <span>Airtime and data bundles are now under Airtime &amp; Bundles.</span>
+      <Button asChild size="sm" variant="outline">
+        <Link href="/data-bundles/single">Go to Airtime &amp; Bundles</Link>
+      </Button>
+    </div>
   );
 }
 
@@ -197,6 +210,11 @@ export default function BulkPaymentPage() {
   const featureLiquidation =
     (liveMerchantData?.featureLiquidation ?? (currentMerchant as any)?.featureLiquidation) === true;
   const canLiquidate = featureLiquidation || featureBulkPayments;
+  const airtimeMovedToModule = isDataBundlesAvailable({
+    featureDataBundleDistribution: readDataBundleFeature(liveMerchantData, currentMerchant),
+    liquidationOnlyMode,
+    userSession: teamSession,
+  });
   const disbursementBalance =
     (profile as any)?.businessWallet?.disbursementBalance ??
     (profile as any)?.businessWallet?.balance ??
@@ -2324,10 +2342,14 @@ export default function BulkPaymentPage() {
                         }
                       }}
                     >
-                      <TabsList className="grid w-full max-w-md grid-cols-2">
-                        <TabsTrigger value="utilities">Utilities</TabsTrigger>
-                        <TabsTrigger value="airtime_data">Airtime</TabsTrigger>
-                      </TabsList>
+                      {airtimeMovedToModule ? (
+                        <AirtimeMovedNotice />
+                      ) : (
+                        <TabsList className="grid w-full max-w-md grid-cols-2">
+                          <TabsTrigger value="utilities">Utilities</TabsTrigger>
+                          <TabsTrigger value="airtime_data">Airtime</TabsTrigger>
+                        </TabsList>
+                      )}
                       <TabsContent value="utilities" className="space-y-4 pt-3">
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                           <div>
@@ -3070,10 +3092,14 @@ export default function BulkPaymentPage() {
                         }
                       }}
                     >
-                      <TabsList className="grid w-full max-w-md grid-cols-2">
-                        <TabsTrigger value="utilities">Utilities</TabsTrigger>
-                        <TabsTrigger value="airtime_data">Airtime</TabsTrigger>
-                      </TabsList>
+                      {airtimeMovedToModule ? (
+                        <AirtimeMovedNotice />
+                      ) : (
+                        <TabsList className="grid w-full max-w-md grid-cols-2">
+                          <TabsTrigger value="utilities">Utilities</TabsTrigger>
+                          <TabsTrigger value="airtime_data">Airtime</TabsTrigger>
+                        </TabsList>
+                      )}
                       <TabsContent value="utilities" className="space-y-4 pt-3">
                         <div>
                           <label className="block text-sm font-semibold text-gray-700 mb-2">
