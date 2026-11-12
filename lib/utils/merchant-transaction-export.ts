@@ -6,6 +6,7 @@ import {
 import {
   formatTransactionCharges,
   formatTransactionNetAmount,
+  getTransactionNetAmount,
   getTransactionReceiverParty,
   getTransactionSenderParty,
   getTransactionTypeDisplay,
@@ -47,14 +48,21 @@ export async function fetchAllBusinessTransactions(
   return all;
 }
 
+export type MerchantExportRowMode = 'ledger' | 'statement';
+
 export function merchantTransactionsToExportRows(
   transactions: Transaction[],
   viewer: MerchantExportViewerContext,
+  mode: MerchantExportRowMode = 'ledger',
 ): Record<string, unknown>[] {
   return transactions.map((txn) => {
     const sender = getTransactionSenderParty(txn, viewer);
     const receiver = getTransactionReceiverParty(txn, viewer);
     const createdAt = new Date(txn.createdAt);
+    const amount =
+      mode === 'statement'
+        ? getTransactionNetAmount(txn)
+        : Number(txn.amount || 0);
     const row: Record<string, unknown> = {
       'Transaction ID': txn.reference || txn.id || '',
       Date: createdAt.toLocaleDateString('en-UG'),
@@ -64,13 +72,15 @@ export function merchantTransactionsToExportRows(
       Sender: sender.name,
       Receiver: receiver.name,
       'Receiver Number': receiver.contact || 'N/A',
-      'Amount (UGX)': Number(txn.amount || 0),
-      Charges: formatTransactionCharges(txn),
-      'Net (UGX)': formatTransactionNetAmount(txn),
-      Status: txn.status || '',
-      Reference: txn.reference || '',
-      Description: txn.description || '',
+      'Amount (UGX)': amount,
     };
+    if (mode === 'ledger') {
+      row.Charges = formatTransactionCharges(txn);
+      row['Net (UGX)'] = formatTransactionNetAmount(txn);
+    }
+    row.Status = txn.status || '';
+    row.Reference = txn.reference || '';
+    row.Description = txn.description || '';
     if (txn.balanceAfter != null && Number.isFinite(Number(txn.balanceAfter))) {
       row['Balance After (UGX)'] = Number(txn.balanceAfter);
     }
@@ -88,9 +98,12 @@ function escapeCsvCell(value: unknown): string {
 
 export function merchantTransactionsToCsv(
   rows: Record<string, unknown>[],
+  mode: MerchantExportRowMode = 'ledger',
 ): string {
   if (rows.length === 0) {
-    return 'Transaction ID,Date,Time,Type,Direction,Sender,Receiver,Receiver Number,Amount (UGX),Charges,Net (UGX),Status,Reference,Description\n';
+    return mode === 'statement'
+      ? 'Transaction ID,Date,Time,Type,Direction,Sender,Receiver,Receiver Number,Amount (UGX),Status,Reference,Description\n'
+      : 'Transaction ID,Date,Time,Type,Direction,Sender,Receiver,Receiver Number,Amount (UGX),Charges,Net (UGX),Status,Reference,Description\n';
   }
   const headers = Object.keys(rows[0]);
   const lines = [
@@ -105,7 +118,6 @@ export type MerchantStatementSummary = {
   totalNetCredit: number;
   totalNetDebit: number;
   closingBalance: number;
-  transactionFees: number;
   successfulCount: number;
   currency?: string;
 };
@@ -145,22 +157,17 @@ export function merchantStatementCoverRows(
     {
       Metric: 'Amount deposited',
       Value: statement.totalNetCredit,
-      Note: `Total net credit · ${formatMoney(statement.totalNetCredit)}`,
+      Note: `Net collection · ${formatMoney(statement.totalNetCredit)}`,
     },
     {
       Metric: 'Amount spent',
       Value: statement.totalNetDebit,
-      Note: `Total net debit · ${formatMoney(statement.totalNetDebit)}`,
+      Note: `Net payout · ${formatMoney(statement.totalNetDebit)}`,
     },
     {
       Metric: 'Closing balance',
       Value: statement.closingBalance,
       Note: formatMoney(statement.closingBalance),
-    },
-    {
-      Metric: 'Transaction fees',
-      Value: statement.transactionFees,
-      Note: `Fees charged on transactions in this period · ${formatMoney(statement.transactionFees)}`,
     },
     {
       Metric: 'Successful transactions',

@@ -22,6 +22,11 @@ export interface TeamMember extends UserPermissions {
   canManageEvents: boolean;
   canManageTeam: boolean;
   canManageSettings: boolean;
+  canUploadDataBundles?: boolean;
+  canApproveDataBundles?: boolean;
+  canViewDataBundleReports?: boolean;
+  canManageDataBundleUsers?: boolean;
+  canRetryDataBundles?: boolean;
   paymentSmsNotificationsEnabled?: boolean;
   paymentEmailNotificationsEnabled?: boolean;
   invitedAt: string;

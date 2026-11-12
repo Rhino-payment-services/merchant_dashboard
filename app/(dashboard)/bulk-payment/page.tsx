@@ -25,12 +25,14 @@ import {
   CircleHelp,
 } from "lucide-react";
 import { useSession } from "next-auth/react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useUserProfile } from "../UserProfileProvider";
 import { toast } from 'sonner';
 import { AccessDenied } from '@/app/components/AccessDenied';
 import { useTeamPermissionSession } from '@/lib/hooks/useTeamPermissionSession';
 import { canInitiatePayments } from '@/lib/utils/permissions';
+import { isDataBundlesAvailable, readDataBundleFeature } from '@/lib/utils/data-bundles';
 import { readSheetFromBinaryString, writeWorkbookToFile } from "@/lib/excel-utils";
 import { processBulkTransactionAsync, validateBulkRecipients, getBulkTransactionStatus, BulkTransactionItem, BulkTransactionItemResult } from "@/lib/api/bulk-payment.api";
 import { SinglePaymentDto, FeePreviewResponseDto, processSinglePayment, validateTransaction } from "@/lib/api/single-payment.api";
@@ -47,6 +49,11 @@ import {
   utilityRequiresCustomerPhone,
   NWSC_AREAS,
 } from "@/lib/utils/bill-area-field";
+import {
+  BANK_TRANSFER_PROCESSING_MESSAGE,
+  isBankTransferStillProcessing,
+  mapBankTransferUserMessage,
+} from "@/lib/utils/bank-transfer-status";
 import {
   applyValidationToBillPayment,
   isElectricityMeterType,
@@ -84,6 +91,17 @@ function FieldHint({ children }: { children: React.ReactNode }) {
         {children}
       </TooltipContent>
     </Tooltip>
+  );
+}
+
+function AirtimeMovedNotice() {
+  return (
+    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 rounded-md border border-blue-200 bg-blue-50 p-3 text-sm text-blue-800">
+      <span>Airtime and data bundles are now under Airtime &amp; Bundles.</span>
+      <Button asChild size="sm" variant="outline">
+        <Link href="/data-bundles/single">Go to Airtime &amp; Bundles</Link>
+      </Button>
+    </div>
   );
 }
 
@@ -192,6 +210,11 @@ export default function BulkPaymentPage() {
   const featureLiquidation =
     (liveMerchantData?.featureLiquidation ?? (currentMerchant as any)?.featureLiquidation) === true;
   const canLiquidate = featureLiquidation || featureBulkPayments;
+  const airtimeMovedToModule = isDataBundlesAvailable({
+    featureDataBundleDistribution: readDataBundleFeature(liveMerchantData, currentMerchant),
+    liquidationOnlyMode,
+    userSession: teamSession,
+  });
   const disbursementBalance =
     (profile as any)?.businessWallet?.disbursementBalance ??
     (profile as any)?.businessWallet?.balance ??
@@ -643,7 +666,26 @@ export default function BulkPaymentPage() {
           : {}),
       };
       const result = await processSinglePayment(payload, (session?.user as any)?.id);
-      toast.success('Payment processed successfully!');
+      const resultData = (result as any)?.data ?? result
+      const resultStatus = resultData?.status ?? (result as any)?.status
+      const resultMessage = resultData?.message ?? (result as any)?.message
+      const bankPending =
+        payload.mode === 'WALLET_TO_BANK' &&
+        isBankTransferStillProcessing({
+          status: resultStatus,
+          message: resultMessage,
+          pending: resultData?.pending ?? (result as any)?.pending,
+        })
+
+      if (bankPending) {
+        toast.success(resultMessage || BANK_TRANSFER_PROCESSING_MESSAGE)
+      } else {
+        toast.success(
+          resultStatus === 'PROCESSING' || resultStatus === 'PENDING'
+            ? resultMessage || 'Payment initiated and still processing. Check transactions for the final status.'
+            : 'Payment processed successfully!',
+        )
+      }
       console.log('Single payment result:', result);
       
       // Navigate to transactions page after successful payment
@@ -661,7 +703,12 @@ export default function BulkPaymentPage() {
       setValidationInfo(null);
     } catch (error: any) {
       console.error('Error processing single payment:', error);
-      toast.error(error.message || 'Failed to process payment');
+      const errMsg = error.message || 'Failed to process payment'
+      toast.error(
+        singlePayment.mode === 'WALLET_TO_BANK'
+          ? mapBankTransferUserMessage(errMsg)
+          : errMsg,
+      );
     } finally {
       setSinglePaymentLoading(false);
     }
@@ -1212,7 +1259,9 @@ export default function BulkPaymentPage() {
         } else {
           setBulkTransactionId(null);
           setProcessing(false);
-          toast.error('⏰ Bulk payment polling timeout - please check status manually');
+          toast.warning(
+            'Bulk payment is still processing. Please check transactions later — do not retry the same batch.',
+          );
           console.warn('⚠️ Bulk transaction polling timeout after', maxAttempts, 'attempts');
         }
       } catch (error) {
@@ -2293,10 +2342,14 @@ export default function BulkPaymentPage() {
                         }
                       }}
                     >
-                      <TabsList className="grid w-full max-w-md grid-cols-2">
-                        <TabsTrigger value="utilities">Utilities</TabsTrigger>
-                        <TabsTrigger value="airtime_data">Airtime</TabsTrigger>
-                      </TabsList>
+                      {airtimeMovedToModule ? (
+                        <AirtimeMovedNotice />
+                      ) : (
+                        <TabsList className="grid w-full max-w-md grid-cols-2">
+                          <TabsTrigger value="utilities">Utilities</TabsTrigger>
+                          <TabsTrigger value="airtime_data">Airtime</TabsTrigger>
+                        </TabsList>
+                      )}
                       <TabsContent value="utilities" className="space-y-4 pt-3">
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                           <div>
@@ -3039,10 +3092,14 @@ export default function BulkPaymentPage() {
                         }
                       }}
                     >
-                      <TabsList className="grid w-full max-w-md grid-cols-2">
-                        <TabsTrigger value="utilities">Utilities</TabsTrigger>
-                        <TabsTrigger value="airtime_data">Airtime</TabsTrigger>
-                      </TabsList>
+                      {airtimeMovedToModule ? (
+                        <AirtimeMovedNotice />
+                      ) : (
+                        <TabsList className="grid w-full max-w-md grid-cols-2">
+                          <TabsTrigger value="utilities">Utilities</TabsTrigger>
+                          <TabsTrigger value="airtime_data">Airtime</TabsTrigger>
+                        </TabsList>
+                      )}
                       <TabsContent value="utilities" className="space-y-4 pt-3">
                         <div>
                           <label className="block text-sm font-semibold text-gray-700 mb-2">

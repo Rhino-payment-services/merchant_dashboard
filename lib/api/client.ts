@@ -157,10 +157,21 @@ apiClient.interceptors.response.use(
       }
     }
     
-    // Handle timeout errors
+    // Handle timeout errors. For money-out process calls, the partner may still
+    // complete after our client gives up — tell the merchant to check back, not retry.
     if (error.code === 'ECONNABORTED' && error.message.includes('timeout')) {
       console.error('Request timeout:', error.config.url)
-      return Promise.reject(new Error('Request timed out. Please try again.'))
+      const url = String(error.config?.url || '')
+      const isMoneyMovement =
+        url.includes('/transactions/process') ||
+        url.includes('/transactions/bulk')
+      return Promise.reject(
+        new Error(
+          isMoneyMovement
+            ? 'Request timed out while the transfer may still be processing. Please check transactions later — do not retry the same transfer.'
+            : 'Request timed out. Please try again.',
+        ),
+      )
     }
     
     return Promise.reject(error)
