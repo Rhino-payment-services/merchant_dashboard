@@ -1,6 +1,5 @@
 "use client"
 import React, { useState, useMemo, useEffect } from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { DateRangePicker } from '@/components/ui/date-range-picker';
@@ -9,7 +8,11 @@ import { useUserProfile } from '../UserProfileProvider';
 import { AccessDenied } from '@/app/components/AccessDenied';
 import { useTeamPermissionSession } from '@/lib/hooks/useTeamPermissionSession';
 import { canViewReports } from '@/lib/utils/permissions';
-import { TransactionFilter, getBusinessWalletStatement } from '@/lib/api/transactions.api';
+import {
+  TransactionFilter,
+  getBusinessWalletStatement,
+  useMyTransactions,
+} from '@/lib/api/transactions.api';
 import { getWalletBalance } from '@/lib/api/wallet.api';
 import { useQuery } from '@tanstack/react-query';
 import { 
@@ -49,6 +52,7 @@ import {
   resolveExportDateRange,
   sanitizeMerchantFilenamePart,
 } from '@/lib/utils/merchant-transaction-export';
+import KpiCard from '@/app/components/KpiCard';
 import {
   getTransactionNetAmount,
   getTransactionReceiverParty,
@@ -118,39 +122,38 @@ export default function ReportsPage() {
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(10);
 
-  // Date range only for API fetch — paginate all pages (backend caps limit at 100).
-  // Status/direction filters are applied client-side after transform.
+  // Paginated list for the table — full history is only fetched on export.
+  // Status/direction/search are applied client-side on the current page
+  // (business transactions API does not accept those filters).
   const reportApiFilter = useMemo(() => {
-    const filter: Omit<TransactionFilter, 'page' | 'limit'> = {};
+    const filter: TransactionFilter = {
+      page: currentPage,
+      limit: itemsPerPage,
+    };
     if (dateRange.from) filter.startDate = dateRange.from;
     if (dateRange.to) filter.endDate = dateRange.to;
     else if (dateRange.from) filter.endDate = dateRange.from;
     return filter;
-  }, [dateRange]);
+  }, [dateRange, currentPage, itemsPerPage]);
 
   const {
-    data: apiTransactions = [],
+    data: transactionsPage,
     isLoading: transactionsLoading,
     error: transactionsError,
     refetch: refetchTransactions,
-  } = useQuery({
-    queryKey: [
-      'reports',
-      'all-transactions',
-      reportApiFilter,
-      childMerchantId,
-      effectiveMerchantCode,
-    ],
-    queryFn: () =>
-      fetchAllBusinessTransactions(
-        reportApiFilter,
-        childMerchantId || undefined,
-        effectiveMerchantCode,
-      ),
-    staleTime: 30000,
-    retry: 3,
-    refetchOnWindowFocus: false,
-  });
+  } = useMyTransactions(
+    reportApiFilter,
+    childMerchantId || undefined,
+    effectiveMerchantCode,
+  );
+
+  const apiTransactions = transactionsPage?.transactions || [];
+  const paginationInfo = transactionsPage?.pagination || {
+    page: 1,
+    limit: itemsPerPage,
+    total: 0,
+    totalPages: 1,
+  };
 
   const { data: walletBalances, refetch: refetchWalletBalances } = useQuery({
     queryKey: ['reports', 'wallet-balance', childMerchantId],
@@ -211,179 +214,6 @@ export default function ReportsPage() {
     walletBalances?.collectionBalance != null &&
     walletBalances?.disbursementBalance != null;
 
-  // Transform API transactions to the format expected by the reports page
-  const transformTransaction = (apiTxn: any): Transaction => {
-    // Map API status to reports page status
-    const mapStatus = (apiStatus: string): 'success' | 'pending' | 'failed' => {
-      if (apiStatus === 'COMPLETED' || apiStatus === 'SUCCESS') return 'success';
-      if (apiStatus === 'PENDING' || apiStatus === 'PROCESSING') return 'pending';
-      return 'failed';
-    };
-
-    // Get sender name from transaction metadata (similar to transactions page logic)
-    const getSenderName = (txn: any): string => {
-      // Check for admin-funded deposits/Wallet Funding first
-      if (txn.type === 'DEPOSIT' && txn.metadata?.fundedByAdmin) {
-        return txn.metadata?.adminName || 'Admin User';
-      }
-      
-      // Wallet Funding - when merchant wallet is being funded (credit to merchant)
-      if (txn.type === 'DEPOSIT' || txn.type === 'WALLET_FUNDING' || 
-          (txn.direction === 'CREDIT' && txn.metadata?.fundedByAdmin)) {
-        // For wallet funding, the sender is the one funding the wallet (admin, external source, etc.)
-        return txn.metadata?.adminName || 
-               txn.metadata?.userName || 
-               txn.metadata?.counterpartyInfo?.name || 
-               'Wallet Funding Source';
-      }
-      
-      if (txn.direction === 'DEBIT') {
-        // Merchant is sending - sender is the merchant
-        return profile?.merchant_names || profile?.merchantBusinessTradeName || profile?.businessTradeName || 'Merchant';
-      } else {
-        // CREDIT direction - someone else is sending to merchant
-        if (txn.type === 'MERCHANT_TO_WALLET' || txn.type === 'MERCHANT_TO_INTERNAL_WALLET') {
-          return txn.metadata?.merchantName || txn.metadata?.counterpartyInfo?.name || 'Merchant';
-        } else if (txn.type === 'MNO_TO_WALLET') {
-          return txn.metadata?.userName || `${txn.metadata?.mnoProvider || ''} Mobile Money`.trim() || 'Mobile Money User';
-        } else if (txn.type === 'WALLET_TO_WALLET' || txn.counterpartyId || txn.counterpartyUser) {
-          // P2P - Wallet to Wallet
-          const senderName = txn.counterpartyUser?.profile?.firstName && txn.counterpartyUser?.profile?.lastName
-            ? `${txn.counterpartyUser.profile.firstName} ${txn.counterpartyUser.profile.lastName}`
-            : txn.metadata?.counterpartyInfo?.name || txn.metadata?.userName || 'RukaPay User';
-          return senderName;
-        } else if (txn.metadata?.counterpartyInfo) {
-          return txn.metadata.counterpartyInfo.name;
-        } else {
-          // Fallback
-          return txn.metadata?.userName || txn.metadata?.phoneNumber || 'Sender';
-        }
-      }
-    };
-
-    // Get receiver name from transaction metadata
-    const getReceiverName = (txn: any): string => {
-      const merchantName =
-        profile?.merchant_names ||
-        profile?.merchantBusinessTradeName ||
-        profile?.businessTradeName ||
-        'Merchant';
-
-      if (txn.direction === 'CREDIT') {
-        return merchantName;
-      }
-
-      const meta = txn.metadata || {};
-      return (
-        meta.recipientName ||
-        meta.receiverName ||
-        meta.counterpartyInfo?.name ||
-        meta.userName ||
-        meta.accountName ||
-        (txn.counterpartyUser?.profile?.firstName && txn.counterpartyUser?.profile?.lastName
-          ? `${txn.counterpartyUser.profile.firstName} ${txn.counterpartyUser.profile.lastName}`
-          : null) ||
-        txn.counterpartyUser?.phone ||
-        txn.counterpartyId ||
-        (txn.type === 'WALLET_TO_MNO' && meta.mnoProvider ? `${meta.mnoProvider} Mobile Money` : null) ||
-        'Recipient'
-      );
-    };
-
-    const getReceiverNumber = (txn: any): string => {
-      const meta = txn.metadata || {};
-      return (
-        meta.recipientPhone ||
-        meta.receiverPhone ||
-        meta.phoneNumber ||
-        meta.counterpartyInfo?.phone ||
-        txn.counterpartyUser?.phone ||
-        txn.phoneNumber ||
-        txn.recipientPhoneNumber ||
-        txn.accountNumber ||
-        'N/A'
-      );
-    };
-
-    // Determine transaction type - Wallet Funding should always be credit
-    const isWalletFunding = apiTxn.type === 'DEPOSIT' || 
-                           apiTxn.type === 'WALLET_FUNDING' || 
-                           (apiTxn.direction === 'CREDIT' && apiTxn.metadata?.fundedByAdmin);
-    
-    return {
-      rowKey:
-        String(apiTxn.id || '') ||
-        `${apiTxn.reference || 'txn'}-${apiTxn.direction || ''}-${apiTxn.walletId || ''}-${apiTxn.createdAt || ''}`,
-      rdbs_transaction_id: apiTxn.reference || apiTxn.transactionId || apiTxn.id || '',
-      rdbs_approval_date: apiTxn.createdAt || apiTxn.updatedAt || new Date().toISOString(),
-      rdbs_sender_name: getSenderName(apiTxn),
-      rdbs_receiver_name: getReceiverName(apiTxn),
-      rdbs_receiver_number: getReceiverNumber(apiTxn),
-      rdbs_amount: getTransactionNetAmount(apiTxn),
-      // Wallet Funding should always be credit to merchant wallet
-      rdbs_type: isWalletFunding ? 'credit' : (apiTxn.direction === 'CREDIT' ? 'credit' : 'debit'),
-      rdbs_approval_status: mapStatus(apiTxn.status || 'PENDING'),
-      rdbs_date: apiTxn.createdAt || apiTxn.updatedAt,
-      isSweep: isSweepTransaction(apiTxn),
-      raw: apiTxn,
-    };
-  };
-
-  // Transform all API transactions
-  const transactions: Transaction[] = useMemo(() => {
-    return apiTransactions.map(transformTransaction);
-  }, [apiTransactions, profile]);
-
-  // Filter transactions based on criteria
-  const filteredTransactions = useMemo(() => {
-    const filtered = transactions.filter(txn => {
-      const matchesType = transactionType === 'all' || txn.rdbs_type === transactionType;
-      const matchesStatus = status === 'all' || txn.rdbs_approval_status === status;
-      const matchesSearch = !searchTerm || 
-        txn.rdbs_sender_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        txn.rdbs_transaction_id.toLowerCase().includes(searchTerm.toLowerCase());
-
-      return matchesType && matchesStatus && matchesSearch;
-    });
-    
-    // Sort by rdbs_approval_date in descending order (newest first)
-    return filtered.sort((a, b) => new Date(b.rdbs_approval_date).getTime() - new Date(a.rdbs_approval_date).getTime());
-  }, [transactions, dateRange, transactionType, status, searchTerm]);
-
-  // Pagination calculations
-  const totalPages = Math.ceil(filteredTransactions.length / itemsPerPage);
-  const startIndex = (currentPage - 1) * itemsPerPage;
-  const endIndex = startIndex + itemsPerPage;
-  const paginatedTransactions = filteredTransactions.slice(startIndex, endIndex);
-
-  // Reset to page 1 when filters change
-  useEffect(() => {
-    setCurrentPage(1);
-  }, [dateRange, transactionType, status, searchTerm]);
-
-  // Period statement from the API; table filters only affect the list and charts.
-  const summary: ReportSummary = useMemo(() => {
-    const creditTransactions = filteredTransactions.filter(
-      (t) => t.rdbs_type === 'credit' && t.rdbs_approval_status === 'success' && !t.isSweep,
-    ).length;
-    const debitTransactions = filteredTransactions.filter(
-      (t) => t.rdbs_type === 'debit' && t.rdbs_approval_status === 'success' && !t.isSweep,
-    ).length;
-
-    return {
-      openingBalance: Number(statement?.openingBalance || 0),
-      totalNetCredit: Number(statement?.totalNetCredit || 0),
-      totalNetDebit: Number(statement?.totalNetDebit || 0),
-      closingBalance: Number(statement?.closingBalance || 0),
-      successfulCount: Number(statement?.successfulCount || 0),
-      currency: statement?.currency || 'UGX',
-      totalTransactions: filteredTransactions.length,
-      creditTransactions,
-      debitTransactions,
-    };
-  }, [filteredTransactions, statement]);
-
-  // Format currency
   const getMerchantViewerContext = () => ({
     merchantName:
       profile?.merchant_names ||
@@ -393,6 +223,128 @@ export default function ReportsPage() {
     phone: profile?.merchant_phone || profile?.ownerPhone || profile?.phone || '',
     merchantCode: effectiveMerchantCode || undefined,
   });
+
+  // Transform API transactions to the format expected by the reports page
+  const transformTransaction = (apiTxn: any): Transaction => {
+    const mapStatus = (apiStatus: string): 'success' | 'pending' | 'failed' => {
+      if (apiStatus === 'COMPLETED' || apiStatus === 'SUCCESS') return 'success';
+      if (apiStatus === 'PENDING' || apiStatus === 'PROCESSING') return 'pending';
+      return 'failed';
+    };
+
+    const viewer = getMerchantViewerContext();
+    const sender = getTransactionSenderParty(apiTxn, viewer);
+    const receiver = getTransactionReceiverParty(apiTxn, viewer);
+    const isWalletFunding =
+      apiTxn.type === 'DEPOSIT' ||
+      apiTxn.type === 'WALLET_FUNDING' ||
+      (apiTxn.direction === 'CREDIT' && apiTxn.metadata?.fundedByAdmin);
+
+    return {
+      rowKey:
+        String(apiTxn.id || '') ||
+        `${apiTxn.reference || 'txn'}-${apiTxn.direction || ''}-${apiTxn.walletId || ''}-${apiTxn.createdAt || ''}`,
+      rdbs_transaction_id: apiTxn.reference || apiTxn.transactionId || apiTxn.id || '',
+      rdbs_approval_date: apiTxn.createdAt || apiTxn.updatedAt || new Date().toISOString(),
+      rdbs_sender_name: sender.name,
+      rdbs_receiver_name: receiver.name,
+      rdbs_receiver_number: receiver.contact || 'N/A',
+      rdbs_amount: getTransactionNetAmount(apiTxn),
+      rdbs_type: isWalletFunding ? 'credit' : (apiTxn.direction === 'CREDIT' ? 'credit' : 'debit'),
+      rdbs_approval_status: mapStatus(apiTxn.status || 'PENDING'),
+      rdbs_date: apiTxn.createdAt || apiTxn.updatedAt,
+      isSweep: isSweepTransaction(apiTxn),
+      raw: apiTxn,
+    };
+  };
+
+  // Transform current page of API transactions
+  const transactions: Transaction[] = useMemo(() => {
+    return apiTransactions.map(transformTransaction);
+  }, [apiTransactions, profile]);
+
+  // Status/type/search: client-side on the current page (API has no those filters).
+  const filteredTransactions = useMemo(() => {
+    const q = searchTerm.toLowerCase();
+    return transactions.filter((txn) => {
+      const matchesType = transactionType === 'all' || txn.rdbs_type === transactionType;
+      const matchesStatus = status === 'all' || txn.rdbs_approval_status === status;
+      const matchesSearch =
+        !searchTerm ||
+        txn.rdbs_sender_name.toLowerCase().includes(q) ||
+        txn.rdbs_receiver_name.toLowerCase().includes(q) ||
+        txn.rdbs_receiver_number.toLowerCase().includes(q) ||
+        txn.rdbs_transaction_id.toLowerCase().includes(q);
+      return matchesType && matchesStatus && matchesSearch;
+    });
+  }, [transactions, searchTerm, transactionType, status]);
+
+  const totalPages = Math.max(1, paginationInfo.totalPages || 1);
+  const startIndex =
+    ((paginationInfo.page || currentPage) - 1) * (paginationInfo.limit || itemsPerPage);
+  const endIndex = startIndex + filteredTransactions.length;
+  const paginatedTransactions = filteredTransactions;
+
+  // Reset to page 1 when filters change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [dateRange, transactionType, status, searchTerm, itemsPerPage]);
+
+  // Period statement drives KPIs; list is independently paginated.
+  const summary: ReportSummary = useMemo(() => {
+    const totalNetCredit = Number(statement?.totalNetCredit || 0);
+    const totalNetDebit = Number(statement?.totalNetDebit || 0);
+    const successfulCount = Number(statement?.successfulCount || 0);
+    // Approximate credit/debit share by amount when we no longer download all rows.
+    const volume = totalNetCredit + totalNetDebit;
+    const creditTransactions =
+      volume > 0
+        ? Math.round((totalNetCredit / volume) * successfulCount)
+        : 0;
+    const debitTransactions = Math.max(0, successfulCount - creditTransactions);
+
+    return {
+      openingBalance: Number(statement?.openingBalance || 0),
+      totalNetCredit,
+      totalNetDebit,
+      closingBalance: Number(statement?.closingBalance || 0),
+      successfulCount,
+      currency: statement?.currency || 'UGX',
+      totalTransactions: paginationInfo.total || 0,
+      creditTransactions,
+      debitTransactions,
+    };
+  }, [statement, paginationInfo.total]);
+
+  const successfulVolume = summary.creditTransactions + summary.debitTransactions;
+  // Period-level chart from statement totals (avoids downloading the full period list).
+  const chartTransactions = useMemo(() => {
+    if (!statementRange.startDate || !statementRange.endDate) return [];
+    return [
+      {
+        rowKey: 'statement-credit',
+        rdbs_transaction_id: 'period-credit',
+        rdbs_approval_date: statementRange.endDate,
+        rdbs_sender_name: '',
+        rdbs_receiver_name: '',
+        rdbs_receiver_number: '',
+        rdbs_amount: Number(statement?.totalNetCredit || 0),
+        rdbs_type: 'credit' as const,
+        rdbs_approval_status: 'success' as const,
+      },
+      {
+        rowKey: 'statement-debit',
+        rdbs_transaction_id: 'period-debit',
+        rdbs_approval_date: statementRange.endDate,
+        rdbs_sender_name: '',
+        rdbs_receiver_name: '',
+        rdbs_receiver_number: '',
+        rdbs_amount: Number(statement?.totalNetDebit || 0),
+        rdbs_type: 'debit' as const,
+        rdbs_approval_status: 'success' as const,
+      },
+    ];
+  }, [statement, statementRange]);
 
   const loadTransactionsForExport = async () => {
     const range = statementRange;
@@ -750,10 +702,10 @@ export default function ReportsPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="flex items-center gap-2">
-          <RefreshCw className="w-5 h-5 animate-spin" />
-          <span>Loading reports...</span>
+      <div className="flex min-h-[60vh] items-center justify-center">
+        <div className="flex items-center gap-2 text-[13px] text-gray-400">
+          <RefreshCw className="h-4 w-4 animate-spin" />
+          Loading reports...
         </div>
       </div>
     );
@@ -761,15 +713,15 @@ export default function ReportsPage() {
 
   if (transactionsError) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <Card className="p-8 text-center max-w-md">
-          <h2 className="text-xl font-semibold text-red-600 mb-2">Error Loading Reports</h2>
-          <p className="text-gray-600 mb-4">Failed to load transaction data. Please try again.</p>
-          <Button onClick={handleRefresh} variant="outline">
-            <RefreshCw className="w-4 h-4 mr-2" />
+      <div className="flex min-h-[60vh] items-center justify-center p-4">
+        <div className="w-full max-w-md rounded-2xl border border-gray-100 bg-white p-6 text-center shadow-[0_1px_2px_rgba(16,24,40,0.04)]">
+          <h2 className="text-[15px] font-semibold text-gray-900">Error Loading Reports</h2>
+          <p className="mt-1 text-[12px] text-gray-400">Failed to load transaction data. Please try again.</p>
+          <Button onClick={handleRefresh} variant="outline" className="mt-4 h-8 rounded-full px-3 text-[12px]">
+            <RefreshCw className="mr-2 h-3.5 w-3.5" />
             Retry
           </Button>
-        </Card>
+        </div>
       </div>
     );
   }
@@ -779,243 +731,186 @@ export default function ReportsPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 p-4 sm:p-6 min-w-0">
-      <div className="max-w-screen-2xl w-full min-w-0" id="report-content">
-        {/* Page Header */}
-        <div className="mb-8">
-          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-            <div>
-              <h1 className="text-3xl font-bold text-[#08163d] mb-2">Wallet statement</h1>
-              <p className="text-gray-600">
-                Statement period:{' '}
-                <span className="font-medium text-gray-800">
-                  {formatStatementPeriodLabel(statementRange.startDate, statementRange.endDate)}
-                </span>
-                <span className="text-gray-500"> · Inclusive dates</span>
+    <div className="p-4 md:p-6">
+      <div className="mx-auto w-full min-w-0 max-w-screen-2xl space-y-4" id="report-content">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div>
+            <h1 className="text-[20px] font-semibold tracking-tight text-gray-900">Wallet statement</h1>
+            <p className="mt-0.5 text-[12px] text-gray-400">
+              Statement period:{' '}
+              <span className="font-medium text-gray-600">
+                {formatStatementPeriodLabel(statementRange.startDate, statementRange.endDate)}
+              </span>
+              <span> · Inclusive dates</span>
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <Button
+              onClick={handleRefresh}
+              variant="outline"
+              disabled={transactionsLoading}
+              className="h-8 rounded-full border-gray-200 px-3 text-[12px]"
+            >
+              <RefreshCw className={`h-3.5 w-3.5 ${transactionsLoading ? 'animate-spin' : ''}`} />
+              Refresh
+            </Button>
+            <Button
+              onClick={exportToCsv}
+              disabled={isExporting}
+              variant="outline"
+              className="h-8 rounded-full border-gray-200 px-3 text-[12px]"
+            >
+              <Download className="h-3.5 w-3.5" />
+              {isExporting ? 'Exporting...' : 'Export CSV'}
+            </Button>
+            <Button
+              onClick={exportToExcel}
+              disabled={isExporting}
+              variant="outline"
+              className="h-8 rounded-full border-gray-200 px-3 text-[12px]"
+            >
+              <DownloadCloud className="h-3.5 w-3.5" />
+              {isExporting ? 'Exporting...' : 'Export Excel'}
+            </Button>
+            <Button
+              onClick={exportToPDF}
+              disabled={isExporting}
+              className="h-8 rounded-full bg-gray-900 px-3 text-[12px] hover:bg-gray-800"
+            >
+              <FileText className="mr-1.5 h-3.5 w-3.5" />
+              {isExporting ? 'Exporting...' : 'Export PDF'}
+            </Button>
+          </div>
+        </div>
+
+        <div className="rounded-2xl border border-gray-100 bg-white p-4 shadow-[0_1px_2px_rgba(16,24,40,0.04)]">
+          <div className="mb-3 flex items-center justify-between">
+            <p className="inline-flex items-center gap-1.5 text-[13px] font-semibold text-gray-900">
+              <Filter className="h-3.5 w-3.5 text-gray-400" />
+              Filters
+            </p>
+            <Button variant="outline" onClick={resetFilters} className="h-7 rounded-full px-3 text-[12px]">
+              Reset Filters
+            </Button>
+          </div>
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-5">
+            <div className="md:col-span-2">
+              <DateRangePicker
+                from={dateRange.from}
+                to={dateRange.to}
+                onFromChange={(from) =>
+                  setDateRange((prev) => ({ ...prev, from }))
+                }
+                onToChange={(to) =>
+                  setDateRange((prev) => ({ ...prev, to }))
+                }
+                onClear={() => setDateRange(currentMonthToTodayRange())}
+                fromLabel="From"
+                toLabel="To"
+              />
+              <p className="mt-1 text-[11px] text-gray-400">
+                Inclusive dates. Exports use this same period.
               </p>
             </div>
-            <div className="flex flex-wrap items-end gap-2">
-              <Button 
-                onClick={handleRefresh}
-                variant="outline"
-                disabled={transactionsLoading}
-                className="flex items-center gap-2"
+            <div>
+              <label className="mb-1.5 block text-[12px] font-medium text-gray-600">Transaction Type</label>
+              <select
+                value={transactionType}
+                onChange={(e) => setTransactionType(e.target.value as 'all' | 'credit' | 'debit')}
+                className="h-10 w-full rounded-lg border border-gray-200 bg-white px-3 text-[13px]"
               >
-                <RefreshCw className={`w-4 h-4 ${transactionsLoading ? 'animate-spin' : ''}`} />
-                Refresh
-              </Button>
-              <Button
-                onClick={exportToCsv}
-                disabled={isExporting}
-                variant="outline"
-                className="flex items-center gap-2"
+                <option value="all">All Types</option>
+                <option value="credit">Credit</option>
+                <option value="debit">Debit</option>
+              </select>
+            </div>
+            <div>
+              <label className="mb-1.5 block text-[12px] font-medium text-gray-600">Status</label>
+              <select
+                value={status}
+                onChange={(e) => setStatus(e.target.value as 'all' | 'success' | 'pending' | 'failed')}
+                className="h-10 w-full rounded-lg border border-gray-200 bg-white px-3 text-[13px]"
               >
-                <Download className="w-4 h-4" />
-                {isExporting ? 'Exporting...' : 'Export CSV'}
-              </Button>
-              <Button 
-                onClick={exportToExcel} 
-                disabled={isExporting}
-                variant="outline"
-                className="flex items-center gap-2"
-              >
-                <DownloadCloud className="w-4 h-4" />
-                {isExporting ? 'Exporting...' : 'Export Excel'}
-              </Button>
-              <Button 
-                onClick={exportToPDF} 
-                disabled={isExporting}
-                className="bg-[#08163d] hover:bg-[#131824]"
-              >
-                <FileText className="w-4 h-4 mr-2" />
-                {isExporting ? 'Exporting...' : 'Export PDF'}
-              </Button>
+                <option value="all">All Status</option>
+                <option value="success">Success</option>
+                <option value="pending">Pending</option>
+                <option value="failed">Failed</option>
+              </select>
+            </div>
+            <div>
+              <label className="mb-1.5 block text-[12px] font-medium text-gray-600">Search</label>
+              <Input
+                placeholder="Search transactions..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="h-10"
+              />
             </div>
           </div>
         </div>
 
-        {/* Filters */}
-        <Card className="mb-6">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Filter className="w-5 h-5" />
-              Filters
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
-              <div className="md:col-span-2">
-                <DateRangePicker
-                  from={dateRange.from}
-                  to={dateRange.to}
-                  onFromChange={(from) =>
-                    setDateRange((prev) => ({ ...prev, from }))
-                  }
-                  onToChange={(to) =>
-                    setDateRange((prev) => ({ ...prev, to }))
-                  }
-                  onClear={() => setDateRange(currentMonthToTodayRange())}
-                  fromLabel="From"
-                  toLabel="To"
-                />
-                <p className="mt-1 text-xs text-gray-500">
-                  Inclusive dates. Exports use this same period.
-                </p>
-              </div>
-              <div>
-                <label className="block text-sm font-medium mb-1">Transaction Type</label>
-                <select
-                  value={transactionType}
-                  onChange={(e) => setTransactionType(e.target.value as 'all' | 'credit' | 'debit')}
-                  className="w-full px-3 py-2 border rounded-md bg-white"
-                >
-                  <option value="all">All Types</option>
-                  <option value="credit">Credit</option>
-                  <option value="debit">Debit</option>
-                </select>
-              </div>
-              <div>
-                <label className="block text-sm font-medium mb-1">Status</label>
-                <select
-                  value={status}
-                  onChange={(e) => setStatus(e.target.value as 'all' | 'success' | 'pending' | 'failed')}
-                  className="w-full px-3 py-2 border rounded-md bg-white"
-                >
-                  <option value="all">All Status</option>
-                  <option value="success">Success</option>
-                  <option value="pending">Pending</option>
-                  <option value="failed">Failed</option>
-                </select>
-              </div>
-              <div>
-                <label className="block text-sm font-medium mb-1">Search</label>
-                <Input
-                  placeholder="Search transactions..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                />
-              </div>
-            </div>
-            <div className="flex justify-end mt-4">
-              <Button variant="outline" onClick={resetFilters}>
-                Reset Filters
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Available now — live wallets, not the period closing balance */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
+        <div className={`grid gap-3 ${hasSplitBalances ? 'grid-cols-1 sm:grid-cols-2' : 'grid-cols-1'}`}>
           {hasSplitBalances ? (
             <>
-              <Card>
-                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                  <CardTitle className="text-sm font-medium">Available now · Collection</CardTitle>
-                  <Wallet className="h-4 w-4 text-green-600" />
-                </CardHeader>
-                <CardContent>
-                  <div className="text-2xl font-bold">
-                    UGX {Number(walletBalances?.collectionBalance ?? 0).toLocaleString()}
-                  </div>
-                  <p className="text-xs text-muted-foreground">
-                    Live collection wallet · not the period closing balance
-                  </p>
-                </CardContent>
-              </Card>
-              <Card>
-                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                  <CardTitle className="text-sm font-medium">Available now · Payout</CardTitle>
-                  <Wallet className="h-4 w-4 text-blue-600" />
-                </CardHeader>
-                <CardContent>
-                  <div className="text-2xl font-bold">
-                    UGX {Number(walletBalances?.disbursementBalance ?? 0).toLocaleString()}
-                  </div>
-                  <p className="text-xs text-muted-foreground">
-                    Live disbursement wallet · not the period closing balance
-                  </p>
-                </CardContent>
-              </Card>
+              <KpiCard
+                icon={Wallet}
+                label="Available now · Collection"
+                suffix="UGX"
+                value={Number(walletBalances?.collectionBalance ?? 0).toLocaleString()}
+                hint="Live collection wallet · not the period closing balance"
+              />
+              <KpiCard
+                icon={Wallet}
+                label="Available now · Payout"
+                suffix="UGX"
+                value={Number(walletBalances?.disbursementBalance ?? 0).toLocaleString()}
+                hint="Live disbursement wallet · not the period closing balance"
+              />
             </>
           ) : (
-            <Card className="sm:col-span-2">
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Available now</CardTitle>
-                <Wallet className="h-4 w-4 text-blue-600" />
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">
-                  UGX {Number(walletBalances?.balance ?? 0).toLocaleString()}
-                </div>
-                <p className="text-xs text-muted-foreground">
-                  Live business wallet · not the period closing balance
-                </p>
-              </CardContent>
-            </Card>
+            <KpiCard
+              icon={Wallet}
+              label="Available now"
+              suffix="UGX"
+              value={Number(walletBalances?.balance ?? 0).toLocaleString()}
+              hint="Live business wallet · not the period closing balance"
+            />
           )}
         </div>
 
-        {/* Period statement */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-3">
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Opening balance</CardTitle>
-              <Landmark className="h-4 w-4 text-slate-600" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold text-[#08163d]">
-                {statementLoading ? '…' : `UGX ${Number(summary.openingBalance).toLocaleString()}`}
-              </div>
-              <p className="text-xs text-muted-foreground">As at start of this period</p>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Amount deposited</CardTitle>
-              <TrendingUp className="h-4 w-4 text-green-600" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold text-green-600">
-                {statementLoading ? '…' : `UGX ${Number(summary.totalNetCredit).toLocaleString()}`}
-              </div>
-              <p className="text-xs text-muted-foreground">
-                Net collection in this period
-              </p>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Amount spent</CardTitle>
-              <TrendingDown className="h-4 w-4 text-red-600" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold text-red-600">
-                {statementLoading ? '…' : `UGX ${Number(summary.totalNetDebit).toLocaleString()}`}
-              </div>
-              <p className="text-xs text-muted-foreground">
-                Net payout in this period
-              </p>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Closing balance</CardTitle>
-              <Wallet className="h-4 w-4 text-blue-600" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold text-[#08163d]">
-                {statementLoading ? '…' : `UGX ${Number(summary.closingBalance).toLocaleString()}`}
-              </div>
-              <p className="text-xs text-muted-foreground">As at end of this period</p>
-            </CardContent>
-          </Card>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <KpiCard
+            icon={Landmark}
+            label="Opening balance"
+            suffix="UGX"
+            value={statementLoading ? '…' : Number(summary.openingBalance).toLocaleString()}
+            hint="As at start of this period"
+          />
+          <KpiCard
+            icon={TrendingUp}
+            label="Money in"
+            suffix="UGX"
+            value={statementLoading ? '…' : Number(summary.totalNetCredit).toLocaleString()}
+            hint="Payments collected in this period"
+          />
+          <KpiCard
+            icon={TrendingDown}
+            label="Money out"
+            suffix="UGX"
+            value={statementLoading ? '…' : Number(summary.totalNetDebit).toLocaleString()}
+            hint="Payments sent in this period"
+          />
+          <KpiCard
+            icon={Wallet}
+            label="Closing balance"
+            suffix="UGX"
+            value={statementLoading ? '…' : Number(summary.closingBalance).toLocaleString()}
+            hint="As at end of this period"
+          />
         </div>
-        <p className="text-sm text-gray-600 mb-8">
+        <p className="text-[12px] text-gray-400">
           Opening + deposits − spending ={' '}
-          <span className="font-medium text-gray-900">
+          <span className="font-medium tabular-nums text-gray-700">
             UGX{' '}
             {Number(
               summary.openingBalance + summary.totalNetCredit - summary.totalNetDebit,
@@ -1024,215 +919,192 @@ export default function ReportsPage() {
           . Internal collection-to-payout transfers are excluded from deposited and spent.
         </p>
 
-        {/* Charts — equal columns; min-w-0 stops the bar chart from stretching the grid */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8 items-stretch">
-          <Card className="min-w-0 overflow-hidden">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <BarChart3 className="w-5 h-5" />
-                Transaction Volume
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="min-w-0 overflow-hidden">
-              <Chart 
-                period="Monthly" 
-                from={dateRange.from} 
-                to={dateRange.to}
-                transactions={transactions}
-                heightClass="h-[220px]"
-              />
-            </CardContent>
-          </Card>
+        <div className="grid grid-cols-1 items-stretch gap-3 lg:grid-cols-2">
+          <div className="min-w-0 overflow-hidden rounded-2xl border border-gray-100 bg-white p-4 shadow-[0_1px_2px_rgba(16,24,40,0.04)]">
+            <p className="mb-3 inline-flex items-center gap-1.5 text-[13px] font-semibold text-gray-900">
+              <BarChart3 className="h-3.5 w-3.5 text-gray-400" />
+              Transaction Volume
+            </p>
+            <Chart
+              period="Monthly"
+              from={dateRange.from}
+              to={dateRange.to}
+              transactions={chartTransactions}
+              heightClass="h-[200px]"
+            />
+          </div>
 
-          <Card className="min-w-0 overflow-hidden">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <PieChart className="w-5 h-5" />
-                Transaction Distribution
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="flex h-full min-h-[220px] items-center">
-              <div className="w-full space-y-4">
-                <div className="flex items-center justify-between">
-                  <span className="text-sm font-medium">Incoming payments</span>
-                  <span className="text-sm text-green-600 font-bold">
-                    {summary.creditTransactions} ({summary.totalTransactions > 0 ? ((summary.creditTransactions / summary.totalTransactions) * 100).toFixed(1) : 0}%)
+          <div className="min-w-0 overflow-hidden rounded-2xl border border-gray-100 bg-white p-4 shadow-[0_1px_2px_rgba(16,24,40,0.04)]">
+            <p className="mb-4 inline-flex items-center gap-1.5 text-[13px] font-semibold text-gray-900">
+              <PieChart className="h-3.5 w-3.5 text-gray-400" />
+              Transaction Distribution
+            </p>
+            <div className="space-y-4">
+              <div>
+                <div className="mb-1.5 flex items-center justify-between">
+                  <span className="text-[12px] text-gray-500">Incoming payments</span>
+                  <span className="text-[12px] font-semibold tabular-nums text-emerald-600">
+                    {summary.creditTransactions} ({successfulVolume > 0 ? ((summary.creditTransactions / successfulVolume) * 100).toFixed(1) : 0}%)
                   </span>
                 </div>
-                <div className="w-full bg-gray-200 rounded-full h-2">
-                  <div 
-                    className="bg-green-600 h-2 rounded-full" 
-                    style={{ width: `${summary.totalTransactions > 0 ? (summary.creditTransactions / summary.totalTransactions) * 100 : 0}%` }}
-                  ></div>
-                </div>
-                
-                <div className="flex items-center justify-between">
-                  <span className="text-sm font-medium">Outgoing payments</span>
-                  <span className="text-sm text-red-600 font-bold">
-                    {summary.debitTransactions} ({summary.totalTransactions > 0 ? ((summary.debitTransactions / summary.totalTransactions) * 100).toFixed(1) : 0}%)
-                  </span>
-                </div>
-                <div className="w-full bg-gray-200 rounded-full h-2">
-                  <div 
-                    className="bg-red-600 h-2 rounded-full" 
-                    style={{ width: `${summary.totalTransactions > 0 ? (summary.debitTransactions / summary.totalTransactions) * 100 : 0}%` }}
-                  ></div>
+                <div className="h-1.5 w-full overflow-hidden rounded-full bg-gray-100">
+                  <div
+                    className="h-1.5 rounded-full bg-emerald-500"
+                    style={{ width: `${successfulVolume > 0 ? (summary.creditTransactions / successfulVolume) * 100 : 0}%` }}
+                  />
                 </div>
               </div>
-            </CardContent>
-          </Card>
+              <div>
+                <div className="mb-1.5 flex items-center justify-between">
+                  <span className="text-[12px] text-gray-500">Outgoing payments</span>
+                  <span className="text-[12px] font-semibold tabular-nums text-rose-500">
+                    {summary.debitTransactions} ({successfulVolume > 0 ? ((summary.debitTransactions / successfulVolume) * 100).toFixed(1) : 0}%)
+                  </span>
+                </div>
+                <div className="h-1.5 w-full overflow-hidden rounded-full bg-gray-100">
+                  <div
+                    className="h-1.5 rounded-full bg-rose-500"
+                    style={{ width: `${successfulVolume > 0 ? (summary.debitTransactions / successfulVolume) * 100 : 0}%` }}
+                  />
+                </div>
+              </div>
+              <p className="text-[11px] text-gray-400">
+                Successful payments in this period (share estimated from money in/out). Sweeps are excluded.
+              </p>
+            </div>
+          </div>
         </div>
 
-        {/* Transactions Table */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center justify-between">
-              <span>Transaction Details</span>
-              <span className="text-sm text-gray-500">
-                {filteredTransactions.length} transactions found
-              </span>
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="overflow-x-auto">
-              <Table>
-                <TableHeader>
+        <div className="overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-[0_1px_2px_rgba(16,24,40,0.04)]">
+          <div className="flex items-center justify-between border-b border-gray-100 px-4 py-3">
+            <p className="text-[13px] font-semibold text-gray-900">Transaction Details</p>
+            <p className="text-[12px] text-gray-400">
+              {summary.totalTransactions.toLocaleString()} transactions found
+            </p>
+          </div>
+          <div className="overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow className="hover:bg-transparent">
+                  <TableHead className="h-9 px-4 text-[11px] font-medium text-gray-400">Reference ID</TableHead>
+                  <TableHead className="h-9 px-4 text-[11px] font-medium text-gray-400">Date & Time</TableHead>
+                  <TableHead className="h-9 px-4 text-[11px] font-medium text-gray-400">Sender</TableHead>
+                  <TableHead className="h-9 px-4 text-[11px] font-medium text-gray-400">Receiver</TableHead>
+                  <TableHead className="h-9 px-4 text-[11px] font-medium text-gray-400">Receiver Number</TableHead>
+                  <TableHead className="h-9 px-4 text-[11px] font-medium text-gray-400">Type</TableHead>
+                  <TableHead className="h-9 px-4 text-[11px] font-medium text-gray-400">Amount</TableHead>
+                  <TableHead className="h-9 px-4 text-[11px] font-medium text-gray-400">Status</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {transactionsLoading ? (
                   <TableRow>
-                    <TableHead>Reference ID</TableHead>
-                    <TableHead>Date & Time</TableHead>
-                    <TableHead>Sender</TableHead>
-                    <TableHead>Receiver</TableHead>
-                    <TableHead>Receiver Number</TableHead>
-                    <TableHead>Type</TableHead>
-                    <TableHead>Amount</TableHead>
-                    <TableHead>Status</TableHead>
+                    <TableCell colSpan={8} className="py-8 text-center text-[12px] text-gray-400">
+                      Loading transactions…
+                    </TableCell>
                   </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {filteredTransactions.length === 0 ? (
-                    <TableRow>
-                      <TableCell colSpan={8} className="text-center py-8 text-gray-500">
-                        No transactions found matching your criteria.
+                ) : paginatedTransactions.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={8} className="py-8 text-center text-[12px] text-gray-400">
+                      No transactions found matching your criteria.
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                  paginatedTransactions.map((txn) => (
+                    <TableRow key={txn.rowKey} className="border-gray-50">
+                      <TableCell className="px-4 py-2.5 font-mono text-[12px] text-gray-600">
+                        {txn.rdbs_transaction_id}
+                      </TableCell>
+                      <TableCell className="px-4 py-2.5 whitespace-nowrap text-[12px] text-gray-500">
+                        {new Date(txn.rdbs_approval_date).toLocaleString('en-UG', {
+                          month: 'short',
+                          day: 'numeric',
+                          hour: '2-digit',
+                          minute: '2-digit',
+                        })}
+                      </TableCell>
+                      <TableCell className="px-4 py-2.5 text-[12px] font-medium text-gray-800">
+                        {txn.rdbs_sender_name}
+                      </TableCell>
+                      <TableCell className="px-4 py-2.5 text-[12px] font-medium text-gray-800">
+                        {txn.rdbs_receiver_name}
+                      </TableCell>
+                      <TableCell className="px-4 py-2.5 text-[12px] text-gray-600">
+                        {txn.rdbs_receiver_number}
+                      </TableCell>
+                      <TableCell className="px-4 py-2.5">
+                        <span className={`inline-flex rounded-full px-2 py-0.5 text-[11px] font-medium ${
+                          txn.rdbs_type === 'credit'
+                            ? 'bg-emerald-50 text-emerald-700'
+                            : 'bg-rose-50 text-rose-700'
+                        }`}>
+                          {txn.rdbs_type}
+                        </span>
+                      </TableCell>
+                      <TableCell className="px-4 py-2.5 text-[12px] font-semibold tabular-nums text-gray-900">
+                        UGX {Number(txn.rdbs_amount).toLocaleString()}
+                      </TableCell>
+                      <TableCell className="px-4 py-2.5">
+                        <span className={`inline-flex rounded-full px-2 py-0.5 text-[11px] font-medium ${
+                          txn.rdbs_approval_status === 'success'
+                            ? 'bg-emerald-50 text-emerald-700'
+                            : txn.rdbs_approval_status === 'pending'
+                            ? 'bg-amber-50 text-amber-700'
+                            : 'bg-rose-50 text-rose-700'
+                        }`}>
+                          {txn.rdbs_approval_status}
+                        </span>
                       </TableCell>
                     </TableRow>
-                  ) : (
-                    paginatedTransactions.map((txn) => (
-                      <TableRow key={txn.rowKey}>
-                        <TableCell className="font-mono text-sm">
-                          {txn.rdbs_transaction_id}
-                        </TableCell>
-                        <TableCell>
-                          <div className="text-sm">
-                            <div>{new Date(txn.rdbs_approval_date).toLocaleDateString()}</div>
-                            <div className="text-gray-500">
-                              {new Date(txn.rdbs_approval_date).toLocaleTimeString()}
-                            </div>
-                          </div>
-                        </TableCell>
-                        <TableCell className="font-medium">
-                          {txn.rdbs_sender_name}
-                        </TableCell>
-                        <TableCell className="font-medium">
-                          {txn.rdbs_receiver_name}
-                        </TableCell>
-                        <TableCell className="font-medium">
-                          {txn.rdbs_receiver_number}
-                        </TableCell>
-                        <TableCell>
-                          <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
-                            txn.rdbs_type === 'credit' 
-                              ? 'bg-green-100 text-green-800' 
-                              : 'bg-red-100 text-red-800'
-                          }`}>
-                            {txn.rdbs_type}
-                          </span>
-                        </TableCell>
-                        <TableCell className="font-medium">
-                          UGX {Number(txn.rdbs_amount).toLocaleString()}
-                        </TableCell>
-                        <TableCell>
-                          <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
-                            txn.rdbs_approval_status === 'success' 
-                              ? 'bg-green-100 text-green-800'
-                              : txn.rdbs_approval_status === 'pending'
-                              ? 'bg-yellow-100 text-yellow-800'
-                              : 'bg-red-100 text-red-800'
-                          }`}>
-                            {txn.rdbs_approval_status}
-                          </span>
-                        </TableCell>
-                      </TableRow>
-                    ))
-                  )}
-                </TableBody>
-              </Table>
-            </div>
-            
-            {/* Pagination */}
-            {filteredTransactions.length > 0 && (
-              <div className="flex items-center justify-between px-4 py-3 border-t">
-                <div className="flex items-center gap-4">
-                  <div className="text-sm text-gray-700">
-                    Showing {startIndex + 1} to {Math.min(endIndex, filteredTransactions.length)} of {filteredTransactions.length} results
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <label className="text-sm text-gray-700">Items per page:</label>
-                    <select
-                      value={itemsPerPage}
-                      onChange={(e) => {
-                        setItemsPerPage(Number(e.target.value));
-                        setCurrentPage(1);
-                      }}
-                      className="px-2 py-1 border rounded-md text-sm"
-                    >
-                      <option value={10}>10</option>
-                      <option value={20}>20</option>
-                      <option value={50}>50</option>
-                      <option value={100}>100</option>
-                    </select>
-                  </div>
-                </div>
-                <div className="flex items-center space-x-2">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setCurrentPage(1)}
-                    disabled={currentPage <= 1}
-                  >
-                    <ChevronsLeft className="w-4 h-4" />
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setCurrentPage(Math.max(currentPage - 1, 1))}
-                    disabled={currentPage <= 1}
-                  >
-                    <ChevronLeft className="w-4 h-4" />
-                  </Button>
-                  <span className="text-sm text-gray-700 px-2">
-                    Page {currentPage} of {totalPages || 1}
-                  </span>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setCurrentPage(Math.min(currentPage + 1, totalPages))}
-                    disabled={currentPage >= totalPages}
-                  >
-                    <ChevronRight className="w-4 h-4" />
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setCurrentPage(totalPages)}
-                    disabled={currentPage >= totalPages}
-                  >
-                    <ChevronsRight className="w-4 h-4" />
-                  </Button>
-                </div>
+                  ))
+                )}
+              </TableBody>
+            </Table>
+          </div>
+
+          {!transactionsLoading && summary.totalTransactions > 0 && (
+            <div className="flex flex-wrap items-center justify-between gap-2 border-t border-gray-100 px-4 py-2.5">
+              <div className="flex items-center gap-3 text-[12px] text-gray-400">
+                <span>
+                  {summary.totalTransactions === 0
+                    ? '0'
+                    : `${startIndex + 1}–${Math.min(endIndex, summary.totalTransactions)}`}{' '}
+                  of {summary.totalTransactions.toLocaleString()}
+                </span>
+                <select
+                  value={itemsPerPage}
+                  onChange={(e) => {
+                    setItemsPerPage(Number(e.target.value));
+                    setCurrentPage(1);
+                  }}
+                  className="h-7 rounded-md border border-gray-200 px-2 text-[12px]"
+                >
+                  <option value={10}>10</option>
+                  <option value={20}>20</option>
+                  <option value={50}>50</option>
+                  <option value={100}>100</option>
+                </select>
               </div>
-            )}
-          </CardContent>
-        </Card>
+              <div className="flex items-center gap-1">
+                <Button variant="ghost" size="sm" onClick={() => setCurrentPage(1)} disabled={currentPage <= 1} className="h-7 w-7 p-0">
+                  <ChevronsLeft className="h-3.5 w-3.5" />
+                </Button>
+                <Button variant="ghost" size="sm" onClick={() => setCurrentPage(Math.max(currentPage - 1, 1))} disabled={currentPage <= 1} className="h-7 w-7 p-0">
+                  <ChevronLeft className="h-3.5 w-3.5" />
+                </Button>
+                <span className="px-1 text-[12px] text-gray-500">
+                  {currentPage} / {totalPages || 1}
+                </span>
+                <Button variant="ghost" size="sm" onClick={() => setCurrentPage(Math.min(currentPage + 1, totalPages))} disabled={currentPage >= totalPages} className="h-7 w-7 p-0">
+                  <ChevronRight className="h-3.5 w-3.5" />
+                </Button>
+                <Button variant="ghost" size="sm" onClick={() => setCurrentPage(totalPages)} disabled={currentPage >= totalPages} className="h-7 w-7 p-0">
+                  <ChevronsRight className="h-3.5 w-3.5" />
+                </Button>
+              </div>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );
