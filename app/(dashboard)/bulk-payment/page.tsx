@@ -13,16 +13,23 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
   Tooltip,
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { 
-  Upload, Download, Plus, Trash2, Users, CheckCircle2, 
+  Upload, Download, Plus, Trash2, CheckCircle2, 
   XCircle, Clock, Send, AlertCircle, Info, Loader2,
   Wallet, Phone, Building2, Zap, Edit, RefreshCw, AlertTriangle,
-  CircleHelp,
+  CircleHelp, User,
 } from "lucide-react";
 import { useSession } from "next-auth/react";
 import Link from "next/link";
@@ -74,6 +81,34 @@ const URA_UTILITY_PROVIDER = 'URA';
 /** Radix Select cannot use empty string as `SelectItem` value; maps to cleared `utilityProvider`. */
 const BILLER_SELECT_NONE = '__none__';
 const URA_PRN_MIN_LENGTH = 8;
+
+function formatUgx(value?: number | null) {
+  return `UGX ${Number(value || 0).toLocaleString()}`;
+}
+
+function ReviewRow({
+  label,
+  value,
+  emphasize,
+}: {
+  label: string;
+  value?: React.ReactNode;
+  emphasize?: boolean;
+}) {
+  if (value === undefined || value === null || value === '') return null;
+  return (
+    <div className="flex items-start justify-between gap-4 py-1.5">
+      <span className="text-[12px] text-gray-500">{label}</span>
+      <span
+        className={`max-w-[60%] text-right text-[13px] leading-snug ${
+          emphasize ? 'font-semibold tabular-nums text-gray-900' : 'font-medium text-gray-900'
+        }`}
+      >
+        {value}
+      </span>
+    </div>
+  );
+}
 
 function FieldHint({ children }: { children: React.ReactNode }) {
   return (
@@ -246,8 +281,6 @@ export default function BulkPaymentPage() {
     recipientName?: string;
     billArea?: string;
     customerType?: string;
-    partnerCode?: string;
-    partnerName?: string;
     isValid?: boolean;
   } | null>(null);
   const [singleBillSubTab, setSingleBillSubTab] = useState<BillPaymentSubTab>('utilities');
@@ -326,6 +359,8 @@ export default function BulkPaymentPage() {
 
   // Single Payment Functions
   const handleSinglePaymentChange = (field: keyof SinglePaymentDto, value: any) => {
+    setValidationInfo(null);
+    setFeePreview(null);
     setSinglePayment((prev) => {
       if (field === 'utilityProvider') {
         const nextConfig = getAreaFieldConfig(value);
@@ -358,11 +393,19 @@ export default function BulkPaymentPage() {
 
   const handleSingleAirtimePhoneChange = (raw: string) => {
     const inferred = inferMnoProviderFromUganda(raw);
+    setValidationInfo(null);
+    setFeePreview(null);
     setSinglePayment((prev) => ({
       ...prev,
       phoneNumber: raw,
       mnoProvider: inferred ?? prev.mnoProvider,
     }));
+  };
+
+  const cancelSinglePaymentReview = () => {
+    if (singlePaymentLoading) return;
+    setValidationInfo(null);
+    setFeePreview(null);
   };
 
   const handleBulkAirtimePhoneChange = (raw: string) => {
@@ -445,8 +488,7 @@ export default function BulkPaymentPage() {
           : singlePayment.recipientPhoneNumber,
       };
       const validation = await validateTransaction(payload);
-      console.log('Validation result:', validation);
-      
+
       // Store validation info - PRESERVE user-entered name if validation doesn't return one (SAME AS BULK)
       const recipientName = validation.recipientName || singlePayment.accountName || singlePayment.recipientName;
       
@@ -454,8 +496,6 @@ export default function BulkPaymentPage() {
         recipientName: recipientName,
         billArea: validation.billArea,
         customerType: validation.customerType || validation.billArea,
-        partnerCode: validation.partnerCode,
-        partnerName: validation.partnerName,
         isValid: validation.isValid
       });
       
@@ -486,22 +526,12 @@ export default function BulkPaymentPage() {
 
       if (validation.feePreview) {
         setFeePreview(validation.feePreview);
-        toast.success('Fee preview updated');
-      } else {
-        toast.info('Validation completed - no fee preview available');
       }
-      
-      if (recipientName) {
-        toast.success(`Recipient validated: ${recipientName}`);
-      }
-      if (validation.billArea && singlePayment.mode === 'UTILITIES') {
-        toast.success(`Meter type: ${validation.billArea}`);
-      }
-      
+
       if (validation.errors && validation.errors.length > 0) {
         toast.error(`Validation errors: ${validation.errors.join(', ')}`);
       }
-      
+
       if (validation.warnings && validation.warnings.length > 0) {
         toast.warning(`Validation warnings: ${validation.warnings.join(', ')}`);
       }
@@ -2003,11 +2033,33 @@ export default function BulkPaymentPage() {
   const successCount = payments.filter(p => p.status === 'success').length;
   const failedCount = payments.filter(p => p.status === 'failed').length;
   const pendingCount = payments.filter(p => p.status === 'pending').length;
+  const singlePaymentTypeLabel =
+    TRANSACTION_TYPES.find((t) => t.value === singlePayment.mode)?.label || singlePayment.mode;
+  const singlePaymentDestination = (() => {
+    if (singlePayment.mode === 'WALLET_TO_MNO') {
+      return [singlePayment.phoneNumber, singlePayment.mnoProvider].filter(Boolean).join(' · ');
+    }
+    if (singlePayment.mode === 'WALLET_TO_BANK') {
+      return [singlePayment.bankName, singlePayment.accountNumber].filter(Boolean).join(' · ');
+    }
+    if (singlePayment.mode === 'MERCHANT_TO_WALLET') {
+      return singlePayment.recipientPhoneNumber || '';
+    }
+    if (isAirtimeOrDataUtility(singlePayment.utilityProvider)) {
+      return [singlePayment.phoneNumber, singlePayment.mnoProvider].filter(Boolean).join(' · ');
+    }
+    return [singlePayment.utilityProvider, singlePayment.customerRef || singlePayment.utilityAccountNumber]
+      .filter(Boolean)
+      .join(' · ');
+  })();
+  const singlePaymentFee = feePreview?.totalFee ?? 0;
+  const singlePaymentDebit = (singlePayment.amount || 0) + singlePaymentFee;
+  const meterOrArea = validationInfo?.customerType || validationInfo?.billArea;
 
   return (
     <TooltipProvider delayDuration={300}>
-    <div key={currentMerchantCode ?? 'default'} className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 p-6">
-      <div className="max-w-7xl mx-auto space-y-6">
+    <div key={currentMerchantCode ?? 'default'} className="p-4 md:p-6">
+      <div className="mx-auto max-w-6xl space-y-4">
         {liquidationOnlyMode ? (
           <div
             className="flex gap-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950"
@@ -2040,164 +2092,99 @@ export default function BulkPaymentPage() {
         ) : null}
         {!liquidationOnlyMode && (
         <>
-        {/* Page Header */}
-        <div className="mb-8">
-          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-            <div>
-              <h1 className="text-3xl font-bold text-[#08163d] mb-2">Payments</h1>
-              <p className="text-gray-600">Process single or multiple payments with various payment methods</p>
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div>
+            <h1 className="text-[20px] font-semibold tracking-tight text-gray-900">Payments</h1>
+            <p className="mt-0.5 text-[12px] text-gray-400">
+              Process single or multiple payments with various payment methods
+            </p>
+          </div>
+          <div className="rounded-2xl border border-gray-100 bg-white px-4 py-3 shadow-[0_1px_2px_rgba(16,24,40,0.04)] sm:min-w-[240px]">
+            <div className="flex items-center gap-1.5 text-gray-400">
+              <Wallet className="h-3.5 w-3.5" strokeWidth={1.75} />
+              <span className="text-[11px] font-medium">Disbursement balance</span>
             </div>
-            
-            <Card className="md:w-80 bg-gradient-to-br from-purple-600 to-purple-700 text-white border-0">
-              <CardContent className="pt-6 space-y-4">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-xs text-purple-100">Disbursement balance</p>
-                    <p className="text-2xl font-bold">
-                      {disbursementBalance.toLocaleString()} UGX
-                    </p>
-                  </div>
-                  <Users className="w-8 h-8 text-purple-200" />
-                </div>
-                <div className="pt-4 border-t border-purple-500/30 flex items-center justify-between text-xs">
-                  <div>
-                    <p className="text-[11px] text-purple-100 uppercase tracking-wide">
-                      Total queued amount
-                    </p>
-                    <p className="text-sm font-semibold">
-                      {totalAmount.toLocaleString()} UGX
-                    </p>
-                  </div>
-                  <div className="text-right">
-                    <p>{payments.length} payments</p>
-                    <p className="text-purple-100/90">{pendingCount} pending</p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
+            <div className="mt-1.5 text-[18px] font-semibold tabular-nums text-gray-900">
+              <span className="mr-1 text-[11px] font-medium text-gray-400">UGX</span>
+              {disbursementBalance.toLocaleString()}
+            </div>
+            <p className="mt-1 text-[11px] text-gray-400">
+              Total queued amount UGX {totalAmount.toLocaleString()} · {payments.length} payments · {pendingCount} pending
+            </p>
           </div>
         </div>
 
         {/* Progress Indicator Card */}
         {bulkTransactionId && processing && (
-          <Card className="border-blue-200 bg-blue-50">
-            <CardHeader>
-              <CardTitle className="text-lg flex items-center gap-2">
-                <Loader2 className="w-5 h-5 animate-spin text-blue-600" />
-                Processing Bulk Payment
-              </CardTitle>
-              <CardDescription>
-                Transaction ID: {bulkTransactionId}
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              {/* Progress Bar */}
-              <div>
-                <div className="flex justify-between text-sm mb-2">
-                  <span className="font-medium text-gray-700">Progress</span>
-                  <span className="font-bold text-blue-600">{progressStats.percentage}%</span>
-                </div>
-                <div className="w-full bg-gray-200 rounded-full h-3 overflow-hidden">
-                  <div
-                    className="bg-gradient-to-r from-blue-500 to-blue-600 h-3 rounded-full transition-all duration-500 ease-out"
-                    style={{ width: `${progressStats.percentage}%` }}
-                  />
+          <div className="rounded-2xl border border-gray-100 bg-white p-4 shadow-[0_1px_2px_rgba(16,24,40,0.04)]">
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex items-center gap-2">
+                <Loader2 className="h-4 w-4 animate-spin text-gray-500" />
+                <div>
+                  <p className="text-[13px] font-medium text-gray-900">Processing Bulk Payment</p>
+                  <p className="text-[11px] text-gray-400">Transaction ID: {bulkTransactionId}</p>
                 </div>
               </div>
-
-              {/* Polling Status Indicator */}
-              {bulkTransactionId && (
-                <div className="flex items-center justify-center gap-2 text-sm text-blue-600 bg-blue-50 rounded-lg p-2 border border-blue-200">
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                  <span>Live monitoring active - Updates every 3 seconds</span>
-                </div>
-              )}
-
-              {/* Stats Grid */}
-              <div className="grid grid-cols-4 gap-4">
-                <div className="bg-white rounded-lg p-3 text-center border border-gray-200">
-                  <div className="text-2xl font-bold text-gray-800">{progressStats.total}</div>
-                  <div className="text-xs text-gray-600 mt-1">Total</div>
-                </div>
-                <div className="bg-green-50 rounded-lg p-3 text-center border border-green-200">
-                  <div className="text-2xl font-bold text-green-700">{progressStats.successful}</div>
-                  <div className="text-xs text-green-700 mt-1 flex items-center justify-center gap-1">
-                    <CheckCircle2 className="w-3 h-3" />
-                    Success
-                  </div>
-                </div>
-                <div className="bg-red-50 rounded-lg p-3 text-center border border-red-200">
-                  <div className="text-2xl font-bold text-red-700">{progressStats.failed}</div>
-                  <div className="text-xs text-red-700 mt-1 flex items-center justify-center gap-1">
-                    <XCircle className="w-3 h-3" />
-                    Failed
-                  </div>
-                </div>
-                <div className="bg-yellow-50 rounded-lg p-3 text-center border border-yellow-200">
-                  <div className="text-2xl font-bold text-yellow-700">{progressStats.pending}</div>
-                  <div className="text-xs text-yellow-700 mt-1 flex items-center justify-center gap-1">
-                    <Clock className="w-3 h-3" />
-                    Pending
-                  </div>
-                </div>
-              </div>
-
-              {/* Processing Info */}
-              <div className="bg-white rounded-lg p-3 border border-blue-200">
-                <div className="flex items-start gap-2">
-                  <Info className="w-4 h-4 text-blue-600 mt-0.5 flex-shrink-0" />
-                  <div className="text-sm text-gray-700">
-                    <p className="font-medium mb-1">Processing in background</p>
-                    <p className="text-xs text-gray-600">
-                      Transactions are being processed asynchronously. You can leave this page and check back later.
-                      The individual transaction statuses will update automatically every 5 seconds.
-                    </p>
-                  </div>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
+              <span className="text-[13px] font-semibold tabular-nums text-gray-900">{progressStats.percentage}%</span>
+            </div>
+            <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-gray-100">
+              <div
+                className="h-1.5 rounded-full bg-gray-900 transition-all duration-500"
+                style={{ width: `${progressStats.percentage}%` }}
+              />
+            </div>
+            <div className="mt-3 flex flex-wrap gap-3 text-[12px] text-gray-500">
+              <span>{progressStats.total} Total</span>
+              <span className="text-emerald-600">{progressStats.successful} Success</span>
+              <span className="text-red-600">{progressStats.failed} Failed</span>
+              <span>{progressStats.pending} Pending</span>
+            </div>
+          </div>
         )}
 
         {/* Main Content Tabs */}
-        <Tabs defaultValue="bulk" className="space-y-6">
-          <TabsList className="grid w-full grid-cols-2">
-            <TabsTrigger value="single">Single Payment</TabsTrigger>
-            <TabsTrigger value="bulk">Bulk Payment</TabsTrigger>
+        <Tabs defaultValue="bulk" className="space-y-4">
+          <TabsList className="h-8 w-fit rounded-full bg-gray-100 p-0.5">
+            <TabsTrigger value="single" className="h-7 rounded-full px-3 text-[12px] data-[state=active]:shadow-none">
+              Single Payment
+            </TabsTrigger>
+            <TabsTrigger value="bulk" className="h-7 rounded-full px-3 text-[12px] data-[state=active]:shadow-none">
+              Bulk Payment
+            </TabsTrigger>
           </TabsList>
 
           {/* Single Payment Tab */}
-          <TabsContent value="single" className="space-y-6">
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-lg">Single Payment</CardTitle>
-                <CardDescription>
+          <TabsContent value="single" className="mt-0 space-y-4">
+            <Card className="rounded-2xl border-gray-100 py-0 shadow-[0_1px_2px_rgba(16,24,40,0.04)]">
+              <CardHeader className="px-5 py-4">
+                <CardTitle className="text-[15px] font-semibold">Single Payment</CardTitle>
+                <CardDescription className="text-[12px]">
                   Process a single payment transaction
                 </CardDescription>
               </CardHeader>
-              <CardContent className="space-y-6">
+              <CardContent className="space-y-4 px-5 pb-5">
                 {/* Transaction Type Selection */}
                 <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-3">
+                  <label className="mb-1.5 block text-[12px] font-medium text-gray-600">
                     Choose Transaction Type
                   </label>
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                  <div className="flex flex-wrap gap-2">
                     {TRANSACTION_TYPES.map((type) => {
                       const Icon = type.icon;
+                      const active = singlePayment.mode === type.value;
                       return (
                         <button
                           key={type.value}
+                          type="button"
                           onClick={() => handleSinglePaymentModeChange(type.value as SinglePaymentDto['mode'])}
-                          className={`p-4 rounded-lg border-2 transition-all ${
-                            singlePayment.mode === type.value
-                              ? 'border-blue-500 bg-blue-50'
-                              : 'border-gray-200 hover:border-gray-300'
+                          className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-[12px] font-medium transition-colors ${
+                            active
+                              ? 'border-gray-900 bg-gray-900 text-white'
+                              : 'border-gray-200 bg-white text-gray-600 hover:border-gray-300'
                           }`}
                         >
-                          <div className="flex items-center gap-3">
-                            <Icon className={`w-6 h-6 ${type.color}`} />
-                            <span className="font-medium text-gray-900">{type.label}</span>
-                          </div>
+                          <Icon className={`h-3.5 w-3.5 ${active ? 'text-white' : type.color}`} />
+                          {type.label}
                         </button>
                       );
                     })}
@@ -2206,7 +2193,7 @@ export default function BulkPaymentPage() {
 
                 {/* Amount Input */}
                 <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-2">
+                  <label className="mb-1.5 block text-[12px] font-medium text-gray-600">
                     Amount (UGX)
                   </label>
                   <Input
@@ -2222,7 +2209,7 @@ export default function BulkPaymentPage() {
                 {singlePayment.mode === 'WALLET_TO_MNO' && (
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
-                      <label className="block text-sm font-semibold text-gray-700 mb-2">
+                      <label className="mb-1.5 block text-[12px] font-medium text-gray-600">
                         Phone Number
                       </label>
                       <Input
@@ -2233,13 +2220,13 @@ export default function BulkPaymentPage() {
                       />
                     </div>
                     <div>
-                      <label className="block text-sm font-semibold text-gray-700 mb-2">
+                      <label className="mb-1.5 block text-[12px] font-medium text-gray-600">
                         MNO Provider
                       </label>
                       <select
                         value={singlePayment.mnoProvider || ''}
                         onChange={(e) => handleSinglePaymentChange('mnoProvider', e.target.value)}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                        className="h-10 w-full rounded-lg border border-gray-200 px-3 text-[13px]"
                       >
                         <option value="">Select Provider</option>
                         <option value="MTN">MTN</option>
@@ -2254,7 +2241,7 @@ export default function BulkPaymentPage() {
                   <div className="space-y-4">
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       <div>
-                        <label className="block text-sm font-semibold text-gray-700 mb-2">
+                        <label className="mb-1.5 block text-[12px] font-medium text-gray-600">
                           Bank Name
                         </label>
                         <select
@@ -2267,7 +2254,7 @@ export default function BulkPaymentPage() {
                               handleSinglePaymentChange('bankSortCode', selectedBank.bankSortCode);
                             }
                           }}
-                          className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                          className="h-10 w-full rounded-lg border border-gray-200 px-3 text-[13px]"
                         >
                           <option value="">Select Bank</option>
                           {UGANDAN_BANKS.map((bank) => (
@@ -2278,7 +2265,7 @@ export default function BulkPaymentPage() {
                         </select>
                       </div>
                       <div>
-                        <label className="block text-sm font-semibold text-gray-700 mb-2">
+                        <label className="mb-1.5 block text-[12px] font-medium text-gray-600">
                           Account Number
                         </label>
                         <Input
@@ -2290,7 +2277,7 @@ export default function BulkPaymentPage() {
                       </div>
                     </div>
                     <div>
-                      <label className="block text-sm font-semibold text-gray-700 mb-2">
+                      <label className="mb-1.5 block text-[12px] font-medium text-gray-600">
                         Account Holder Name
                       </label>
                       <Input
@@ -2305,7 +2292,7 @@ export default function BulkPaymentPage() {
 
                 {singlePayment.mode === 'MERCHANT_TO_WALLET' && (
                   <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-2">
+                    <label className="mb-1.5 block text-[12px] font-medium text-gray-600">
                       Recipient Phone Number
                     </label>
                     <Input
@@ -2353,7 +2340,7 @@ export default function BulkPaymentPage() {
                       <TabsContent value="utilities" className="space-y-4 pt-3">
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                           <div>
-                            <label className="block text-sm font-semibold text-gray-700 mb-2">
+                            <label className="mb-1.5 block text-[12px] font-medium text-gray-600">
                               Biller / Provider
                             </label>
                             <Select
@@ -2381,7 +2368,7 @@ export default function BulkPaymentPage() {
                             </Select>
                           </div>
                           <div>
-                            <label className="block text-sm font-semibold text-gray-700 mb-2">
+                            <label className="mb-1.5 block text-[12px] font-medium text-gray-600">
                               {isUraUtility(singlePayment.utilityProvider)
                                 ? 'PRN (Payment Reference Number)'
                                 : 'Customer / Account Reference'}
@@ -2445,7 +2432,7 @@ export default function BulkPaymentPage() {
                             </div>
                           )}
                           <div>
-                            <label className="block text-sm font-semibold text-gray-700 mb-2">
+                            <label className="mb-1.5 block text-[12px] font-medium text-gray-600">
                               {utilityRequiresCustomerPhone(singlePayment.utilityProvider)
                                 ? 'Customer Phone'
                                 : 'Customer Phone (Optional)'}
@@ -2467,23 +2454,23 @@ export default function BulkPaymentPage() {
                           </div>
                         </div>
                       </TabsContent>
-                      <TabsContent value="airtime_data" className="space-y-4 pt-3">
-                        <p className="text-xs text-gray-600">
+                      <TabsContent value="airtime_data" className="pt-3">
+                        <p className="text-xs text-gray-600 mb-4">
                           Sent via Africa&apos;s Talking (airtime). Amount is the wallet debit amount.
                         </p>
-                        <div>
-                          <label className="block text-sm font-semibold text-gray-700 mb-2">Type</label>
-                          <select
-                            value={singlePayment.utilityProvider || 'AIRTIME'}
-                            onChange={(e) => handleSinglePaymentChange('utilityProvider', e.target.value)}
-                            className="w-full px-3 py-2 border border-gray-300 rounded-md"
-                          >
-                            <option value="AIRTIME">Airtime</option>
-                          </select>
-                        </div>
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                           <div>
-                            <label className="block text-sm font-semibold text-gray-700 mb-2">
+                            <label className="mb-1.5 block text-[12px] font-medium text-gray-600">Type</label>
+                            <select
+                              value={singlePayment.utilityProvider || 'AIRTIME'}
+                              onChange={(e) => handleSinglePaymentChange('utilityProvider', e.target.value)}
+                              className="h-10 w-full rounded-lg border border-gray-200 px-3 text-[13px]"
+                            >
+                              <option value="AIRTIME">Airtime</option>
+                            </select>
+                          </div>
+                          <div>
+                            <label className="mb-1.5 block text-[12px] font-medium text-gray-600">
                               Recipient phone <span className="text-red-500">*</span>
                             </label>
                             <Input
@@ -2494,13 +2481,13 @@ export default function BulkPaymentPage() {
                             />
                           </div>
                           <div>
-                            <label className="block text-sm font-semibold text-gray-700 mb-2">
+                            <label className="mb-1.5 block text-[12px] font-medium text-gray-600">
                               Mobile network <span className="text-red-500">*</span>
                             </label>
                             <select
                               value={singlePayment.mnoProvider || ''}
                               onChange={(e) => handleSinglePaymentChange('mnoProvider', e.target.value)}
-                              className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                              className="h-10 w-full rounded-lg border border-gray-200 px-3 text-[13px]"
                             >
                               <option value="">Select network</option>
                               <option value="MTN">MTN</option>
@@ -2514,7 +2501,7 @@ export default function BulkPaymentPage() {
                         {false && (
                           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                             <div>
-                              <label className="block text-sm font-semibold text-gray-700 mb-2">
+                              <label className="mb-1.5 block text-[12px] font-medium text-gray-600">
                                 Bundle quantity <span className="text-red-500">*</span>
                               </label>
                               <Input
@@ -2535,7 +2522,7 @@ export default function BulkPaymentPage() {
                               />
                             </div>
                             <div>
-                              <label className="block text-sm font-semibold text-gray-700 mb-2">Unit</label>
+                              <label className="mb-1.5 block text-[12px] font-medium text-gray-600">Unit</label>
                               <select
                                 value={singlePayment.metadata?.dataUnit || 'MB'}
                                 onChange={(e) =>
@@ -2544,14 +2531,14 @@ export default function BulkPaymentPage() {
                                     metadata: { ...prev.metadata, dataUnit: e.target.value },
                                   }))
                                 }
-                                className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                                className="h-10 w-full rounded-lg border border-gray-200 px-3 text-[13px]"
                               >
                                 <option value="MB">MB</option>
                                 <option value="GB">GB</option>
                               </select>
                             </div>
                             <div>
-                              <label className="block text-sm font-semibold text-gray-700 mb-2">Validity</label>
+                              <label className="mb-1.5 block text-[12px] font-medium text-gray-600">Validity</label>
                               <select
                                 value={singlePayment.metadata?.dataValidity || 'Week'}
                                 onChange={(e) =>
@@ -2560,7 +2547,7 @@ export default function BulkPaymentPage() {
                                     metadata: { ...prev.metadata, dataValidity: e.target.value },
                                   }))
                                 }
-                                className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                                className="h-10 w-full rounded-lg border border-gray-200 px-3 text-[13px]"
                               >
                                 <option value="Day">Day</option>
                                 <option value="Week">Week</option>
@@ -2571,7 +2558,7 @@ export default function BulkPaymentPage() {
                               </select>
                             </div>
                             <div>
-                              <label className="block text-sm font-semibold text-gray-700 mb-2">
+                              <label className="mb-1.5 block text-[12px] font-medium text-gray-600">
                                 Product name (AT)
                               </label>
                               <Input
@@ -2595,7 +2582,7 @@ export default function BulkPaymentPage() {
 
                 {/* Description */}
                 <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-2">
+                  <label className="mb-1.5 block text-[12px] font-medium text-gray-600">
                     Description (Optional)
                   </label>
                   <Input
@@ -2606,81 +2593,11 @@ export default function BulkPaymentPage() {
                   />
                 </div>
 
-          {/* Validation Info */}
-          {validationInfo && (
-            <Card className="bg-green-50 border-green-200">
-              <CardContent className="pt-4">
-                <h4 className="font-semibold text-green-900 mb-2">Validation Result</h4>
-                <div className="grid grid-cols-1 gap-3 text-sm">
-                  {validationInfo.recipientName && (
-                    <div className="flex items-center gap-2">
-                      <span className="text-gray-600">Recipient:</span>
-                      <span className="font-medium text-green-800">{validationInfo.recipientName}</span>
-                    </div>
-                  )}
-                  {(validationInfo.customerType || validationInfo.billArea) && (
-                    <div className="flex items-center gap-2">
-                      <span className="text-gray-600">
-                        {isElectricityMeterType(validationInfo.customerType || validationInfo.billArea)
-                          ? 'Meter type:'
-                          : 'Area:'}
-                      </span>
-                      <span className="font-medium text-green-800">
-                        {validationInfo.customerType || validationInfo.billArea}
-                      </span>
-                    </div>
-                  )}
-                  {validationInfo.partnerName && (
-                    <div className="flex items-center gap-2">
-                      <span className="text-gray-600">Partner:</span>
-                      <span className="font-medium text-green-800">{validationInfo.partnerName}</span>
-                    </div>
-                  )}
-                  <div className="flex items-center gap-2">
-                    <span className="text-gray-600">Status:</span>
-                    <span className={`font-medium ${validationInfo.isValid ? 'text-green-800' : 'text-red-600'}`}>
-                      {validationInfo.isValid ? 'Valid' : 'Invalid'}
-                    </span>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          )}
-
-          {/* Fee Preview */}
-          {feePreview && (
-            <Card className="bg-blue-50 border-blue-200">
-              <CardContent className="pt-4">
-                <h4 className="font-semibold text-blue-900 mb-2">Fee Preview</h4>
-                <div className="grid grid-cols-2 gap-4 text-sm">
-                  <div>
-                    <span className="text-gray-600">Total Amount:</span>
-                    <span className="font-medium ml-2">UGX {singlePayment.amount?.toLocaleString()}</span>
-                  </div>
-                  <div>
-                    <span className="text-gray-600">Fee:</span>
-                    <span className="font-medium ml-2">UGX {feePreview.totalFee.toLocaleString()}</span>
-                  </div>
-                  <div>
-                    <span className="text-gray-600">Net Amount:</span>
-                    <span className="font-medium ml-2">UGX {feePreview.netAmount.toLocaleString()}</span>
-                  </div>
-                  <div>
-                    <span className="text-gray-600">Tariff:</span>
-                    <span className="font-medium ml-2">{feePreview.tariffName}</span>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          )}
-
-                {/* Action Buttons */}
-                <div className="flex gap-3">
+                <div className="flex justify-end">
                   <Button
                     onClick={previewSinglePaymentFees}
-                    variant="outline"
                     disabled={!singlePayment.amount || singlePayment.amount <= 0 || singlePaymentLoading || validatingTransaction}
-                    className="border-orange-600 text-orange-600 hover:bg-orange-50"
+                    className="h-8 rounded-full bg-gray-900 px-4 text-[12px] hover:bg-gray-800"
                   >
                     {validatingTransaction ? (
                       <>
@@ -2694,43 +2611,160 @@ export default function BulkPaymentPage() {
                       </>
                     )}
                   </Button>
-                  <Button
-                    onClick={processSinglePaymentTransaction}
-                    disabled={!validationInfo?.isValid || singlePaymentLoading || !singlePayment.amount || singlePayment.amount <= 0}
-                    className={`flex items-center gap-2 ${!validationInfo?.isValid ? 'opacity-50 cursor-not-allowed' : 'bg-green-600 hover:bg-green-700'}`}
-                  >
-                    {singlePaymentLoading ? (
-                      <>
-                        <Loader2 className="w-4 h-4 animate-spin" />
-                        Processing...
-                      </>
-                    ) : !validationInfo?.isValid ? (
-                      <>
-                        <AlertTriangle className="w-4 h-4" />
-                        Validate First
-                      </>
-                    ) : (
-                      <>
-                        <Send className="w-4 h-4" />
-                        Process Payment
-                      </>
-                    )}
-                  </Button>
                 </div>
               </CardContent>
             </Card>
+
+            <Dialog
+              open={Boolean(validationInfo)}
+              onOpenChange={(open) => {
+                if (!open) cancelSinglePaymentReview();
+              }}
+            >
+              <DialogContent
+                className="gap-0 overflow-hidden rounded-2xl border-gray-100 p-0 sm:max-w-[440px]"
+                onInteractOutside={(e) => {
+                  if (singlePaymentLoading) e.preventDefault();
+                }}
+                onEscapeKeyDown={(e) => {
+                  if (singlePaymentLoading) e.preventDefault();
+                }}
+              >
+                <DialogHeader className="border-b border-gray-100 px-5 py-4">
+                  <div className="flex items-start gap-3">
+                    <div
+                      className={`mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full ${
+                        validationInfo?.isValid ? 'bg-emerald-50 text-emerald-600' : 'bg-red-50 text-red-600'
+                      }`}
+                    >
+                      {validationInfo?.isValid ? (
+                        <CheckCircle2 className="h-4 w-4" />
+                      ) : (
+                        <AlertTriangle className="h-4 w-4" />
+                      )}
+                    </div>
+                    <div>
+                      <DialogTitle className="text-[15px] font-semibold text-gray-900">
+                        {validationInfo?.isValid ? 'Confirm payment' : 'Validation failed'}
+                      </DialogTitle>
+                      <DialogDescription className="mt-0.5 text-[12px] text-gray-400">
+                        {validationInfo?.isValid
+                          ? 'Review the details, then confirm or cancel.'
+                          : 'Check the details and try validating again.'}
+                      </DialogDescription>
+                    </div>
+                  </div>
+                </DialogHeader>
+
+                <div className="space-y-4 px-5 py-4">
+                  <div className="flex items-center gap-3 rounded-xl bg-gray-50 px-3.5 py-3">
+                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white text-gray-500 shadow-[0_1px_2px_rgba(16,24,40,0.06)]">
+                      <User className="h-4 w-4" />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="truncate text-[14px] font-semibold text-gray-900">
+                        {validationInfo?.recipientName || 'Recipient'}
+                      </p>
+                      <p className="truncate text-[12px] text-gray-500">
+                        {[singlePaymentTypeLabel, singlePaymentDestination].filter(Boolean).join(' · ')}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="divide-y divide-gray-100">
+                    <ReviewRow
+                      label={isElectricityMeterType(meterOrArea) ? 'Meter type' : 'Area'}
+                      value={meterOrArea}
+                    />
+                    <ReviewRow
+                      label="Status"
+                      value={
+                        <span className={validationInfo?.isValid ? 'text-emerald-600' : 'text-red-600'}>
+                          {validationInfo?.isValid ? 'Valid' : 'Invalid'}
+                        </span>
+                      }
+                    />
+                  </div>
+
+                  <div className="rounded-xl border border-gray-100 px-3.5 py-2.5">
+                    <ReviewRow label="Total Amount" value={formatUgx(singlePayment.amount)} emphasize />
+                    <ReviewRow label="Fee" value={formatUgx(singlePaymentFee)} />
+                    {feePreview && feePreview.netAmount !== singlePayment.amount ? (
+                      <ReviewRow label="Net Amount" value={formatUgx(feePreview.netAmount)} />
+                    ) : null}
+                    <div className="mt-1.5 flex items-center justify-between border-t border-gray-100 pt-2">
+                      <span className="text-[12px] font-medium text-gray-600">Wallet debit</span>
+                      <span className="text-[15px] font-semibold tabular-nums text-gray-900">
+                        {formatUgx(singlePaymentDebit)}
+                      </span>
+                    </div>
+                    <p className="mt-1 text-[11px] text-gray-400">
+                      Payments will be deducted from your Disbursement wallet
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-end gap-2 border-t border-gray-100 px-5 py-4">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={cancelSinglePaymentReview}
+                    disabled={singlePaymentLoading}
+                    className="h-8 rounded-full px-4 text-[12px]"
+                  >
+                    Cancel
+                  </Button>
+                  {validationInfo?.isValid ? (
+                    <Button
+                      type="button"
+                      onClick={processSinglePaymentTransaction}
+                      disabled={singlePaymentLoading || !singlePayment.amount || singlePayment.amount <= 0}
+                      className="h-8 rounded-full bg-gray-900 px-4 text-[12px] hover:bg-gray-800"
+                    >
+                      {singlePaymentLoading ? (
+                        <>
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          Processing...
+                        </>
+                      ) : (
+                        <>
+                          <Send className="mr-2 h-4 w-4" />
+                          Confirm
+                        </>
+                      )}
+                    </Button>
+                  ) : (
+                    <Button
+                      type="button"
+                      onClick={previewSinglePaymentFees}
+                      disabled={validatingTransaction}
+                      className="h-8 rounded-full bg-gray-900 px-4 text-[12px] hover:bg-gray-800"
+                    >
+                      {validatingTransaction ? (
+                        <>
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          Validating...
+                        </>
+                      ) : (
+                        'Try again'
+                      )}
+                    </Button>
+                  )}
+                </div>
+              </DialogContent>
+            </Dialog>
           </TabsContent>
 
           {/* Bulk Payment Tab */}
-          <TabsContent value="bulk" className="space-y-6">
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-lg">Bulk Transaction Details</CardTitle>
+          <TabsContent value="bulk" className="mt-0 space-y-4">
+        <Card className="rounded-2xl border-gray-100 py-0 shadow-[0_1px_2px_rgba(16,24,40,0.04)]">
+          <CardHeader className="px-5 py-4">
+            <CardTitle className="text-[15px] font-semibold">Bulk Transaction Details</CardTitle>
           </CardHeader>
-          <CardContent>
+          <CardContent className="px-5 pb-5">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-2">
+                <label className="mb-1.5 block text-[12px] font-medium text-gray-600">
                   Bulk Description
                 </label>
                 <Input
@@ -2741,7 +2775,7 @@ export default function BulkPaymentPage() {
                 />
               </div>
               <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-2">
+                <label className="mb-1.5 block text-[12px] font-medium text-gray-600">
                   Reference (Optional)
                 </label>
                 <Input
@@ -2760,32 +2794,34 @@ export default function BulkPaymentPage() {
         <div className="flex flex-wrap gap-3">
           <Button
             onClick={() => setShowAddForm(!showAddForm)}
-            className="bg-blue-600 hover:bg-blue-700"
+            className="h-8 rounded-full bg-gray-900 px-3 text-[12px] hover:bg-gray-800"
           >
-            <Plus className="w-4 h-4 mr-2" />
+            <Plus className="h-3.5 w-3.5" />
             Add Payment
           </Button>
           
           <Button
             variant="outline"
             onClick={() => downloadTemplate('csv')}
+            className="h-8 rounded-full px-3 text-[12px]"
           >
-            <Download className="w-4 h-4 mr-2" />
+            <Download className="h-3.5 w-3.5" />
             Download CSV
           </Button>
 
           <Button
             variant="outline"
             onClick={() => downloadTemplate('excel')}
+            className="h-8 rounded-full px-3 text-[12px]"
           >
-            <Download className="w-4 h-4 mr-2" />
+            <Download className="h-3.5 w-3.5" />
             Download Excel
           </Button>
           
           <label className="cursor-pointer">
-            <Button variant="outline" asChild>
+            <Button variant="outline" asChild className="h-8 rounded-full px-3 text-[12px]">
               <span>
-                <Upload className="w-4 h-4 mr-2" />
+                <Upload className="h-3.5 w-3.5" />
                 Upload File
               </span>
             </Button>
@@ -2802,7 +2838,7 @@ export default function BulkPaymentPage() {
               onClick={handleValidateAll}
               disabled={payments.length === 0 || validating || processing}
               variant="outline"
-              className="border-orange-600 text-orange-600 hover:bg-orange-50"
+              className="h-8 rounded-full border-gray-200 px-3 text-[12px]"
             >
               {validating ? (
                 <>
@@ -2877,8 +2913,7 @@ export default function BulkPaymentPage() {
                 validating || 
                 !payments.every(p => p.validated) // ✅ Disable until all are validated
               }
-              className="bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 disabled:opacity-50 disabled:cursor-not-allowed"
-              size="lg"
+              className="h-8 rounded-full bg-gray-900 px-3 text-[12px] hover:bg-gray-800 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {processing ? (
                 <>
@@ -2910,25 +2945,26 @@ export default function BulkPaymentPage() {
 
         {/* Add Payment Form */}
         {showAddForm && (
-          <Card className="border-2 border-blue-200 bg-blue-50/30">
-            <CardHeader>
-              <CardTitle className="text-lg">
+          <Card className="rounded-2xl border-gray-100 py-0 shadow-[0_1px_2px_rgba(16,24,40,0.04)]">
+            <CardHeader className="px-5 py-4">
+              <CardTitle className="text-[15px] font-semibold">
                 {editingId ? 'Edit Payment' : 'Add New Payment'}
               </CardTitle>
-              <CardDescription>
+              <CardDescription className="text-[12px]">
                 {editingId ? 'Update the payment details' : 'Fill in the details for a single payment'}
               </CardDescription>
             </CardHeader>
-            <CardContent>
+            <CardContent className="px-5 pb-5">
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 {/* Transaction Type */}
                 <div className="col-span-full">
-                      <label className="block text-sm font-semibold text-gray-700 mb-2">
+                      <label className="mb-1.5 block text-[12px] font-medium text-gray-600">
                         Payment Method <span className="text-red-500">*</span>
                       </label>
-                      <div className="grid grid-cols-3 gap-2">
+                      <div className="flex flex-wrap gap-2">
                         {TRANSACTION_TYPES.map(type => {
                       const Icon = type.icon;
+                      const active = formData.mode === type.value;
                       return (
                         <button
                           key={type.value}
@@ -2944,16 +2980,14 @@ export default function BulkPaymentPage() {
                                   : {}),
                             }))
                           }
-                          className={`p-4 border-2 rounded-lg transition-all ${
-                            formData.mode === type.value
-                              ? 'border-blue-600 bg-blue-50'
-                              : 'border-gray-200 hover:border-gray-300'
+                          className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-[12px] font-medium transition-colors ${
+                            active
+                              ? 'border-gray-900 bg-gray-900 text-white'
+                              : 'border-gray-200 bg-white text-gray-600 hover:border-gray-300'
                           }`}
                         >
-                          <Icon className={`w-6 h-6 mx-auto mb-2 ${
-                            formData.mode === type.value ? type.color : 'text-gray-400'
-                          }`} />
-                          <p className="text-xs font-medium text-center">{type.label}</p>
+                          <Icon className={`h-3.5 w-3.5 ${active ? 'text-white' : type.color}`} />
+                          {type.label}
                         </button>
                       );
                     })}
@@ -2964,7 +2998,7 @@ export default function BulkPaymentPage() {
                 {formData.mode === 'WALLET_TO_MNO' && (
                   <>
                     <div>
-                      <label className="block text-sm font-semibold text-gray-700 mb-2">
+                      <label className="mb-1.5 block text-[12px] font-medium text-gray-600">
                         Phone Number <span className="text-red-500">*</span>
                       </label>
                       <Input
@@ -2974,13 +3008,13 @@ export default function BulkPaymentPage() {
                       />
                     </div>
                     <div>
-                      <label className="block text-sm font-semibold text-gray-700 mb-2">
+                      <label className="mb-1.5 block text-[12px] font-medium text-gray-600">
                         Network <span className="text-red-500">*</span>
                       </label>
                       <select
                         value={formData.mnoProvider || 'MTN'}
                         onChange={(e) => setFormData(prev => ({ ...prev, mnoProvider: e.target.value }))}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                        className="h-10 w-full rounded-lg border border-gray-200 px-3 text-[13px]"
                       >
                         <option value="MTN">MTN</option>
                         <option value="Airtel">Airtel</option>
@@ -2988,7 +3022,7 @@ export default function BulkPaymentPage() {
                       {/* Helper text removed – network info is clear from the select */}
                     </div>
                     <div>
-                      <label className="block text-sm font-semibold text-gray-700 mb-2">
+                      <label className="mb-1.5 block text-[12px] font-medium text-gray-600">
                         Recipient Name
                       </label>
                       <Input
@@ -3004,7 +3038,7 @@ export default function BulkPaymentPage() {
                 {formData.mode === 'WALLET_TO_BANK' && (
                   <>
                     <div>
-                      <label className="block text-sm font-semibold text-gray-700 mb-2">
+                      <label className="mb-1.5 block text-[12px] font-medium text-gray-600">
                         Account Number <span className="text-red-500">*</span>
                       </label>
                       <Input
@@ -3014,7 +3048,7 @@ export default function BulkPaymentPage() {
                       />
                     </div>
                     <div>
-                      <label className="block text-sm font-semibold text-gray-700 mb-2">
+                      <label className="mb-1.5 block text-[12px] font-medium text-gray-600">
                         Bank <span className="text-red-500">*</span>
                       </label>
                       <select
@@ -3023,7 +3057,7 @@ export default function BulkPaymentPage() {
                           const bank = UGANDAN_BANKS.find(b => b.bankSortCode === e.target.value);
                           setFormData(prev => ({ ...prev, bankSortCode: e.target.value, bankName: bank?.bankName }));
                         }}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                        className="h-10 w-full rounded-lg border border-gray-200 px-3 text-[13px]"
                       >
                         <option value="">Select Bank</option>
                         {UGANDAN_BANKS.map(bank => (
@@ -3032,7 +3066,7 @@ export default function BulkPaymentPage() {
                       </select>
                     </div>
                     <div>
-                      <label className="block text-sm font-semibold text-gray-700 mb-2">
+                      <label className="mb-1.5 block text-[12px] font-medium text-gray-600">
                         Account Name <span className="text-red-500">*</span>
                       </label>
                       <Input
@@ -3048,7 +3082,7 @@ export default function BulkPaymentPage() {
                 {formData.mode === 'MERCHANT_TO_WALLET' && (
                   <>
                     <div>
-                      <label className="block text-sm font-semibold text-gray-700 mb-2">
+                      <label className="mb-1.5 block text-[12px] font-medium text-gray-600">
                         Recipient Phone Number <span className="text-red-500">*</span>
                       </label>
                       <Input
@@ -3056,9 +3090,6 @@ export default function BulkPaymentPage() {
                         onChange={(e) => setFormData(prev => ({ ...prev, recipientPhoneNumber: e.target.value }))}
                         placeholder="e.g., 0700123456 or 256700123456"
                       />
-                      <p className="text-xs text-green-600 mt-1">
-                        💰 FREE! No fees for merchants sending to individuals
-                      </p>
                     </div>
                   </>
                 )}
@@ -3100,9 +3131,10 @@ export default function BulkPaymentPage() {
                           <TabsTrigger value="airtime_data">Airtime</TabsTrigger>
                         </TabsList>
                       )}
-                      <TabsContent value="utilities" className="space-y-4 pt-3">
+                      <TabsContent value="utilities" className="pt-3">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div>
-                          <label className="block text-sm font-semibold text-gray-700 mb-2">
+                          <label className="mb-1.5 block text-[12px] font-medium text-gray-600">
                             Biller / Provider <span className="text-red-500">*</span>
                           </label>
                           <Select
@@ -3139,7 +3171,7 @@ export default function BulkPaymentPage() {
                           </Select>
                         </div>
                         <div>
-                          <label className="block text-sm font-semibold text-gray-700 mb-2">
+                          <label className="mb-1.5 block text-[12px] font-medium text-gray-600">
                             {isUraUtility(formData.utilityProvider)
                               ? 'PRN (Payment Reference Number)'
                               : 'Customer / Account Reference'}{' '}
@@ -3210,7 +3242,7 @@ export default function BulkPaymentPage() {
                           </div>
                         )}
                         <div>
-                          <label className="block text-sm font-semibold text-gray-700 mb-2">
+                          <label className="mb-1.5 block text-[12px] font-medium text-gray-600">
                             {utilityRequiresCustomerPhone(formData.utilityProvider)
                               ? 'Customer Phone'
                               : 'Customer Phone (Optional)'}
@@ -3229,24 +3261,26 @@ export default function BulkPaymentPage() {
                             </p>
                           )}
                         </div>
+                        </div>
                       </TabsContent>
-                      <TabsContent value="airtime_data" className="space-y-4 pt-3">
-                        <p className="text-xs text-gray-600">
+                      <TabsContent value="airtime_data" className="pt-3">
+                        <p className="text-xs text-gray-600 mb-4">
                           Africa&apos;s Talking — for Excel/CSV use Transaction Mode <span className="font-mono">UTILITIES</span>,
                           Utility Provider <span className="font-mono">AIRTIME</span>, and recipient phone.
                         </p>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div>
-                          <label className="block text-sm font-semibold text-gray-700 mb-2">Type</label>
+                          <label className="mb-1.5 block text-[12px] font-medium text-gray-600">Type</label>
                           <select
                             value={formData.utilityProvider || 'AIRTIME'}
                             onChange={(e) => setFormData((prev) => ({ ...prev, utilityProvider: e.target.value }))}
-                            className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                            className="h-10 w-full rounded-lg border border-gray-200 px-3 text-[13px]"
                           >
                             <option value="AIRTIME">Airtime</option>
                           </select>
                         </div>
                         <div>
-                          <label className="block text-sm font-semibold text-gray-700 mb-2">
+                          <label className="mb-1.5 block text-[12px] font-medium text-gray-600">
                             Recipient phone <span className="text-red-500">*</span>
                           </label>
                           <Input
@@ -3256,23 +3290,24 @@ export default function BulkPaymentPage() {
                           />
                         </div>
                         <div>
-                          <label className="block text-sm font-semibold text-gray-700 mb-2">
+                          <label className="mb-1.5 block text-[12px] font-medium text-gray-600">
                             Mobile network <span className="text-red-500">*</span>
                           </label>
                           <select
                             value={formData.mnoProvider || ''}
                             onChange={(e) => setFormData((prev) => ({ ...prev, mnoProvider: e.target.value }))}
-                            className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                            className="h-10 w-full rounded-lg border border-gray-200 px-3 text-[13px]"
                           >
                             <option value="">Select network</option>
                             <option value="MTN">MTN</option>
                             <option value="Airtel">Airtel</option>
                           </select>
                         </div>
+                        </div>
                         {false && (
                           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                             <div>
-                              <label className="block text-sm font-semibold text-gray-700 mb-2">
+                              <label className="mb-1.5 block text-[12px] font-medium text-gray-600">
                                 Bundle quantity <span className="text-red-500">*</span>
                               </label>
                               <Input
@@ -3293,7 +3328,7 @@ export default function BulkPaymentPage() {
                               />
                             </div>
                             <div>
-                              <label className="block text-sm font-semibold text-gray-700 mb-2">Unit</label>
+                              <label className="mb-1.5 block text-[12px] font-medium text-gray-600">Unit</label>
                               <select
                                 value={formData.metadata?.dataUnit || 'MB'}
                                 onChange={(e) =>
@@ -3302,14 +3337,14 @@ export default function BulkPaymentPage() {
                                     metadata: { ...prev.metadata, dataUnit: e.target.value },
                                   }))
                                 }
-                                className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                                className="h-10 w-full rounded-lg border border-gray-200 px-3 text-[13px]"
                               >
                                 <option value="MB">MB</option>
                                 <option value="GB">GB</option>
                               </select>
                             </div>
                             <div>
-                              <label className="block text-sm font-semibold text-gray-700 mb-2">Validity</label>
+                              <label className="mb-1.5 block text-[12px] font-medium text-gray-600">Validity</label>
                               <select
                                 value={formData.metadata?.dataValidity || 'Week'}
                                 onChange={(e) =>
@@ -3318,7 +3353,7 @@ export default function BulkPaymentPage() {
                                     metadata: { ...prev.metadata, dataValidity: e.target.value },
                                   }))
                                 }
-                                className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                                className="h-10 w-full rounded-lg border border-gray-200 px-3 text-[13px]"
                               >
                                 <option value="Day">Day</option>
                                 <option value="Week">Week</option>
@@ -3329,7 +3364,7 @@ export default function BulkPaymentPage() {
                               </select>
                             </div>
                             <div>
-                              <label className="block text-sm font-semibold text-gray-700 mb-2">
+                              <label className="mb-1.5 block text-[12px] font-medium text-gray-600">
                                 Product name (AT)
                               </label>
                               <Input
@@ -3352,8 +3387,9 @@ export default function BulkPaymentPage() {
 
 
                 {/* Common Fields */}
+                <div className="col-span-full grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-2">
+                  <label className="mb-1.5 block text-[12px] font-medium text-gray-600">
                     Amount (UGX) <span className="text-red-500">*</span>
                   </label>
                   <Input
@@ -3365,8 +3401,8 @@ export default function BulkPaymentPage() {
                   />
                 </div>
 
-                <div className="col-span-full">
-                  <label className="block text-sm font-semibold text-gray-700 mb-2">
+                <div>
+                  <label className="mb-1.5 block text-[12px] font-medium text-gray-600">
                     Description <span className="text-gray-400">(Optional)</span>
                   </label>
                   <Input
@@ -3374,9 +3410,10 @@ export default function BulkPaymentPage() {
                     onChange={(e) => setFormData(prev => ({ ...prev, description: e.target.value }))}
                     placeholder="e.g., January 2025 salary (auto-generated if empty)"
                   />
-                  <p className="text-xs text-gray-500 mt-1">
-                    💼 Payments will be deducted from your <span className="font-semibold">Disbursement wallet</span>
+                  <p className="mt-1 text-[11px] text-gray-400">
+                    Payments will be deducted from your Disbursement wallet
                   </p>
+                </div>
                 </div>
 
                 <div className="col-span-full flex justify-end gap-2">
@@ -3390,7 +3427,7 @@ export default function BulkPaymentPage() {
                   <Button
                     type="button"
                     onClick={handleAddPayment}
-                    className="bg-blue-600 hover:bg-blue-700"
+                    className="h-8 rounded-full bg-gray-900 px-3 text-[12px] hover:bg-gray-800"
                   >
                     {editingId ? (
                       <>
@@ -3411,12 +3448,12 @@ export default function BulkPaymentPage() {
         )}
 
         {/* Payments List */}
-        <Card>
-          <CardHeader className="border-b">
+        <Card className="rounded-2xl border-gray-100 py-0 shadow-[0_1px_2px_rgba(16,24,40,0.04)]">
+          <CardHeader className="border-b border-gray-100 px-5 py-4">
             <div className="flex items-center justify-between">
               <div>
-                <CardTitle>Payment Queue</CardTitle>
-                <CardDescription>
+                <CardTitle className="text-[15px] font-semibold">Payment Queue</CardTitle>
+                <CardDescription className="text-[12px]">
                   {payments.length === 0 
                     ? 'No payments added yet' 
                     : `${payments.length} payment${payments.length !== 1 ? 's' : ''} ready to process`
@@ -3442,12 +3479,11 @@ export default function BulkPaymentPage() {
               )}
             </div>
           </CardHeader>
-          <CardContent className="pt-6">
+          <CardContent className="px-5 py-5">
             {payments.length === 0 ? (
-              <div className="text-center py-12">
-                <Users className="w-16 h-16 mx-auto text-gray-300 mb-4" />
-                <p className="text-gray-500 mb-2">No payments in queue</p>
-                <p className="text-sm text-gray-400">Add payments manually or upload an Excel file</p>
+              <div className="py-8 text-center">
+                <p className="text-[13px] text-gray-500">No payments in queue</p>
+                <p className="mt-1 text-[12px] text-gray-400">Add payments manually or upload an Excel file</p>
               </div>
             ) : (
               <div className="space-y-3">
@@ -3595,44 +3631,6 @@ export default function BulkPaymentPage() {
           </CardContent>
         </Card>
 
-        {/* Info Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <Card className="border-blue-200 bg-blue-50">
-            <CardContent className="pt-6">
-              <div className="flex items-start gap-3">
-                <Info className="w-5 h-5 text-blue-600 mt-0.5" />
-                <div>
-                  <p className="font-semibold text-blue-900">High Performance</p>
-                  <p className="text-sm text-blue-700 mt-1">Process up to 1000 payments in seconds with parallel processing</p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-          
-          <Card className="border-green-200 bg-green-50">
-            <CardContent className="pt-6">
-              <div className="flex items-start gap-3">
-                <CheckCircle2 className="w-5 h-5 text-green-600 mt-0.5" />
-                <div>
-                  <p className="font-semibold text-green-900">Mixed Payment Types</p>
-                  <p className="text-sm text-green-700 mt-1">Combine mobile money, bank transfers, and more in one batch</p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-          
-          <Card className="border-purple-200 bg-purple-50">
-            <CardContent className="pt-6">
-              <div className="flex items-start gap-3">
-                <AlertCircle className="w-5 h-5 text-purple-600 mt-0.5" />
-                <div>
-                  <p className="font-semibold text-purple-900">Three Payment Types</p>
-                  <p className="text-sm text-purple-700 mt-1">Mobile Money, Bank Transfer, and Wallet Transfer in one bulk</p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
           </TabsContent>
         </Tabs>
         </>

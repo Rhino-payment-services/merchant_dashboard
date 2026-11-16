@@ -255,8 +255,8 @@ export default function QRCodeButton({ merchantCode, merchantName, variant = "de
             <span className="sr-only">Show QR Code</span>
           </Button>
         ) : (
-          <Button variant="outline" className="flex items-center gap-2">
-            <QrCode className="h-4 w-4" />
+          <Button variant="outline" className="h-8 rounded-full px-3 text-[12px] font-medium">
+            <QrCode className="h-3.5 w-3.5" />
             Show QR Code
           </Button>
         )}

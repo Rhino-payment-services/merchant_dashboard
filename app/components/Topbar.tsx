@@ -138,7 +138,7 @@ export default function Topbar({ onMenuToggle, isMenuOpen }: TopbarProps) {
   });
 
   return (
-    <header className="flex items-center justify-between px-4 py-4 bg-white">
+    <header className="flex items-center justify-between px-4 md:px-6 py-3 bg-white border-b border-gray-100">
       {/* Mobile Menu Button */}
       <div className="md:hidden">
         <Button
@@ -161,14 +161,14 @@ export default function Topbar({ onMenuToggle, isMenuOpen }: TopbarProps) {
           <button
             type="button"
             disabled={switching}
-            className="flex items-center gap-2 min-w-0 max-w-[200px] sm:max-w-[260px] px-3 py-2 rounded-lg border border-gray-200 bg-white hover:bg-gray-50 text-left focus:outline-none focus:ring-2 focus:ring-main-200 disabled:opacity-60 disabled:cursor-not-allowed"
+            className="flex items-center gap-2 min-w-0 max-w-[200px] sm:max-w-[260px] h-9 px-3 rounded-full border border-gray-200 bg-white hover:bg-gray-50 text-left focus:outline-none focus:ring-2 focus:ring-gray-200 disabled:opacity-60 disabled:cursor-not-allowed"
           >
             {switching ? (
               <Loader2 className="w-4 h-4 text-main-600 flex-shrink-0 animate-spin" />
             ) : (
               <Building2 className="w-4 h-4 text-main-600 flex-shrink-0" />
             )}
-            <span className="truncate text-sm font-medium text-gray-900">
+            <span className="truncate text-[13px] font-medium text-gray-900">
               {loading && !switching ? '...' : businessDisplayName}
             </span>
             {!switching && <ChevronDown className="w-4 h-4 text-gray-500 flex-shrink-0 ml-auto" />}
@@ -270,7 +270,7 @@ export default function Topbar({ onMenuToggle, isMenuOpen }: TopbarProps) {
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <button className="flex items-center gap-2 focus:outline-none cursor-pointer">
-              <span className="w-10 h-10 rounded-full flex items-center justify-center bg-gray-300">
+              <span className="w-8 h-8 rounded-full flex items-center justify-center bg-gray-200 text-[11px]">
                 <span className="font-medium text-gray-700 uppercase">
                   {loading 
                     ? '...' 

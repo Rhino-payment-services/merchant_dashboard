@@ -16,12 +16,11 @@ import { useChildMerchantContext } from '@/lib/hooks/useChildMerchantContext';
 import { RefreshCw, Crown } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
-import { getMyTransactions, Transaction } from "@/lib/api/wallet.api";
+import { getMyTransactions, Transaction } from "@/lib/api/transactions.api";
 import { checkMerchantIsSuperMerchant } from "@/lib/api/super-merchant.api";
 import { isSessionMerchantOwnAccount } from "@/lib/auth/sessionPayload";
 import { useTeamPermissionSession } from "@/lib/hooks/useTeamPermissionSession";
 import { canCollectPayments, canViewTransactions } from "@/lib/utils/permissions";
-import DebugWallet from "../debug-wallet";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 export default function Home() {
@@ -34,6 +33,7 @@ export default function Home() {
   const [isSuperMerchant, setIsSuperMerchant] = useState(false);
   const [superMerchantLoading, setSuperMerchantLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [refreshKey, setRefreshKey] = useState(0);
   const {
     childMerchantId,
     childMerchantCode,
@@ -118,14 +118,27 @@ export default function Home() {
       setTransactionsLoading(false);
       return;
     }
-    if (!merchantCode && !isViewingChild) return;
-    if (isViewingChild && !childMerchantId) return;
+    if (!merchantCode && !isViewingChild) {
+      setRecentTransactions([]);
+      setTransactionsLoading(false);
+      return;
+    }
+    if (isViewingChild && !childMerchantId) {
+      setRecentTransactions([]);
+      setTransactionsLoading(false);
+      return;
+    }
     try {
       setTransactionsLoading(true);
+      const effectiveCode = isViewingChild
+        ? childMerchantCode
+        : merchantCode != null
+          ? String(merchantCode)
+          : null;
       const data = await getMyTransactions(
-        { limit: 5 },
+        { page: 1, limit: 10 },
         childMerchantId || undefined,
-        isViewingChild ? childMerchantCode : undefined,
+        effectiveCode,
       );
       setRecentTransactions(data.transactions || []);
     } catch (error) {
@@ -138,18 +151,17 @@ export default function Home() {
 
   // Initial / merchant-change load for recent transactions
   useEffect(() => {
-    if (!merchantCode && !isViewingChild) return;
     loadRecentTransactions();
-  }, [merchantCode, childMerchantId, isViewingChild]);
+  }, [merchantCode, childMerchantId, childMerchantCode, isViewingChild, teamSession]);
 
   const handleRefresh = async () => {
     try {
       setRefreshing(true);
       await refetch();
       await loadRecentTransactions();
-      toast.success('Dashboard data refreshed successfully!');
+      setRefreshKey((key) => key + 1);
     } catch (error) {
-      toast.error('Failed to refresh dashboard data');
+      toast.error('Failed to refresh dashboard');
     } finally {
       setRefreshing(false);
     }
@@ -161,40 +173,29 @@ export default function Home() {
 
   // Regular merchant dashboard content
   const RegularDashboard = () => (
-    <div className="space-y-6">
+    <div className="space-y-4">
       <div className="relative">
-        {refreshing && (
-          <div className="absolute top-2 right-2 z-10">
-            <div className="bg-blue-50 border border-blue-200 rounded-lg px-3 py-1 flex items-center gap-2">
-              <RefreshCw className="h-3 w-3 animate-spin text-blue-600" />
-              <span className="text-xs text-blue-600 font-medium">Updating dashboard...</span>
-            </div>
-          </div>
-        )}
-        {process.env.NODE_ENV === 'development' && <DebugWallet />}
-        {dashboardLoading ? <DashboardSkeleton /> : <StatCards />}
+        {dashboardLoading ? <DashboardSkeleton /> : <StatCards refreshKey={refreshKey} />}
       </div>
 
-      <div className="grid grid-cols-1 gap-6">
-        <div className="lg:col-span-2 bg-white rounded-xl shadow p-4">
-          {!canViewTransactions(teamSession) ? (
-            <p className="text-sm text-gray-500 py-4">
-              You do not have permission to view transactions.
-            </p>
-          ) : dashboardLoading || transactionsLoading ? (
-            <div className="space-y-3 animate-pulse py-2">
-              <div className="h-5 w-40 bg-gray-200 rounded" />
-              {Array.from({ length: 3 }).map((_, index) => (
-                <div key={index} className="h-12 bg-gray-100 rounded" />
-              ))}
-            </div>
-          ) : (
-            <RecentTransactions
-              transactions={recentTransactions as any}
-              isNewFormat={true}
-            />
-          )}
-        </div>
+      <div className="rounded-2xl border border-gray-100 bg-white p-4 shadow-[0_1px_2px_rgba(16,24,40,0.04)]">
+        {!canViewTransactions(teamSession) ? (
+          <p className="text-[13px] text-gray-400 py-6 text-center">
+            You do not have permission to view transactions.
+          </p>
+        ) : dashboardLoading || transactionsLoading ? (
+          <div className="space-y-3 animate-pulse py-1">
+            <div className="h-4 w-32 bg-gray-100 rounded" />
+            {Array.from({ length: 3 }).map((_, index) => (
+              <div key={index} className="h-10 bg-gray-50 rounded-lg" />
+            ))}
+          </div>
+        ) : (
+          <RecentTransactions
+            transactions={recentTransactions as any}
+            isNewFormat={true}
+          />
+        )}
       </div>
     </div>
   );
@@ -207,49 +208,22 @@ export default function Home() {
         <link rel="icon" href="/favicon.ico" />
       </Head>
       <div className="flex-1 flex flex-col">
-      <main className="flex-1 p-4 md:p-8 space-y-6">
-        {/* Page Header */}
-        <div className="mb-8">
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-            <div>
-              <div className="flex items-center gap-2 mb-2">
-                <h1 className="text-3xl font-bold text-[#08163d]">Dashboard</h1>
-                {isSuperMerchant && (
-                  <span className="inline-flex items-center gap-1 px-2 py-1 bg-yellow-100 text-yellow-700 text-xs font-medium rounded-full">
-                    <Crown className="h-3 w-3" />
-                    Super Merchant
-                  </span>
-                )}
-              </div>
-              <div className="flex flex-col sm:flex-row sm:items-baseline gap-1 sm:gap-2">
-                <span className="text-base text-gray-600">
-                  Managing <span className="font-semibold text-[#08163d]">
-                    {isViewingChild
-                      ? (childMerchantName || childMerchantCode || 'Child Merchant')
-                      : (profile?.merchant_names || profile?.merchantBusinessTradeName || profile?.businessTradeName || 'Business')}
-                  </span>
-                  {profile?.owner_name && (
-                    <span className="text-gray-500 font-normal"> · {profile.owner_name}</span>
-                  )}
-                </span>
-                {(refreshing || isRefetching) && (
-                  <span className="text-xs text-blue-600 bg-blue-50 px-2 py-1 rounded-full flex items-center gap-1">
-                    <RefreshCw className="h-3 w-3 animate-spin" />
-                    Updating...
-                  </span>
-                )}
-              </div>
-            </div>
-            <div className="flex items-center gap-2">
+      <main className="flex-1 p-4 md:p-6 space-y-5">
+        {(() => {
+          const showSuperTabs =
+            !superMerchantLoading && isSuperMerchant && !!currentMerchantId && !isViewingChild;
+          const headerActions = (
+            <div className="flex items-center gap-1.5">
               <Button
-                variant="outline"
-                size="sm"
+                variant="ghost"
+                size="icon"
                 onClick={handleRefresh}
                 disabled={loading || refreshing || isRefetching}
-                className="flex items-center gap-2"
+                title="Refresh dashboard"
+                className="h-8 w-8 rounded-full text-gray-500 hover:text-gray-900 hover:bg-gray-100"
               >
                 <RefreshCw className={`h-4 w-4 ${refreshing || isRefetching ? 'animate-spin' : ''}`} />
-                {loading ? 'Loading...' : refreshing || isRefetching ? 'Refreshing...' : 'Refresh'}
+                <span className="sr-only">Refresh dashboard</span>
               </Button>
               {!loading &&
                 canCollectPayments(teamSession) &&
@@ -260,38 +234,74 @@ export default function Home() {
                 />
               )}
             </div>
-          </div>
-        </div>
+          );
 
-        {/* Super Merchant gets tabs, regular merchants get standard dashboard */}
-        {!superMerchantLoading && isSuperMerchant && currentMerchantId && !isViewingChild ? (
-          <Tabs defaultValue="aggregate" className="w-full">
-            <TabsList className="mb-6">
-              <TabsTrigger value="aggregate" className="flex items-center gap-2">
-                <Crown className="h-4 w-4" />
-                Aggregate View
-              </TabsTrigger>
-              <TabsTrigger value="own" className="flex items-center gap-2">
-                My Business
-              </TabsTrigger>
-            </TabsList>
-            
-            <TabsContent value="aggregate">
-              <SuperMerchantDashboard 
-                merchantId={currentMerchantId}
-                merchantName={profile?.merchant_names || profile?.businessTradeName || 'Business'}
-              />
-            </TabsContent>
-            
-            <TabsContent value="own">
-              <RegularDashboard />
-            </TabsContent>
-          </Tabs>
-        ) : superMerchantLoading && !isViewingChild ? (
-          <DashboardSkeleton />
-        ) : (
-          <RegularDashboard />
-        )}
+          const title = (
+            <div className="min-w-0">
+              <div className="flex items-center gap-2">
+                <h1 className="text-[20px] font-semibold tracking-tight text-gray-900">Dashboard</h1>
+                {isSuperMerchant && !isViewingChild && (
+                  <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-medium text-amber-700">
+                    <Crown className="h-3 w-3" />
+                    Super
+                  </span>
+                )}
+              </div>
+              {isViewingChild && (
+                <p className="mt-0.5 text-[12px] text-gray-400">
+                  Viewing {childMerchantName || childMerchantCode || 'child merchant'}
+                </p>
+              )}
+            </div>
+          );
+
+          if (showSuperTabs) {
+            return (
+              <Tabs defaultValue="aggregate" className="w-full space-y-4">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="flex min-w-0 flex-wrap items-center gap-3">
+                    {title}
+                    <TabsList className="h-8 rounded-full bg-gray-100 p-0.5">
+                      <TabsTrigger
+                        value="aggregate"
+                        className="h-7 rounded-full px-3 text-[12px] data-[state=active]:shadow-none"
+                      >
+                        Aggregate
+                      </TabsTrigger>
+                      <TabsTrigger
+                        value="own"
+                        className="h-7 rounded-full px-3 text-[12px] data-[state=active]:shadow-none"
+                      >
+                        My business
+                      </TabsTrigger>
+                    </TabsList>
+                  </div>
+                  {headerActions}
+                </div>
+                <TabsContent value="aggregate" className="mt-0">
+                  <SuperMerchantDashboard
+                    merchantId={currentMerchantId}
+                    merchantName={profile?.merchant_names || profile?.businessTradeName || 'Business'}
+                    refreshKey={refreshKey}
+                  />
+                </TabsContent>
+                <TabsContent value="own" className="mt-0">
+                  <RegularDashboard />
+                </TabsContent>
+              </Tabs>
+            );
+          }
+
+          return (
+            <>
+              <div className="flex items-center justify-between gap-3">
+                {title}
+                {headerActions}
+              </div>
+              {superMerchantLoading && !isViewingChild ? <DashboardSkeleton /> : <RegularDashboard />}
+            </>
+          );
+        })()}
       </main>
     </div>
     </>
