@@ -411,116 +411,136 @@ export default function SettingsPage() {
     );
   }
 
+  const fieldLabel = "mb-1.5 block text-[12px] font-medium text-gray-600";
+  const fieldInput = "h-10";
+  const sectionCard =
+    "rounded-2xl border border-gray-100 bg-white p-5 shadow-[0_1px_2px_rgba(16,24,40,0.04)]";
+  const typeBtn = (active: boolean) =>
+    `inline-flex items-center rounded-full border px-3 py-1.5 text-[12px] font-medium transition-colors ${
+      active
+        ? "border-gray-900 bg-gray-900 text-white"
+        : "border-gray-200 bg-white text-gray-600 hover:border-gray-300"
+    }`;
+
   return (
-    <div className="p-8">
-      <div className="max-w-2xl mx-auto">
-        <div className="mb-8">
-          <h1 className="text-3xl font-bold text-[#08163d] mb-2">Account Settings</h1>
-          <p className="text-gray-600">
+    <div className="p-4 md:p-6">
+      <div className="mx-auto max-w-3xl space-y-4">
+        <div>
+          <h1 className="text-[20px] font-semibold tracking-tight text-gray-900">Account Settings</h1>
+          <p className="mt-0.5 text-[12px] text-gray-400">
             Update your profile and set a password to use email login
           </p>
         </div>
 
-        <Card className="p-8 mb-8">
-          <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
-            <User className="w-5 h-5 text-main-600" />
+        <Card className={sectionCard}>
+          <h3 className="flex items-center gap-2 text-[15px] font-semibold text-gray-900">
+            <User className="h-4 w-4 text-gray-400" />
             Profile Information
           </h3>
-          <p className="text-sm text-gray-600 mb-4">
+          <p className="mt-1 mb-4 text-[12px] text-gray-400">
             Fill out your profile and add your email. Once you set a password below, you can also log in with your email.
           </p>
           <form onSubmit={handleProfileSubmit} className="space-y-4">
             <div>
-              <label className="block text-xs font-medium mb-1">Phone Number</label>
-              <div className="flex items-center gap-2 px-4 py-3 rounded-lg bg-gray-100 text-gray-700">
-                <Phone className="w-4 h-4 text-gray-500" />
+              <label className={fieldLabel}>Phone Number</label>
+              <div className="flex h-10 items-center gap-2 rounded-lg border border-gray-100 bg-gray-50 px-3 text-[13px] text-gray-700">
+                <Phone className="h-3.5 w-3.5 text-gray-400" />
                 {phoneDisplay}
               </div>
-              <p className="text-xs text-gray-500 mt-1">Phone number cannot be changed here</p>
+              <p className="mt-1 text-[11px] text-gray-400">Phone number cannot be changed here</p>
             </div>
             <div>
-              <label className="block text-xs font-medium mb-1">Email</label>
+              <label className={fieldLabel}>Email</label>
               <div className="relative">
-                <Mail className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
+                <Mail className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
                 <Input
                   type="email"
                   name="email"
                   value={profile.email}
                   onChange={handleProfileChange}
                   placeholder="your.email@example.com"
-                  className="pl-10"
+                  className={`${fieldInput} pl-10`}
                 />
               </div>
-              <p className="text-xs text-gray-500 mt-1">Add email to enable email + password login</p>
+              <p className="mt-1 text-[11px] text-gray-400">Add email to enable email + password login</p>
             </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
               <div>
-                <label className="block text-xs font-medium mb-1">First Name</label>
+                <label className={fieldLabel}>First Name</label>
                 <Input
                   name="firstName"
                   value={profile.firstName}
                   onChange={handleProfileChange}
                   placeholder="First name"
+                  className={fieldInput}
                 />
               </div>
               <div>
-                <label className="block text-xs font-medium mb-1">Last Name</label>
+                <label className={fieldLabel}>Last Name</label>
                 <Input
                   name="lastName"
                   value={profile.lastName}
                   onChange={handleProfileChange}
                   placeholder="Last name"
+                  className={fieldInput}
                 />
               </div>
             </div>
             <div>
-              <label className="block text-xs font-medium mb-1">Middle Name (optional)</label>
+              <label className={fieldLabel}>Middle Name (optional)</label>
               <Input
                 name="middleName"
                 value={profile.middleName}
                 onChange={handleProfileChange}
                 placeholder="Middle name"
+                className={fieldInput}
               />
             </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
               <div>
-                <label className="block text-xs font-medium mb-1">Address</label>
+                <label className={fieldLabel}>Address</label>
                 <Input
                   name="address"
                   value={profile.address}
                   onChange={handleProfileChange}
                   placeholder="Address"
+                  className={fieldInput}
                 />
               </div>
               <div>
-                <label className="block text-xs font-medium mb-1">City</label>
+                <label className={fieldLabel}>City</label>
                 <Input
                   name="city"
                   value={profile.city}
                   onChange={handleProfileChange}
                   placeholder="City"
+                  className={fieldInput}
                 />
               </div>
             </div>
-            <div className="flex justify-end mt-4">
-              <Button type="submit" disabled={profileLoading}>
+            <div className="flex justify-end">
+              <Button
+                type="submit"
+                disabled={profileLoading}
+                className="h-8 rounded-full bg-gray-900 px-4 text-[12px] hover:bg-gray-800"
+              >
                 {profileLoading ? "Saving..." : "Save Profile"}
               </Button>
             </div>
           </form>
         </Card>
 
-        <Card className="p-8 mb-8">
-          <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
-            <Landmark className="w-5 h-5 text-main-600" />
+        <Card className={sectionCard}>
+          <h3 className="flex items-center gap-2 text-[15px] font-semibold text-gray-900">
+            <Landmark className="h-4 w-4 text-gray-400" />
             Liquidation Destination
           </h3>
           {liquidationLoading ? (
-            <p className="text-sm text-gray-600">Loading...</p>
+            <p className="mt-3 text-[12px] text-gray-400">Loading...</p>
           ) : !canEditLiquidation ? (
-            <div className="space-y-3">
-              <div className="rounded-lg border border-blue-200 bg-blue-50 p-4 text-sm text-blue-900">
-                <p className="font-medium mb-2">Locked destination</p>
+            <div className="mt-3 space-y-3">
+              <div className="rounded-xl border border-gray-100 bg-gray-50 p-3.5 text-[12px] text-gray-700">
+                <p className="mb-2 font-semibold text-gray-900">Locked destination</p>
                 {liquidationDestination?.type === "BANK" ? (
                   <div className="space-y-0.5">
                     <div>Bank: {liquidationDestination.bankName || "—"}</div>
@@ -556,16 +576,16 @@ export default function SettingsPage() {
                   <p>No destination details available.</p>
                 )}
               </div>
-              <p className="text-sm text-gray-600">
+              <p className="text-[12px] text-gray-400">
                 Locked. Contact support or an administrator to change it.
               </p>
             </div>
           ) : (
-            <form onSubmit={handleLiquidationSubmit} className="space-y-4">
-              <div className="mb-2 p-4 bg-amber-50 border border-amber-200 rounded-lg flex gap-2">
-                <AlertCircle className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
-                <div className="text-sm text-amber-800">
-                  <p className="font-medium mb-1">Set only once</p>
+            <form onSubmit={handleLiquidationSubmit} className="mt-3 space-y-4">
+              <div className="flex gap-2 rounded-xl border border-amber-100 bg-amber-50 p-3">
+                <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
+                <div className="text-[12px] text-amber-800">
+                  <p className="mb-0.5 font-medium">Set only once</p>
                   <p>
                     You can set this only once. After saving, only an admin can
                     change it. Liquidations will be locked to this destination.
@@ -573,40 +593,32 @@ export default function SettingsPage() {
                 </div>
               </div>
 
-              <div className="flex gap-2 flex-wrap">
-                <Button
+              <div className="flex flex-wrap gap-2">
+                <button
                   type="button"
-                  variant={
-                    liquidationDestinationType === "MOBILE_MONEY"
-                      ? "default"
-                      : "outline"
-                  }
+                  className={typeBtn(liquidationDestinationType === "MOBILE_MONEY")}
                   onClick={() => setLiquidationDestinationType("MOBILE_MONEY")}
                 >
                   Mobile Money
-                </Button>
-                <Button
+                </button>
+                <button
                   type="button"
-                  variant={
-                    liquidationDestinationType === "BANK" ? "default" : "outline"
-                  }
+                  className={typeBtn(liquidationDestinationType === "BANK")}
                   onClick={() => setLiquidationDestinationType("BANK")}
                 >
                   Bank Account
-                </Button>
+                </button>
               </div>
 
               {liquidationDestinationType === "MOBILE_MONEY" ? (
-                <>
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                   <div>
-                    <label className="block text-xs font-medium mb-1">
-                      Provider
-                    </label>
+                    <label className={fieldLabel}>Provider</label>
                     <Select
                       value={liquidationMomoProvider}
                       onValueChange={setLiquidationMomoProvider}
                     >
-                      <SelectTrigger className="w-full">
+                      <SelectTrigger className="h-10 w-full">
                         <SelectValue placeholder="Select provider" />
                       </SelectTrigger>
                       <SelectContent>
@@ -616,33 +628,31 @@ export default function SettingsPage() {
                     </Select>
                   </div>
                   <div>
-                    <label className="block text-xs font-medium mb-1">
-                      Phone Number
-                    </label>
+                    <label className={fieldLabel}>Phone Number</label>
                     <Input
                       value={liquidationMomoPhone}
                       onChange={(e) => setLiquidationMomoPhone(e.target.value)}
                       placeholder="2567XXXXXXXX"
                       required
+                      className={fieldInput}
                     />
                   </div>
-                  <div>
-                    <label className="block text-xs font-medium mb-1">
-                      Account Name (optional)
-                    </label>
+                  <div className="md:col-span-2">
+                    <label className={fieldLabel}>Account Name (optional)</label>
                     <Input
                       value={liquidationMomoAccountName}
                       onChange={(e) =>
                         setLiquidationMomoAccountName(e.target.value)
                       }
                       placeholder="Account name"
+                      className={fieldInput}
                     />
                   </div>
-                </>
+                </div>
               ) : (
-                <>
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                   <div>
-                    <label className="block text-xs font-medium mb-1">Bank</label>
+                    <label className={fieldLabel}>Bank</label>
                     <BankCombobox
                       value={liquidationBankCode}
                       onValueChange={(code, name) => {
@@ -653,9 +663,7 @@ export default function SettingsPage() {
                     />
                   </div>
                   <div>
-                    <label className="block text-xs font-medium mb-1">
-                      Account Number
-                    </label>
+                    <label className={fieldLabel}>Account Number</label>
                     <Input
                       value={liquidationBankAccountNumber}
                       onChange={(e) =>
@@ -663,12 +671,11 @@ export default function SettingsPage() {
                       }
                       placeholder="Account number"
                       required
+                      className={fieldInput}
                     />
                   </div>
                   <div>
-                    <label className="block text-xs font-medium mb-1">
-                      Account Name
-                    </label>
+                    <label className={fieldLabel}>Account Name</label>
                     <Input
                       value={liquidationBankAccountName}
                       onChange={(e) =>
@@ -676,23 +683,27 @@ export default function SettingsPage() {
                       }
                       placeholder="Account name"
                       required
+                      className={fieldInput}
                     />
                   </div>
                   <div>
-                    <label className="block text-xs font-medium mb-1">
-                      Branch (optional)
-                    </label>
+                    <label className={fieldLabel}>Branch (optional)</label>
                     <Input
                       value={liquidationBankBranch}
                       onChange={(e) => setLiquidationBankBranch(e.target.value)}
                       placeholder="Branch"
+                      className={fieldInput}
                     />
                   </div>
-                </>
+                </div>
               )}
 
-              <div className="flex justify-end mt-4">
-                <Button type="submit" disabled={liquidationSaving}>
+              <div className="flex justify-end">
+                <Button
+                  type="submit"
+                  disabled={liquidationSaving}
+                  className="h-8 rounded-full bg-gray-900 px-4 text-[12px] hover:bg-gray-800"
+                >
                   Save Liquidation Destination
                 </Button>
               </div>
@@ -709,18 +720,18 @@ export default function SettingsPage() {
         />
 
         {pinLoginEnabled && (
-          <Card className="p-8 mb-8">
-            <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
-              <KeyRound className="w-5 h-5 text-main-600" />
+          <Card className={sectionCard}>
+            <h3 className="flex items-center gap-2 text-[15px] font-semibold text-gray-900">
+              <KeyRound className="h-4 w-4 text-gray-400" />
               Merchant Portal PIN
             </h3>
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-              <p className="text-sm text-gray-700">
+            <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <p className="text-[12px] text-gray-500">
                 {portalPinSet
                   ? "Your portal PIN is set. Use the button below to change it."
                   : "No portal PIN set yet. Create one to use PIN sign-in."}
               </p>
-              <Button asChild variant="outline" className="shrink-0">
+              <Button asChild variant="outline" className="h-8 shrink-0 rounded-full border-gray-200 px-3 text-[12px]">
                 <Link href="/auth/setup-portal-pin">
                   {portalPinSet ? "Change portal PIN" : "Set up portal PIN"}
                 </Link>
@@ -729,23 +740,23 @@ export default function SettingsPage() {
           </Card>
         )}
 
-        <Card className="p-8 mb-8">
-          <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
-            <Bell className="w-5 h-5 text-main-600" />
+        <Card className={sectionCard}>
+          <h3 className="flex items-center gap-2 text-[15px] font-semibold text-gray-900">
+            <Bell className="h-4 w-4 text-gray-400" />
             Payment Confirmation
           </h3>
-          <p className="text-sm text-gray-600 mb-4">
+          <p className="mt-1 mb-4 text-[12px] text-gray-400">
             Choose how the merchant owner is notified when a customer payment is
             received. Team members manage their own toggles on the Team page.
           </p>
           {paymentNotifLoading ? (
-            <p className="text-sm text-gray-500">Loading notification settings...</p>
+            <p className="text-[12px] text-gray-400">Loading notification settings...</p>
           ) : (
-            <div className="space-y-4">
-              <label className="flex items-start justify-between gap-4 p-4 border rounded-lg cursor-pointer">
+            <div className="space-y-2">
+              <label className="flex cursor-pointer items-start justify-between gap-4 rounded-xl border border-gray-100 px-3.5 py-3">
                 <div>
-                  <div className="text-sm font-medium">SMS notifications</div>
-                  <p className="text-xs text-gray-500 mt-1">
+                  <div className="text-[13px] font-medium text-gray-900">SMS notifications</div>
+                  <p className="mt-0.5 text-[11px] text-gray-400">
                     Send payment confirmation SMS to{" "}
                     {paymentOwnerPhone || "the owner phone"}
                   </p>
@@ -762,10 +773,10 @@ export default function SettingsPage() {
                   }}
                 />
               </label>
-              <label className="flex items-start justify-between gap-4 p-4 border rounded-lg cursor-pointer">
+              <label className="flex cursor-pointer items-start justify-between gap-4 rounded-xl border border-gray-100 px-3.5 py-3">
                 <div>
-                  <div className="text-sm font-medium">Email notifications</div>
-                  <p className="text-xs text-gray-500 mt-1">
+                  <div className="text-[13px] font-medium text-gray-900">Email notifications</div>
+                  <p className="mt-0.5 text-[11px] text-gray-400">
                     Send payment confirmation email to{" "}
                     {paymentOwnerEmail || "the owner email"}
                     {!paymentOwnerEmail
@@ -789,24 +800,24 @@ export default function SettingsPage() {
           )}
         </Card>
 
-        <Card className="p-8 mb-8">
-          <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
-            <Lock className="w-5 h-5 text-main-600" />
+        <Card className={sectionCard}>
+          <h3 className="flex items-center gap-2 text-[15px] font-semibold text-gray-900">
+            <Lock className="h-4 w-4 text-gray-400" />
             {hasPassword ? "Change Password" : "Set Password for Email Login"}
           </h3>
           {!hasPassword && (
-            <div className="mb-4 p-4 bg-amber-50 border border-amber-200 rounded-lg flex gap-2">
-              <AlertCircle className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
-              <div className="text-sm text-amber-800">
-                <p className="font-medium mb-1">Enable email login</p>
+            <div className="mt-3 mb-4 flex gap-2 rounded-xl border border-amber-100 bg-amber-50 p-3">
+              <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
+              <div className="text-[12px] text-amber-800">
+                <p className="mb-0.5 font-medium">Enable email login</p>
                 <p>Add your email above and set a password here. You&apos;ll then be able to sign in with email and password in addition to phone + OTP.</p>
               </div>
             </div>
           )}
-          <form onSubmit={handlePasswordSubmit} className="space-y-4">
+          <form onSubmit={handlePasswordSubmit} className={`${hasPassword ? "mt-4" : ""} space-y-4`}>
             {hasPassword && (
               <div>
-                <label className="block text-xs font-medium mb-1">Current Password</label>
+                <label className={fieldLabel}>Current Password</label>
                 <Input
                   type="password"
                   name="current"
@@ -814,40 +825,45 @@ export default function SettingsPage() {
                   onChange={handlePasswordChange}
                   placeholder="Current password"
                   required
+                  className={fieldInput}
                 />
               </div>
             )}
-            <div>
-              <label className="block text-xs font-medium mb-1">
-                {hasPassword ? "New Password" : "Password"}
-              </label>
-              <Input
-                type="password"
-                name="new"
-                value={password.new}
-                onChange={handlePasswordChange}
-                placeholder={hasPassword ? "New password" : "Create password"}
-                required
-                minLength={8}
-              />
-              <p className="text-xs text-gray-500 mt-1">At least 8 characters</p>
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+              <div>
+                <label className={fieldLabel}>
+                  {hasPassword ? "New Password" : "Password"}
+                </label>
+                <Input
+                  type="password"
+                  name="new"
+                  value={password.new}
+                  onChange={handlePasswordChange}
+                  placeholder={hasPassword ? "New password" : "Create password"}
+                  required
+                  minLength={8}
+                  className={fieldInput}
+                />
+                <p className="mt-1 text-[11px] text-gray-400">At least 8 characters</p>
+              </div>
+              <div>
+                <label className={fieldLabel}>Confirm Password</label>
+                <Input
+                  type="password"
+                  name="confirm"
+                  value={password.confirm}
+                  onChange={handlePasswordChange}
+                  placeholder="Confirm password"
+                  required
+                  minLength={8}
+                  className={fieldInput}
+                />
+                {password.confirm && password.new !== password.confirm && (
+                  <p className="mt-1 text-[11px] text-red-600">Passwords do not match</p>
+                )}
+              </div>
             </div>
-            <div>
-              <label className="block text-xs font-medium mb-1">Confirm Password</label>
-              <Input
-                type="password"
-                name="confirm"
-                value={password.confirm}
-                onChange={handlePasswordChange}
-                placeholder="Confirm password"
-                required
-                minLength={8}
-              />
-              {password.confirm && password.new !== password.confirm && (
-                <p className="text-xs text-red-600 mt-1">Passwords do not match</p>
-              )}
-            </div>
-            <div className="flex justify-end mt-4">
+            <div className="flex justify-end">
               <Button
                 type="submit"
                 disabled={
@@ -857,6 +873,7 @@ export default function SettingsPage() {
                   password.new.length < 8 ||
                   (hasPassword && !currentPassword)
                 }
+                className="h-8 rounded-full bg-gray-900 px-4 text-[12px] hover:bg-gray-800"
               >
                 {passwordLoading
                   ? "Updating..."

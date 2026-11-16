@@ -1,7 +1,6 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
@@ -30,6 +29,7 @@ import {
 } from 'lucide-react';
 import { getSuperMerchantDashboard, SuperMerchantDashboard as DashboardData } from '@/lib/api/super-merchant.api';
 import { useAccessibleMerchants } from '@/lib/hooks/useAccessibleMerchants';
+import KpiCard from './KpiCard';
 import { useMerchantSwitch } from '@/lib/hooks/useMerchantSwitch';
 import Link from 'next/link';
 import {
@@ -51,6 +51,7 @@ import { useSession } from 'next-auth/react';
 interface SuperMerchantDashboardProps {
   merchantId: string;
   merchantName: string;
+  refreshKey?: number;
 }
 
 interface MerchantItem {
@@ -62,7 +63,7 @@ interface MerchantItem {
   isChildMerchant: boolean;
 }
 
-export default function SuperMerchantDashboard({ merchantId, merchantName }: SuperMerchantDashboardProps) {
+export default function SuperMerchantDashboard({ merchantId, merchantName, refreshKey = 0 }: SuperMerchantDashboardProps) {
   const router = useRouter();
   const { data: session } = useSession();
   const { switchMerchant, switching: merchantSwitching } = useMerchantSwitch();
@@ -129,15 +130,7 @@ export default function SuperMerchantDashboard({ merchantId, merchantName }: Sup
     if (merchantId) {
       fetchDashboardData();
     }
-  }, [merchantId]);
-
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('en-UG', {
-      style: 'decimal',
-      minimumFractionDigits: 0,
-      maximumFractionDigits: 0,
-    }).format(amount) + ' UGX';
-  };
+  }, [merchantId, refreshKey]);
 
   const handleViewChildMerchantTransactions = async (targetMerchantId: string, _merchantCode: string) => {
     const merchant = accessibleMerchants.find((m) => m.id === targetMerchantId);
@@ -182,27 +175,24 @@ export default function SuperMerchantDashboard({ merchantId, merchantName }: Sup
 
   if (loading) {
     return (
-      <div className="space-y-6 animate-pulse">
+      <div className="space-y-4 animate-pulse">
         {/* Header skeleton */}
-        <div className="flex items-center gap-3 mb-6">
-          <div className="h-12 w-12 rounded-xl bg-gray-200" />
+        <div className="flex items-center gap-3">
+          <div className="h-8 w-8 rounded-lg bg-gray-100" />
           <div className="flex-1 space-y-2">
-            <div className="h-5 w-56 bg-gray-200 rounded" />
-            <div className="h-4 w-80 bg-gray-100 rounded" />
+            <div className="h-4 w-44 bg-gray-100 rounded" />
+            <div className="h-3 w-64 bg-gray-50 rounded" />
           </div>
-          <div className="h-9 w-40 bg-gray-200 rounded-lg" />
+          <div className="h-8 w-36 bg-gray-100 rounded-full" />
         </div>
 
         {/* Summary cards skeleton */}
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+        <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-4">
           {Array.from({ length: 4 }).map((_, idx) => (
-            <div key={idx} className="rounded-xl border bg-white p-4 space-y-3">
-              <div className="flex items-center justify-between">
-                <div className="h-4 w-24 bg-gray-200 rounded" />
-                <div className="h-8 w-8 rounded-full bg-gray-100" />
-              </div>
-              <div className="h-6 w-28 bg-gray-200 rounded" />
-              <div className="h-3 w-32 bg-gray-100 rounded" />
+            <div key={idx} className="rounded-2xl border border-gray-100 bg-white px-4 py-3.5 space-y-2.5">
+              <div className="h-3 w-20 bg-gray-100 rounded" />
+              <div className="h-3 w-28 bg-gray-50 rounded" />
+              <div className="h-6 w-24 bg-gray-100 rounded" />
             </div>
           ))}
         </div>
@@ -244,7 +234,7 @@ export default function SuperMerchantDashboard({ merchantId, merchantName }: Sup
                 }
               }}
             >
-              <SelectTrigger className="w-[280px]">
+              <SelectTrigger className="h-8 w-[240px] rounded-full text-[12px]">
                 <SelectValue placeholder="Select merchant">
                   {currentMerchant?.businessTradeName || 'Select merchant'}
                 </SelectValue>
@@ -283,43 +273,41 @@ export default function SuperMerchantDashboard({ merchantId, merchantName }: Sup
             </Select>
           </div>
         )}
-        <Card className="bg-amber-50 border-amber-200">
-          <CardContent className="p-6">
-            <div className="flex flex-col gap-2">
-              <p className="text-amber-800 font-medium">
-                {error === 'No merchants attached' || error?.toLowerCase().includes('no merchants')
-                  ? 'No merchants attached'
-                  : error || 'Unable to load super merchant dashboard'}
-              </p>
-              <p className="text-sm text-amber-700">
-                {childCount > 0
-                  ? 'Aggregate stats could not be loaded, but you can still switch to assigned child merchants using the dropdown above.'
-                  : 'Contact your administrator to assign merchants to your super merchant account.'}
-              </p>
-            </div>
-            <Button onClick={fetchDashboardData} variant="outline" className="mt-4">
-              <RefreshCw className="h-4 w-4 mr-2" />
-              Retry
-            </Button>
-          </CardContent>
-        </Card>
+        <div className="rounded-2xl border border-amber-100 bg-amber-50/70 px-4 py-4">
+          <p className="text-[13px] font-medium text-amber-800">
+            {error === 'No merchants attached' || error?.toLowerCase().includes('no merchants')
+              ? 'No merchants attached'
+              : error || 'Unable to load super merchant dashboard'}
+          </p>
+          <p className="mt-1 text-[12px] text-amber-700">
+            {childCount > 0
+              ? 'Aggregate stats could not be loaded, but you can still switch to assigned child merchants using the dropdown above.'
+              : 'Contact your administrator to assign merchants to your super merchant account.'}
+          </p>
+          <Button onClick={fetchDashboardData} variant="outline" size="sm" className="mt-3 h-8 rounded-full text-[12px]">
+            <RefreshCw className="h-3.5 w-3.5" />
+            Retry
+          </Button>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       {/* Super Merchant Header */}
-      <div className="flex items-center gap-3 mb-6">
-        <div className="h-12 w-12 rounded-xl bg-yellow-100 flex items-center justify-center">
-          <Crown className="h-6 w-6 text-yellow-600" />
-        </div>
-        <div className="flex-1">
-          <h2 className="text-xl font-bold text-gray-900">Super Merchant Dashboard</h2>
-          <p className="text-gray-500">
-            Aggregate view including {merchantName} and {dashboardData.totalChildMerchants} assigned child merchant
-            {dashboardData.totalChildMerchants !== 1 ? 's' : ''}
-          </p>
+      <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+        <div className="flex items-center gap-2.5 flex-1 min-w-0">
+          <div className="h-8 w-8 rounded-lg bg-amber-50 flex items-center justify-center shrink-0">
+            <Crown className="h-4 w-4 text-amber-600" />
+          </div>
+          <div className="min-w-0">
+            <h2 className="text-[15px] font-semibold text-gray-900 leading-tight">Super Merchant</h2>
+            <p className="text-[12px] text-gray-400 truncate">
+              {merchantName} + {dashboardData.totalChildMerchants} child merchant
+              {dashboardData.totalChildMerchants !== 1 ? 's' : ''}
+            </p>
+          </div>
         </div>
         <div className="flex items-center gap-2">
           {/* Merchant Switcher */}
@@ -333,7 +321,7 @@ export default function SuperMerchantDashboard({ merchantId, merchantName }: Sup
                 }
               }}
             >
-              <SelectTrigger className="w-[280px]">
+              <SelectTrigger className="h-8 w-[240px] rounded-full text-[12px]">
                 <SelectValue placeholder="Select merchant">
                   {currentMerchant?.businessTradeName || 'Select merchant'}
                 </SelectValue>
@@ -401,106 +389,47 @@ export default function SuperMerchantDashboard({ merchantId, merchantName }: Sup
               </SelectContent>
             </Select>
           )}
-          <Button onClick={fetchDashboardData} variant="outline" size="sm">
-            <RefreshCw className="h-4 w-4 mr-2" />
-            Refresh
-          </Button>
         </div>
       </div>
 
       {/* Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-gray-500 flex items-center gap-2">
-              <Users className="h-4 w-4" />
-              Total Merchants
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{dashboardData.totalChildMerchants + 1}</div>
-            <div className="flex flex-col gap-2 mt-2">
-              <div className="flex gap-2">
-                <Badge variant="outline" className="text-yellow-600 border-yellow-600">
-                  <Crown className="h-3 w-3 mr-1" />
-                  1 Super Merchant
-                </Badge>
-                <Badge variant="outline" className="text-green-600 border-green-600">
-                  <CheckCircle className="h-3 w-3 mr-1" />
-                  {dashboardData.activeChildMerchants + (dashboardData.superMerchant.isActive ? 1 : 0)} Active
-                </Badge>
-              </div>
-              <Badge variant="outline" className="text-blue-600 border-blue-600 w-fit">
-                {dashboardData.verifiedChildMerchants + (dashboardData.superMerchant.isVerified ? 1 : 0)} Verified
-              </Badge>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-gray-500 flex items-center gap-2">
-              <Wallet className="h-4 w-4" />
-              Total Balance
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-green-600">
-              {formatCurrency(dashboardData.totalWalletBalance)}
-            </div>
-            <p className="text-xs text-gray-500 mt-1">
-              Includes super merchant + {dashboardData.totalChildMerchants} child merchant
-              {dashboardData.totalChildMerchants !== 1 ? 's' : ''}
-            </p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-gray-500 flex items-center gap-2">
-              <TrendingUp className="h-4 w-4" />
-              Total Transactions
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{dashboardData.totalTransactionsCount.toLocaleString()}</div>
-            <p className="text-xs text-gray-500 mt-1">
-              All successful transactions
-            </p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-gray-500 flex items-center gap-2">
-              <Building2 className="h-4 w-4" />
-              Transaction Volume
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">
-              {formatCurrency(dashboardData.totalTransactionVolume)}
-            </div>
-            <p className="text-xs text-gray-500 mt-1">
-              Total value processed
-            </p>
-          </CardContent>
-        </Card>
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
+        <KpiCard
+          icon={Users}
+          label="Total merchants"
+          value={`${dashboardData.totalChildMerchants + 1}`}
+          hint={`${dashboardData.activeChildMerchants + (dashboardData.superMerchant.isActive ? 1 : 0)} active · ${dashboardData.verifiedChildMerchants + (dashboardData.superMerchant.isVerified ? 1 : 0)} verified`}
+        />
+        <KpiCard
+          icon={Wallet}
+          label="Total balance"
+          value={Number(dashboardData.totalWalletBalance || 0).toLocaleString()}
+          suffix="UGX"
+          hint={`Includes super merchant + ${dashboardData.totalChildMerchants} child merchant${dashboardData.totalChildMerchants !== 1 ? 's' : ''}`}
+          valueClassName="text-emerald-600"
+        />
+        <KpiCard
+          icon={TrendingUp}
+          label="Total transactions"
+          value={dashboardData.totalTransactionsCount.toLocaleString()}
+          hint="All successful transactions"
+        />
+        <KpiCard
+          icon={CheckCircle}
+          label="Active merchants"
+          value={`${dashboardData.activeChildMerchants + (dashboardData.superMerchant.isActive ? 1 : 0)}`}
+          hint="Currently active on the network"
+        />
       </div>
 
       {/* All Merchants Table (Super Merchant + Child Merchants) */}
-      <Card>
-        <CardHeader>
-          <div className="flex justify-between items-center">
-            <div>
-              <CardTitle>All Merchants</CardTitle>
-              <CardDescription>
-                Your super merchant account and all assigned child merchants
-              </CardDescription>
-            </div>
-          </div>
-        </CardHeader>
-        <CardContent>
+      <div className="rounded-2xl border border-gray-100 bg-white p-4 shadow-[0_1px_2px_rgba(16,24,40,0.04)]">
+        <div className="mb-3">
+          <h3 className="text-[14px] font-semibold text-gray-900">All merchants</h3>
+          <p className="text-[11px] text-gray-400 mt-0.5">
+            Your account and assigned child merchants
+          </p>
+        </div>
           {dashboardData.childMerchants.length === 0 ? (
             <div className="space-y-4">
               {/* Show super merchant even if no child merchants */}
@@ -515,7 +444,7 @@ export default function SuperMerchantDashboard({ merchantId, merchantName }: Sup
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  <TableRow className="bg-yellow-50">
+                  <TableRow className="bg-amber-50/50">
                     <TableCell className="font-medium">
                       <div className="flex items-center gap-2">
                         <Crown className="h-4 w-4 text-yellow-600" />
@@ -617,7 +546,7 @@ export default function SuperMerchantDashboard({ merchantId, merchantName }: Sup
               </TableHeader>
               <TableBody>
                 {/* Super Merchant Row (highlighted) */}
-                <TableRow className="bg-yellow-50">
+                <TableRow className="bg-amber-50/50">
                   <TableCell className="font-medium">
                     <div className="flex items-center gap-2">
                       <Crown className="h-4 w-4 text-yellow-600" />
@@ -777,8 +706,7 @@ export default function SuperMerchantDashboard({ merchantId, merchantName }: Sup
               </TableBody>
             </Table>
           )}
-        </CardContent>
-      </Card>
+      </div>
     </div>
   );
 }

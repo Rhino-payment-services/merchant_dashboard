@@ -228,7 +228,7 @@ export const useMyTransactions = (
     queryKey: ['transactions', 'my-transactions', filter, childMerchantId, merchantCode],
     queryFn: () => getMyTransactions(filter, childMerchantId, merchantCode),
   staleTime: 30000, // 30 seconds
-  retry: 3,
+  retry: 2,
   refetchOnWindowFocus: false,
 })
 

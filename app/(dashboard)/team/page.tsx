@@ -42,14 +42,13 @@ import {
   Clock,
   CheckCircle,
   XCircle,
-  MoreVertical,
   Trash2,
   Edit,
-  Key,
   ArrowRightLeft,
   Loader2,
   Phone
 } from 'lucide-react';
+import KpiCard from '@/app/components/KpiCard';
 import { toast } from 'sonner';
 import { useQueryClient } from '@tanstack/react-query';
 import {
@@ -194,6 +193,33 @@ export default function TeamManagementPage() {
   // Fetch team members (only if we have a wallet ID)
   const { data: teamData, isLoading, refetch } = useWalletTeam(businessWalletId);
   const teamMembers = teamData?.members || [];
+  const totalMembers = teamData?.totalMembers ?? teamMembers.length;
+  const activeMembersCount =
+    teamData?.activeMembers ?? teamMembers.filter((m) => m.status === 'ACTIVE').length;
+  const pendingMembersCount =
+    teamData?.pendingInvitations ?? teamMembers.filter((m) => m.status === 'PENDING').length;
+
+  const memberPermissionLabels = (member: TeamMember) =>
+    [
+      member.canViewBalance && 'View Balance',
+      member.canViewTransactions && 'View Tx',
+      member.canViewReports && 'Reports',
+      member.canCollectPayments && 'Collect',
+      member.canInitiatePayments && 'Initiate Payments',
+      member.canLiquidate && 'Liquidate',
+      member.canApprovePayments && 'Approve Payments',
+      member.canManagePayroll && 'Payroll',
+      member.canManageEvents && 'Events',
+      member.canManageTeam && 'Manage Team',
+      member.canManageSettings && 'Settings',
+      member.canUploadDataBundles && 'Data Bundles Maker',
+      member.canApproveDataBundles && 'Data Bundles Checker',
+      member.canViewDataBundleReports && 'Data Bundles Finance',
+      member.canManageDataBundleUsers && 'Data Bundles Admin',
+      member.canRetryDataBundles && 'Data Bundles Retry',
+      member.paymentSmsNotificationsEnabled && 'Payment SMS',
+      member.paymentEmailNotificationsEnabled && 'Payment Email',
+    ].filter(Boolean) as string[];
 
   // Query client for manual mutations
   const queryClient = useQueryClient();
@@ -480,10 +506,10 @@ export default function TeamManagementPage() {
   // Show loading while fetching wallet
   if (walletLoading || (isLoading && businessWalletId)) {
     return (
-      <div className="container mx-auto py-8 px-4">
-        <div className="flex items-center justify-center h-64">
-          <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
-          <span className="ml-3 text-gray-600">Loading...</span>
+      <div className="flex min-h-[60vh] items-center justify-center">
+        <div className="flex items-center gap-2 text-[13px] text-gray-400">
+          <Loader2 className="h-4 w-4 animate-spin" />
+          Loading...
         </div>
       </div>
     );
@@ -498,20 +524,18 @@ export default function TeamManagementPage() {
   // Show error if wallet fetch failed
   if (walletError && !businessWalletId) {
     return (
-      <div className="container mx-auto py-8 px-4">
-        <Card className="bg-red-50 border-red-200">
-          <CardContent className="pt-6">
-            <div className="flex gap-3">
-              <XCircle className="h-5 w-5 text-red-600 flex-shrink-0 mt-0.5" />
-              <div>
-                <h3 className="font-semibold text-red-900 mb-2">Error Loading Wallet</h3>
-                <p className="text-sm text-red-800">
-                  Failed to load business wallet. Please try refreshing or contact support.
-                </p>
-              </div>
+      <div className="p-4 md:p-6">
+        <div className="mx-auto max-w-lg rounded-2xl border border-red-100 bg-red-50 p-4">
+          <div className="flex gap-3">
+            <XCircle className="mt-0.5 h-4 w-4 shrink-0 text-red-600" />
+            <div>
+              <h3 className="text-[14px] font-semibold text-red-900">Error Loading Wallet</h3>
+              <p className="mt-1 text-[12px] text-red-800">
+                Failed to load business wallet. Please try refreshing or contact support.
+              </p>
             </div>
-          </CardContent>
-        </Card>
+          </div>
+        </div>
       </div>
     );
   }
@@ -519,47 +543,43 @@ export default function TeamManagementPage() {
   // Show message if no business wallet found
   if (!businessWalletId && !walletLoading) {
     return (
-      <div className="container mx-auto py-8 px-4">
-        <Card className="bg-yellow-50 border-yellow-200">
-          <CardContent className="pt-6">
-            <div className="flex gap-3">
-              <Shield className="h-5 w-5 text-yellow-600 flex-shrink-0 mt-0.5" />
-              <div>
-                <h3 className="font-semibold text-yellow-900 mb-2">No Business Wallet Found</h3>
-                <p className="text-sm text-yellow-800 mb-3">
-                  You need a business wallet to manage team members. Please create one first or contact support.
-                </p>
-                <p className="text-xs text-yellow-700">
-                  Debug: Wallet ID = {businessWalletId || 'null'}, Loading = {walletLoading ? 'true' : 'false'}
-                </p>
-              </div>
+      <div className="p-4 md:p-6">
+        <div className="mx-auto max-w-lg rounded-2xl border border-amber-100 bg-amber-50 p-4">
+          <div className="flex gap-3">
+            <Shield className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
+            <div>
+              <h3 className="text-[14px] font-semibold text-amber-900">No Business Wallet Found</h3>
+              <p className="mt-1 text-[12px] text-amber-800">
+                You need a business wallet to manage team members. Please create one first or contact support.
+              </p>
             </div>
-          </CardContent>
-        </Card>
+          </div>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="container mx-auto py-8 px-4">
-      <div className="mb-8 flex items-center justify-between">
+    <div className="p-4 md:p-6">
+      <div className="mx-auto max-w-6xl space-y-4">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900">Team Management</h1>
-          <p className="text-gray-600 mt-2">
+          <h1 className="text-[20px] font-semibold tracking-tight text-gray-900">Team Management</h1>
+          <p className="mt-0.5 text-[12px] text-gray-400">
             Manage who has access to your business wallet
           </p>
           {businessWallet && (
-            <p className="text-xs text-gray-500 mt-1">
-              Wallet: {businessWallet.id} | Balance: {businessWallet.balance?.toLocaleString()} {businessWallet.currency}
+            <p className="mt-1 text-[12px] tabular-nums text-gray-500">
+              Balance: {Number(businessWallet.balance ?? 0).toLocaleString()} {businessWallet.currency || 'UGX'}
             </p>
           )}
         </div>
         
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           <Dialog open={showAddDirectDialog} onOpenChange={setShowAddDirectDialog}>
             <DialogTrigger asChild>
-              <Button className="bg-green-600 hover:bg-green-700">
-                <UserPlus className="h-4 w-4 mr-2" />
+              <Button className="h-8 rounded-full bg-gray-900 px-3 text-[12px] hover:bg-gray-800">
+                <UserPlus className="mr-1.5 h-3.5 w-3.5" />
                 Add Member
               </Button>
             </DialogTrigger>
@@ -662,9 +682,9 @@ export default function TeamManagementPage() {
                   </Button>
                   <Button
                     type="submit"
-                    className="bg-green-600 hover:bg-green-700"
+                    className="h-8 rounded-full bg-gray-900 px-3 text-[12px] hover:bg-gray-800"
                   >
-                    <UserPlus className="h-4 w-4 mr-2" />
+                    <UserPlus className="mr-1.5 h-3.5 w-3.5" />
                     Add Member
                   </Button>
                 </div>
@@ -674,8 +694,8 @@ export default function TeamManagementPage() {
 
           <Dialog open={showInviteDialog} onOpenChange={setShowInviteDialog}>
             <DialogTrigger asChild>
-              <Button className="bg-blue-600 hover:bg-blue-700">
-                <Mail className="h-4 w-4 mr-2" />
+              <Button variant="outline" className="h-8 rounded-full border-gray-200 px-3 text-[12px]">
+                <Mail className="mr-1.5 h-3.5 w-3.5" />
                 Send Invite
               </Button>
             </DialogTrigger>
@@ -777,9 +797,9 @@ export default function TeamManagementPage() {
                   </Button>
                   <Button
                     type="submit"
-                    className="bg-blue-600 hover:bg-blue-700"
+                    className="h-8 rounded-full bg-gray-900 px-3 text-[12px] hover:bg-gray-800"
                   >
-                    <Mail className="h-4 w-4 mr-2" />
+                    <Mail className="mr-1.5 h-3.5 w-3.5" />
                     Send Invitation
                   </Button>
                 </div>
@@ -789,266 +809,147 @@ export default function TeamManagementPage() {
         </div>
       </div>
 
-      {/* Stats */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
-        <Card>
-          <CardContent className="pt-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-gray-600">Total Members</p>
-                <p className="text-2xl font-bold">{teamMembers.length}</p>
-              </div>
-              <Users className="h-8 w-8 text-gray-400" />
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent className="pt-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-gray-600">Active</p>
-                <p className="text-2xl font-bold text-green-600">
-                  {teamMembers.filter(m => m.status === 'ACTIVE').length}
-                </p>
-              </div>
-              <CheckCircle className="h-8 w-8 text-green-400" />
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent className="pt-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-gray-600">Pending</p>
-                <p className="text-2xl font-bold text-yellow-600">
-                  {teamMembers.filter(m => m.status === 'PENDING').length}
-                </p>
-              </div>
-              <Clock className="h-8 w-8 text-yellow-400" />
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent className="pt-6">
-            <Button 
-              className="w-full bg-orange-600 hover:bg-orange-700"
-              onClick={() => setShowTransferDialog(true)}
-            >
-              <ArrowRightLeft className="h-4 w-4 mr-2" />
-              Transfer Ownership
-            </Button>
-          </CardContent>
-        </Card>
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+        <KpiCard icon={Users} label="Total Members" value={String(totalMembers)} />
+        <KpiCard icon={CheckCircle} label="Active" value={String(activeMembersCount)} />
+        <KpiCard icon={Clock} label="Pending" value={String(pendingMembersCount)} />
+      </div>
+      <div>
+        <Button
+          variant="outline"
+          className="h-8 rounded-full border-gray-200 px-3 text-[12px]"
+          onClick={() => setShowTransferDialog(true)}
+        >
+          <ArrowRightLeft className="mr-1.5 h-3.5 w-3.5" />
+          Transfer Ownership
+        </Button>
       </div>
 
       {/* Team Members List */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Team Members</CardTitle>
-          <CardDescription>
+      <Card className="rounded-2xl border-gray-100 py-0 shadow-[0_1px_2px_rgba(16,24,40,0.04)]">
+        <CardHeader className="px-5 py-4">
+          <CardTitle className="text-[15px] font-semibold">Team Members</CardTitle>
+          <CardDescription className="text-[12px]">
             People who have access to your business wallet
           </CardDescription>
         </CardHeader>
-        <CardContent>
+        <CardContent className="px-5 pb-5">
           {teamMembers.length === 0 ? (
-            <div className="text-center py-12">
-              <Users className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-              <p className="text-gray-600 font-medium">No team members yet</p>
-              <p className="text-sm text-gray-500 mt-2">
+            <div className="py-10 text-center">
+              <Users className="mx-auto mb-3 h-8 w-8 text-gray-300" />
+              <p className="text-[13px] font-medium text-gray-700">No team members yet</p>
+              <p className="mt-1 text-[12px] text-gray-400">
                 Invite team members to help manage your business wallet
               </p>
-              <Button 
-                className="mt-4 bg-green-600 hover:bg-green-700"
+              <Button
+                className="mt-4 h-8 rounded-full bg-gray-900 px-3 text-[12px] hover:bg-gray-800"
                 onClick={() => setShowAddDirectDialog(true)}
               >
-                <UserPlus className="h-4 w-4 mr-2" />
+                <UserPlus className="mr-1.5 h-3.5 w-3.5" />
                 Add Your First Member
               </Button>
             </div>
           ) : (
-            <div className="space-y-4">
-              {teamMembers.map((member) => (
+            <div className="divide-y divide-gray-100 overflow-hidden rounded-xl border border-gray-100">
+              {teamMembers.map((member) => {
+                const perms = memberPermissionLabels(member);
+                const visiblePerms = perms.slice(0, 4);
+                const extraPerms = perms.length - visiblePerms.length;
+                const displayName =
+                  member.firstName || member.lastName
+                    ? `${member.firstName || ''} ${member.lastName || ''}`.trim()
+                    : member.email;
+                return (
                 <div
                   key={member.id}
-                  className="flex items-start justify-between p-4 border rounded-lg hover:bg-gray-50"
+                  className="flex items-start justify-between gap-3 px-4 py-3.5"
                 >
-                  <div className="flex items-start gap-4 flex-1">
-                    <div className="h-12 w-12 rounded-full bg-blue-100 flex items-center justify-center flex-shrink-0">
-                      <span className="text-blue-600 font-semibold text-lg">
-                        {member.firstName?.[0] || member.email[0].toUpperCase()}
-                      </span>
+                  <div className="flex min-w-0 flex-1 items-start gap-3">
+                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-gray-100 text-[12px] font-semibold text-gray-700">
+                      {(member.firstName?.[0] || member.email[0] || '?').toUpperCase()}
                     </div>
                     
-                    <div className="flex-1 min-w-0">
-                      {/* Name and badges */}
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <p className="font-semibold text-gray-900">
-                          {member.firstName && member.lastName 
-                            ? `${member.firstName} ${member.lastName}`
-                            : member.email
-                          }
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <p className="text-[13px] font-semibold text-gray-900">
+                          {displayName}
                         </p>
-                        <Badge className={roleColors[member.role]}>
+                        <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${roleColors[member.role]}`}>
                           {member.role}
-                        </Badge>
-                        <Badge className={statusColors[member.status]}>
+                        </span>
+                        <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${statusColors[member.status]}`}>
                           {member.status}
-                        </Badge>
+                        </span>
                       </div>
                       
-                      {/* Contact details */}
-                      <div className="mt-2 space-y-1">
-                        <div className="flex items-center gap-2 text-sm text-gray-600">
-                          <Mail className="h-4 w-4 text-gray-400" />
-                          <span>{member.email}</span>
-                        </div>
-                        <div className="flex items-center gap-2 text-sm">
-                          <Phone className="h-4 w-4 text-gray-400" />
-                          {member.phone ? (
-                            <span className="text-gray-600">{member.phone.replace(/^\+/, '')}</span>
-                          ) : (
-                            <span className="text-red-500 italic">No phone number</span>
+                      <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[12px] text-gray-500">
+                        <span className="inline-flex items-center gap-1">
+                          <Mail className="h-3 w-3 text-gray-400" />
+                          {member.email}
+                        </span>
+                        <span className="inline-flex items-center gap-1">
+                          <Phone className="h-3 w-3 text-gray-400" />
+                          {member.phone ? member.phone.replace(/^\+/, '') : '—'}
+                        </span>
+                      </div>
+                      
+                      {perms.length > 0 && (
+                        <div className="mt-2 flex flex-wrap gap-1.5">
+                          {visiblePerms.map((label) => (
+                            <span
+                              key={label}
+                              className="rounded-full border border-gray-100 bg-gray-50 px-2 py-0.5 text-[10px] text-gray-600"
+                            >
+                              {label}
+                            </span>
+                          ))}
+                          {extraPerms > 0 && (
+                            <span className="rounded-full border border-gray-100 bg-white px-2 py-0.5 text-[10px] text-gray-400">
+                              +{extraPerms} more
+                            </span>
                           )}
                         </div>
-                      </div>
-                      
-                      {/* Permissions */}
-                      <div className="flex gap-2 mt-3 flex-wrap">
-                        {member.canViewBalance && (
-                          <Badge variant="outline" className="text-xs">
-                            View Balance
-                          </Badge>
-                        )}
-                        {member.canViewTransactions && (
-                          <Badge variant="outline" className="text-xs">
-                            View Tx
-                          </Badge>
-                        )}
-                        {member.canViewReports && (
-                          <Badge variant="outline" className="text-xs">
-                            Reports
-                          </Badge>
-                        )}
-                        {member.canCollectPayments && (
-                          <Badge variant="outline" className="text-xs">
-                            Collect
-                          </Badge>
-                        )}
-                        {member.canInitiatePayments && (
-                          <Badge variant="outline" className="text-xs">
-                            Initiate Payments
-                          </Badge>
-                        )}
-                        {member.canLiquidate && (
-                          <Badge variant="outline" className="text-xs">
-                            Liquidate
-                          </Badge>
-                        )}
-                        {member.canApprovePayments && (
-                          <Badge variant="outline" className="text-xs">
-                            Approve Payments
-                          </Badge>
-                        )}
-                        {member.canManagePayroll && (
-                          <Badge variant="outline" className="text-xs">
-                            Payroll
-                          </Badge>
-                        )}
-                        {member.canManageEvents && (
-                          <Badge variant="outline" className="text-xs">
-                            Events
-                          </Badge>
-                        )}
-                        {member.canManageTeam && (
-                          <Badge variant="outline" className="text-xs">
-                            Manage Team
-                          </Badge>
-                        )}
-                        {member.canManageSettings && (
-                          <Badge variant="outline" className="text-xs">
-                            Settings
-                          </Badge>
-                        )}
-                        {member.canUploadDataBundles && (
-                          <Badge variant="outline" className="text-xs">
-                            Data Bundles Maker
-                          </Badge>
-                        )}
-                        {member.canApproveDataBundles && (
-                          <Badge variant="outline" className="text-xs">
-                            Data Bundles Checker
-                          </Badge>
-                        )}
-                        {member.canViewDataBundleReports && (
-                          <Badge variant="outline" className="text-xs">
-                            Data Bundles Finance
-                          </Badge>
-                        )}
-                        {member.canManageDataBundleUsers && (
-                          <Badge variant="outline" className="text-xs">
-                            Data Bundles Admin
-                          </Badge>
-                        )}
-                        {member.canRetryDataBundles && (
-                          <Badge variant="outline" className="text-xs">
-                            Data Bundles Retry
-                          </Badge>
-                        )}
-                        {member.paymentSmsNotificationsEnabled && (
-                          <Badge variant="outline" className="text-xs">
-                            Payment SMS
-                          </Badge>
-                        )}
-                        {member.paymentEmailNotificationsEnabled && (
-                          <Badge variant="outline" className="text-xs">
-                            Payment Email
-                          </Badge>
-                        )}
-                      </div>
+                      )}
 
-                      {/* Status messages */}
                       {member.status === 'PENDING' && (
-                        <p className="text-xs text-yellow-600 mt-2">
-                          <Clock className="h-3 w-3 inline mr-1" />
+                        <p className="mt-1.5 text-[11px] text-amber-600">
                           Invited {new Date(member.invitedAt).toLocaleDateString()} - Waiting for acceptance
                         </p>
                       )}
                       {member.status === 'ACTIVE' && member.acceptedAt && (
-                        <p className="text-xs text-green-600 mt-2">
-                          <CheckCircle className="h-3 w-3 inline mr-1" />
+                        <p className="mt-1.5 text-[11px] text-gray-400">
                           Active since {new Date(member.acceptedAt).toLocaleDateString()}
                         </p>
                       )}
                     </div>
                   </div>
 
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-1">
                     {member.role !== 'OWNER' && (
                       <>
                         <Button
                           variant="ghost"
                           size="sm"
                           onClick={() => openEditMember(member)}
+                          className="h-8 w-8 p-0 text-gray-400 hover:text-gray-800"
                         >
-                          <Edit className="h-4 w-4" />
+                          <Edit className="h-3.5 w-3.5" />
                         </Button>
                         <AlertDialog>
                           <AlertDialogTrigger asChild>
                             <Button
                               variant="ghost"
                               size="sm"
+                              className="h-8 w-8 p-0"
                             >
-                              <Trash2 className="h-4 w-4 text-red-500" />
+                              <Trash2 className="h-3.5 w-3.5 text-red-500" />
                             </Button>
                           </AlertDialogTrigger>
                           <AlertDialogContent>
                             <AlertDialogHeader>
                               <AlertDialogTitle>Remove Team Member?</AlertDialogTitle>
                               <AlertDialogDescription>
-                                This will remove {member.firstName} {member.lastName} from your team. They will no longer have access to the wallet.
+                                This will remove {displayName} from your team. They will no longer have access to the wallet.
                               </AlertDialogDescription>
                             </AlertDialogHeader>
                             <AlertDialogFooter>
@@ -1066,7 +967,8 @@ export default function TeamManagementPage() {
                     )}
                   </div>
                 </div>
-              ))}
+              );
+              })}
             </div>
           )}
         </CardContent>
@@ -1296,23 +1198,21 @@ export default function TeamManagementPage() {
         </DialogContent>
       </Dialog>
 
-      {/* Info Card */}
-      <Card className="mt-6 bg-blue-50 border-blue-200">
-        <CardContent className="pt-6">
-          <div className="flex gap-3">
-            <Shield className="h-5 w-5 text-blue-600 flex-shrink-0 mt-0.5" />
-            <div>
-              <h3 className="font-semibold text-blue-900 mb-2">About Team Access</h3>
-              <ul className="text-sm text-blue-800 space-y-1">
-                <li>• <strong>Add Member</strong>: Create account and send login credentials via email</li>
-                <li>• <strong>Send Invite</strong>: Email invitation (they set password via secure link)</li>
-                <li>• <strong>Transfer Ownership</strong>: Hand over complete control</li>
-                <li>• All actions are logged for security and audit purposes</li>
-              </ul>
-            </div>
+      <div className="rounded-2xl border border-gray-100 bg-white p-4 shadow-[0_1px_2px_rgba(16,24,40,0.04)]">
+        <div className="flex gap-3">
+          <Shield className="mt-0.5 h-4 w-4 shrink-0 text-gray-400" />
+          <div>
+            <h3 className="text-[13px] font-semibold text-gray-900">About Team Access</h3>
+            <ul className="mt-1.5 space-y-1 text-[12px] text-gray-500">
+              <li>• <strong className="font-medium text-gray-700">Add Member</strong>: Create account and send login credentials via email</li>
+              <li>• <strong className="font-medium text-gray-700">Send Invite</strong>: Email invitation (they set password via secure link)</li>
+              <li>• <strong className="font-medium text-gray-700">Transfer Ownership</strong>: Hand over complete control</li>
+              <li>• All actions are logged for security and audit purposes</li>
+            </ul>
           </div>
-        </CardContent>
-      </Card>
+        </div>
+      </div>
+      </div>
     </div>
   );
 }

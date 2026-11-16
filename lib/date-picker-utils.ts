@@ -67,6 +67,30 @@ export function currentMonthToTodayRange(): { from: string; to: string } {
   }
 }
 
+/** Inclusive YYYY-MM-DD windows for last 30 days vs prior 30 days (statement KPIs). */
+export function getLastTwoThirtyDayIsoWindows(now = new Date()): {
+  current: { startDate: string; endDate: string }
+  previous: { startDate: string; endDate: string }
+} {
+  const endCurrent = startOfDayLocal(now)
+  const startCurrent = startOfDayLocal(now)
+  startCurrent.setDate(startCurrent.getDate() - 29)
+  const endPrevious = new Date(startCurrent)
+  endPrevious.setDate(endPrevious.getDate() - 1)
+  const startPrevious = new Date(endPrevious)
+  startPrevious.setDate(startPrevious.getDate() - 29)
+  return {
+    current: {
+      startDate: toIsoDateLocal(startCurrent),
+      endDate: toIsoDateLocal(endCurrent),
+    },
+    previous: {
+      startDate: toIsoDateLocal(startPrevious),
+      endDate: toIsoDateLocal(endPrevious),
+    },
+  }
+}
+
 /** Short label for compact filter toolbars (e.g. 25 May 26). */
 export function formatIsoDateCompact(iso: string): string {
   const parsed = parseIsoDateLocal(iso)

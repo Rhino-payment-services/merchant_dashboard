@@ -6,7 +6,6 @@ import html2canvas from 'html2canvas';
 import { useSession } from 'next-auth/react';
 import { useUserProfile } from '../UserProfileProvider';
 import { Button } from '@/components/ui/button';
-import { Card } from '@/components/ui/card';
 import { 
   QrCode, 
   Printer, 
@@ -323,160 +322,149 @@ export default function QRCodePage() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center min-h-[400px]">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#08163d]"></div>
+      <div className="flex min-h-[400px] items-center justify-center">
+        <div className="h-8 w-8 animate-spin rounded-full border-2 border-gray-200 border-t-gray-900" />
       </div>
     );
   }
 
+  const actionsDisabled = isLoading || !qrCodeUrl || qrLoading || !!error;
+
   return (
-    <div className="flex-1 p-4 md:p-8">
-      <div className="max-w-4xl mx-auto space-y-6">
-        {/* Page Header */}
-        <div className="mb-8">
-          <h1 className="text-3xl font-bold text-[#08163d] mb-2">Your QR Code</h1>
-          <p className="text-gray-600">Share this QR code with customers to receive payments</p>
+    <div className="p-4 md:p-6">
+      <div className="mx-auto max-w-5xl space-y-4">
+        <div>
+          <h1 className="text-[20px] font-semibold tracking-tight text-gray-900">Your QR Code</h1>
+          <p className="mt-0.5 text-[12px] text-gray-400">
+            Share this QR code with customers to receive payments
+          </p>
         </div>
 
-        <div className="grid md:grid-cols-2 gap-6">
-          {/* QR Code Display */}
-          <Card className="p-8">
-            <div ref={qrCodeRef} className="bg-white p-8 rounded-lg">
-              <div className="text-center space-y-4">
-                <div className="flex items-center justify-center mb-4">
-                  <QrCode className="h-8 w-8 text-[#08163d]" />
+        <div className="grid gap-4 lg:grid-cols-[minmax(0,0.92fr)_minmax(0,1.08fr)]">
+          <div
+            ref={qrCodeRef}
+            className="rounded-2xl border border-gray-100 bg-white p-5 shadow-[0_1px_2px_rgba(16,24,40,0.04)] sm:p-6"
+          >
+            <div className="flex flex-col items-center text-center">
+              <div className="flex h-9 w-9 items-center justify-center rounded-full bg-gray-50 text-gray-700">
+                <QrCode className="h-4 w-4" strokeWidth={1.75} />
+              </div>
+              <h2 className="mt-3 text-[16px] font-semibold text-gray-900">{merchantName}</h2>
+              <p className="mt-1 text-[12px] text-gray-400">
+                Merchant Code:{' '}
+                <span className="font-medium tabular-nums text-gray-700">{merchantCode || '—'}</span>
+              </p>
+
+              {error ? (
+                <div className="mt-5 flex h-64 w-64 items-center justify-center rounded-2xl border border-red-100 bg-red-50 p-4">
+                  <div className="text-center">
+                    <p className="text-[13px] font-semibold text-red-700">Error</p>
+                    <p className="mt-1 text-[12px] text-red-600">{error}</p>
+                  </div>
                 </div>
-                <h2 className="font-bold text-2xl text-[#08163d]">{merchantName}</h2>
-                <p className="text-sm text-gray-600">Merchant Code: <span className="font-semibold">{merchantCode}</span></p>
-                
-                {error ? (
-                  <div className="flex justify-center my-6">
-                    <div className="w-64 h-64 bg-red-50 border-2 border-red-200 rounded-xl flex flex-col items-center justify-center p-4">
-                      <div className="text-red-600 text-center">
-                        <p className="font-semibold mb-2">Error</p>
-                        <p className="text-sm">{error}</p>
-                      </div>
-                    </div>
-                  </div>
-                ) : qrLoading ? (
-                  <div className="flex justify-center my-6">
-                    <div className="w-64 h-64 bg-gray-100 rounded-xl flex flex-col items-center justify-center">
-                      <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#08163d] mb-4"></div>
-                      <p className="text-gray-600 text-sm">Generating QR Code...</p>
-                    </div>
-                  </div>
-                ) : qrCodeUrl ? (
-                  <div className="flex justify-center my-6">
-                    <div className="p-4 bg-white border-4 border-[#08163d] rounded-xl shadow-lg">
-                      <img 
-                        src={qrCodeUrl} 
-                        alt="Merchant QR Code" 
-                        className="w-64 h-64"
-                      />
-                    </div>
-                  </div>
-                ) : (
-                  <div className="flex justify-center my-6">
-                    <div className="w-64 h-64 bg-gray-100 rounded-xl flex items-center justify-center">
-                      <p className="text-gray-500">No QR code available</p>
-                    </div>
-                  </div>
-                )}
-                
-                <div className="pt-4 border-t">
-                  <p className="text-sm font-semibold text-[#08163d] mb-2">Scan to Pay</p>
-                  <p className="text-xs text-gray-500">Use RukaPay app or camera to scan</p>
+              ) : qrLoading ? (
+                <div className="mt-5 flex h-64 w-64 flex-col items-center justify-center rounded-2xl bg-gray-50">
+                  <div className="h-8 w-8 animate-spin rounded-full border-2 border-gray-200 border-t-gray-900" />
+                  <p className="mt-3 text-[12px] text-gray-400">Generating QR Code...</p>
                 </div>
+              ) : qrCodeUrl ? (
+                <div className="mt-5 rounded-2xl border border-gray-100 bg-white p-3 shadow-[0_1px_2px_rgba(16,24,40,0.04)]">
+                  <img
+                    src={qrCodeUrl}
+                    alt="Merchant QR Code"
+                    className="h-64 w-64"
+                  />
+                </div>
+              ) : (
+                <div className="mt-5 flex h-64 w-64 items-center justify-center rounded-2xl bg-gray-50">
+                  <p className="text-[12px] text-gray-400">No QR code available</p>
+                </div>
+              )}
+
+              <div className="mt-5 w-full border-t border-gray-100 pt-4">
+                <p className="text-[13px] font-semibold text-gray-900">Scan to Pay</p>
+                <p className="mt-0.5 text-[11px] text-gray-400">Use RukaPay app or camera to scan</p>
               </div>
             </div>
-          </Card>
+          </div>
 
-          {/* Actions and Information */}
-          <div className="space-y-6">
-            {/* Action Buttons */}
-            <Card className="p-6">
-              <h3 className="font-semibold text-lg text-[#08163d] mb-4">Actions</h3>
-              <div className="space-y-3">
-                <Button 
+          <div className="space-y-4">
+            <div className="rounded-2xl border border-gray-100 bg-white p-5 shadow-[0_1px_2px_rgba(16,24,40,0.04)]">
+              <h3 className="text-[14px] font-semibold text-gray-900">Actions</h3>
+              <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-3">
+                <Button
                   onClick={handlePrint}
-                  disabled={isLoading || !qrCodeUrl || qrLoading || !!error}
-                  className="w-full bg-[#08163d] hover:bg-[#0a1a4a] text-white flex items-center justify-center gap-2"
+                  disabled={actionsDisabled}
+                  className="h-9 rounded-full bg-gray-900 px-3 text-[12px] hover:bg-gray-800"
                 >
-                  <Printer className="h-4 w-4" />
+                  <Printer className="h-3.5 w-3.5" />
                   Print QR Code
                 </Button>
-                
-                <Button 
+                <Button
                   onClick={handleDownload}
-                  disabled={isLoading || !qrCodeUrl || qrLoading || !!error}
+                  disabled={actionsDisabled}
                   variant="outline"
-                  className="w-full flex items-center justify-center gap-2"
+                  className="h-9 rounded-full border-gray-200 px-3 text-[12px]"
                 >
-                  <Download className="h-4 w-4" />
+                  <Download className="h-3.5 w-3.5" />
                   Download QR Code
                 </Button>
-                
-                <Button 
+                <Button
                   onClick={handleShare}
                   disabled={!qrCodeUrl || qrLoading || !!error}
                   variant="outline"
-                  className="w-full flex items-center justify-center gap-2"
+                  className="h-9 rounded-full border-gray-200 px-3 text-[12px]"
                 >
-                  <Share2 className="h-4 w-4" />
+                  <Share2 className="h-3.5 w-3.5" />
                   Share QR Code
                 </Button>
               </div>
-            </Card>
+            </div>
 
-            {/* Payment Link */}
-            <Card className="p-6">
-              <h3 className="font-semibold text-lg text-[#08163d] mb-4">Payment Link</h3>
-              <div className="space-y-3">
-                <div className="p-3 bg-gray-50 rounded-lg break-all text-sm text-gray-700">
+            <div className="rounded-2xl border border-gray-100 bg-white p-5 shadow-[0_1px_2px_rgba(16,24,40,0.04)]">
+              <h3 className="text-[14px] font-semibold text-gray-900">Payment Link</h3>
+              <div className="mt-3 flex flex-col gap-2 sm:flex-row">
+                <div className="min-w-0 flex-1 truncate rounded-lg border border-gray-100 bg-gray-50 px-3 py-2.5 text-[12px] text-gray-600">
                   {paymentUrl}
                 </div>
-                <Button 
+                <Button
                   onClick={handleCopyLink}
                   variant="outline"
-                  className="w-full flex items-center justify-center gap-2"
+                  className="h-9 shrink-0 rounded-full border-gray-200 px-3 text-[12px]"
                 >
                   {copied ? (
                     <>
-                      <CheckCircle2 className="h-4 w-4 text-green-600" />
-                      <span className="text-green-600">Copied!</span>
+                      <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" />
+                      <span className="text-emerald-600">Copied!</span>
                     </>
                   ) : (
                     <>
-                      <Copy className="h-4 w-4" />
+                      <Copy className="h-3.5 w-3.5" />
                       Copy Link
                     </>
                   )}
                 </Button>
               </div>
-            </Card>
+            </div>
 
-            {/* Instructions */}
-            <Card className="p-6 bg-blue-50 border-blue-200">
-              <h3 className="font-semibold text-lg text-[#08163d] mb-3">How to Use</h3>
-              <ol className="space-y-2 text-sm text-gray-700">
-                <li className="flex items-start gap-2">
-                  <span className="font-semibold text-[#08163d] min-w-[20px]">1.</span>
-                  <span>Print or display your QR code at your business location</span>
-                </li>
-                <li className="flex items-start gap-2">
-                  <span className="font-semibold text-[#08163d] min-w-[20px]">2.</span>
-                  <span>Customers scan the code with their RukaPay app or camera</span>
-                </li>
-                <li className="flex items-start gap-2">
-                  <span className="font-semibold text-[#08163d] min-w-[20px]">3.</span>
-                  <span>They enter the payment amount and confirm</span>
-                </li>
-                <li className="flex items-start gap-2">
-                  <span className="font-semibold text-[#08163d] min-w-[20px]">4.</span>
-                  <span>You receive payment instantly in your wallet</span>
-                </li>
+            <div className="rounded-2xl border border-gray-100 bg-white p-5 shadow-[0_1px_2px_rgba(16,24,40,0.04)]">
+              <h3 className="text-[14px] font-semibold text-gray-900">How to Use</h3>
+              <ol className="mt-3 space-y-3">
+                {[
+                  'Print or display your QR code at your business location',
+                  'Customers scan the code with their RukaPay app or camera',
+                  'They enter the payment amount and confirm',
+                  'You receive payment instantly in your wallet',
+                ].map((step, index) => (
+                  <li key={step} className="flex items-start gap-2.5">
+                    <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-gray-100 text-[10px] font-semibold text-gray-600">
+                      {index + 1}
+                    </span>
+                    <span className="pt-0.5 text-[12px] leading-snug text-gray-600">{step}</span>
+                  </li>
+                ))}
               </ol>
-            </Card>
+            </div>
           </div>
         </div>
       </div>

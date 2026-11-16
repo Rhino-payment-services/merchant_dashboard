@@ -59,14 +59,14 @@ export default function RootLayout({
           {/* Main Content Area — min-w-0 lets wide tables scroll instead of clipping */}
           <div className="flex-1 flex flex-col min-h-0 min-w-0 overflow-hidden">
             {/* Fixed Topbar */}
-            <div className="fixed top-0 left-0 md:left-64 right-0 z-20">
+            <div className="fixed top-0 left-0 md:left-56 right-0 z-20">
               <Topbar 
                 onMenuToggle={toggleMobileMenu}
                 isMenuOpen={isMobileMenuOpen}
               />
             </div>
             {/* Scrollable Content */}
-            <main className="flex-1 overflow-y-auto overflow-x-hidden pt-[72px] px-0 md:px-0 bg-gray-50 min-h-0 min-w-0">
+            <main className="flex-1 overflow-y-auto overflow-x-hidden pt-16 px-0 md:px-0 bg-gray-50 min-h-0 min-w-0">
               {children}
             </main>
           </div>

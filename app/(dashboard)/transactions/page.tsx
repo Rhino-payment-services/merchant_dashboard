@@ -17,7 +17,7 @@ import {
 import { formatIsoDateDisplay, formatStatementPeriodLabel } from '@/lib/date-picker-utils';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useMyTransactions, TransactionFilter } from '@/lib/api/transactions.api';
-import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, RefreshCw, Activity, BarChart3, Clock, CheckCircle, XCircle, AlertCircle, TrendingUp, TrendingDown, DollarSign, Eye, Search, Printer, CreditCard, Info, Users, AlertTriangle, Building2, Download, FileSpreadsheet } from 'lucide-react';
+import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, RefreshCw, Activity, BarChart3, Clock, CheckCircle, XCircle, AlertCircle, TrendingUp, TrendingDown, DollarSign, Eye, Search, Printer, CreditCard, Info, Users, AlertTriangle, Building2, Download, FileSpreadsheet, Layers } from 'lucide-react';
 import { writeWorkbookToFile } from '@/lib/excel-utils';
 import {
   downloadTextFile,
@@ -36,11 +36,10 @@ import { Badge } from '@/components/ui/badge';
 import TransactionReceipt from '@/components/TransactionReceipt';
 import { useUserProfile } from '../UserProfileProvider';
 import { AccessDenied } from '@/app/components/AccessDenied';
+import KpiCard from '@/app/components/KpiCard';
 import { useTeamPermissionSession } from '@/lib/hooks/useTeamPermissionSession';
 import { canViewTransactions } from '@/lib/utils/permissions';
 import {
-  computeMerchantCashMovementSummary,
-  computeMerchantTransactionSummary,
   formatTransactionCharges,
   formatTransactionNetAmount,
   getTransactionDescriptionDisplay,
@@ -185,8 +184,6 @@ export default function TransactionsPage() {
   const [selectedBulkTransaction, setSelectedBulkTransaction] = useState<BulkTransaction | null>(null);
   const [isBulkDetailsOpen, setIsBulkDetailsOpen] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
-  const [summaryTransactions, setSummaryTransactions] = useState<any[]>([]);
-  const [summaryLoading, setSummaryLoading] = useState(true);
 
   // Build filter object for API
   const filter: TransactionFilter = useMemo(() => {
@@ -203,49 +200,9 @@ export default function TransactionsPage() {
     return apiFilter;
   }, [status, from, to, currentPage, currentLimit]);
 
-  const summaryApiFilter = useMemo(() => {
-    const apiFilter: Omit<TransactionFilter, 'page' | 'limit' | 'status'> = {};
-    if (from) apiFilter.startDate = from;
-    if (to) apiFilter.endDate = to;
-    else if (from) apiFilter.endDate = from;
-    return apiFilter;
-  }, [from, to]);
-
   const effectiveMerchantCode = isViewingChild
     ? childMerchantCode
     : currentMerchantCode;
-
-  useEffect(() => {
-    let cancelled = false;
-
-    async function loadSummaryTransactions() {
-      setSummaryLoading(true);
-      try {
-        const all = await fetchAllBusinessTransactions(
-          summaryApiFilter,
-          childMerchantId || undefined,
-          effectiveMerchantCode,
-        );
-        if (!cancelled) {
-          setSummaryTransactions(dedupeAdminFundTransactions(all));
-        }
-      } catch (error) {
-        console.error('Error loading transaction summary:', error);
-        if (!cancelled) {
-          setSummaryTransactions([]);
-        }
-      } finally {
-        if (!cancelled) {
-          setSummaryLoading(false);
-        }
-      }
-    }
-
-    loadSummaryTransactions();
-    return () => {
-      cancelled = true;
-    };
-  }, [summaryApiFilter, childMerchantId, effectiveMerchantCode]);
 
   const { 
     data: transactionsData, 
@@ -274,10 +231,6 @@ export default function TransactionsPage() {
     limit: 10,
     total: 0,
     totalPages: 1
-  };
-  const summary = transactionsData?.summary || {
-    totalTransactions: 0,
-    walletType: 'PERSONAL'
   };
 
   // Helper to classify which business wallet flavour a transaction used
@@ -317,51 +270,6 @@ export default function TransactionsPage() {
       return true;
     });
   }, [transactions, walletView, status]);
-
-  const viewScopedSummaryTransactions = useMemo(() => {
-    let base = summaryTransactions;
-    if (status) {
-      base = base.filter((tx: any) => matchesTransactionStatusFilter(tx, status));
-    }
-    if (walletView === 'all') return base;
-    return base.filter((tx: any) => {
-      const bucket = classifyWalletView(tx);
-      if (walletView === 'collection') return bucket === 'collection';
-      if (walletView === 'disbursement') return bucket === 'disbursement';
-      return true;
-    });
-  }, [summaryTransactions, walletView, status]);
-
-  // Summary across all filtered transactions (not just the current page)
-  const calculatedSummary = useMemo(() => {
-    const stats = computeMerchantTransactionSummary(viewScopedSummaryTransactions);
-    const movement = computeMerchantCashMovementSummary(viewScopedSummaryTransactions, {
-      excludeSweeps: walletView === 'all',
-    });
-    return {
-      totalDeposited: movement.totalNetCredit,
-      totalSpent: movement.totalNetDebit,
-      successfulCount: stats.successfulCount,
-      failedCount: stats.failedCount,
-      totalTransactions: stats.totalCount,
-      walletType: (summary as any).walletType || 'PERSONAL',
-    };
-  }, [viewScopedSummaryTransactions, walletView, (summary as any).walletType]);
-
-  const summaryScopeLabel = useMemo(() => {
-    const parts: string[] = [];
-    if (from && to && from === to) parts.push(`on ${from}`);
-    else if (from && to) parts.push(`${from} to ${to}`);
-    else if (from) parts.push(`from ${from}`);
-    else if (to) parts.push(`until ${to}`);
-    else parts.push('all dates');
-
-    if (status) parts.push(`status: ${status}`);
-    if (walletView === 'collection') parts.push('Collection (Collection wallet)');
-    else if (walletView === 'disbursement') parts.push('Payout (Disbursement wallet)');
-
-    return parts.join(' · ');
-  }, [from, to, status, walletView]);
 
   // Filter transactions client-side by search within the current wallet view
   const filteredTransactions = useMemo(() => {
@@ -627,154 +535,71 @@ export default function TransactionsPage() {
         <meta name="description" content="View and manage all your transaction history on RukaPay" />
         <link rel="icon" href="/favicon.ico" />
       </Head>
-      <div className="min-h-screen bg-gray-50 p-4 sm:p-6 min-w-0">
-      <div className="max-w-screen-2xl w-full min-w-0">
+      <div className="min-h-screen bg-gray-50 p-4 md:p-6 min-w-0">
+      <div className="max-w-screen-2xl w-full min-w-0 space-y-4">
         {/* Page Header */}
-        <div className="mb-8">
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-            <div>
-              <h1 className="text-3xl font-bold text-[#08163d] mb-2">Transactions</h1>
-              <p className="text-gray-600">View and manage all your transaction history</p>
-            </div>
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h1 className="text-[20px] font-semibold tracking-tight text-gray-900">Transactions</h1>
+            <p className="mt-0.5 text-[12px] text-gray-400">Wallet activity for this business</p>
           </div>
-          
-          {/* Child Merchant Context Banner */}
           {isViewingChild && childMerchantCode && (
-            <div className="mt-4 p-4 bg-yellow-50 border border-yellow-200 rounded-lg flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <Building2 className="h-5 w-5 text-yellow-600" />
-                <div>
-                  <p className="text-sm font-medium text-yellow-900">
-                    Viewing transactions for child merchant:{' '}
-                    <span className="font-semibold">
-                      {childMerchantName || childMerchantCode}
-                    </span>
-                  </p>
-                  <p className="text-xs text-yellow-700 mt-1">
-                    You are viewing transactions as a super merchant
-                  </p>
-                </div>
-              </div>
-              <Button
-                variant="outline"
-                size="sm"
+            <div className="flex items-center gap-2 rounded-full border border-amber-100 bg-amber-50 px-3 py-1.5">
+              <Building2 className="h-3.5 w-3.5 text-amber-600" />
+              <span className="text-[12px] text-amber-800">
+                Viewing {childMerchantName || childMerchantCode}
+              </span>
+              <button
+                type="button"
                 onClick={async () => {
                   await clearChildContext();
                   refetch();
                 }}
-                className="text-yellow-700 border-yellow-300 hover:bg-yellow-100"
+                className="text-[11px] font-medium text-amber-700 hover:underline"
               >
-                View My Transactions
-              </Button>
+                My transactions
+              </button>
             </div>
           )}
         </div>
 
         {/* Tabs */}
-        <Tabs defaultValue="transactions" className="mb-6">
-          <TabsList className="grid w-full grid-cols-2">
-            <TabsTrigger value="transactions" className="flex items-center gap-2">
-              <RefreshCw className="w-4 h-4" />
+        <Tabs defaultValue="transactions" className="space-y-4">
+          <TabsList className="h-8 w-fit rounded-full bg-gray-100 p-0.5">
+            <TabsTrigger value="transactions" className="h-7 rounded-full px-3 text-[12px] data-[state=active]:shadow-none">
               Transactions
             </TabsTrigger>
-            <TabsTrigger value="tracking" className="flex items-center gap-2">
-              <Activity className="w-4 h-4" />
-              Bulk Tracking
+            <TabsTrigger value="tracking" className="h-7 rounded-full px-3 text-[12px] data-[state=active]:shadow-none">
+              Bulk tracking
             </TabsTrigger>
           </TabsList>
 
-          <TabsContent value="transactions" className="space-y-6">
-            {/* Wallet view toggle */}
-            <Card className="p-3 mb-4">
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="text-sm font-medium text-gray-700">Wallet view:</span>
-                <div className="inline-flex rounded-md border border-gray-200 bg-white p-0.5">
+          <TabsContent value="transactions" className="mt-0 space-y-3">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-[11px] font-medium text-gray-400">Wallet</span>
+              <div className="inline-flex rounded-full border border-gray-100 bg-white p-0.5">
+                {([
+                  ['all', 'All'],
+                  ['collection', 'Collection'],
+                  ['disbursement', 'Payout'],
+                ] as const).map(([value, label]) => (
                   <button
+                    key={value}
                     type="button"
-                    onClick={() => setWalletView('all')}
-                    className={`px-3 py-1 text-xs font-medium rounded-md ${
-                      walletView === 'all'
-                        ? 'bg-blue-600 text-white shadow-sm'
-                        : 'text-gray-700 hover:bg-gray-100'
+                    onClick={() => setWalletView(value)}
+                    className={`rounded-full px-3 py-1 text-[12px] font-medium ${
+                      walletView === value
+                        ? 'bg-gray-900 text-white'
+                        : 'text-gray-500 hover:text-gray-800'
                     }`}
                   >
-                    All wallets
+                    {label}
                   </button>
-                  <button
-                    type="button"
-                    onClick={() => setWalletView('collection')}
-                    className={`px-3 py-1 text-xs font-medium rounded-md ${
-                      walletView === 'collection'
-                        ? 'bg-blue-600 text-white shadow-sm'
-                        : 'text-gray-700 hover:bg-gray-100'
-                    }`}
-                  >
-                    Collection (Collection wallet)
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setWalletView('disbursement')}
-                    className={`px-3 py-1 text-xs font-medium rounded-md ${
-                      walletView === 'disbursement'
-                        ? 'bg-blue-600 text-white shadow-sm'
-                        : 'text-gray-700 hover:bg-gray-100'
-                    }`}
-                  >
-                    Payout (Disbursement wallet)
-                  </button>
-                </div>
+                ))}
               </div>
-            </Card>
+            </div>
 
-            {/* Summary Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
-          <Card className="p-4">
-            <h3 className="text-sm font-medium text-gray-500">Amount deposited</h3>
-            <p className="text-2xl font-bold text-green-700">
-              {summaryLoading ? '...' : new Intl.NumberFormat('en-UG', { 
-                style: 'currency', 
-                currency: 'UGX' 
-              }).format(calculatedSummary.totalDeposited || 0)}
-            </p>
-            <p className="text-xs text-gray-400 mt-1">
-              Total net credit · {summaryScopeLabel}
-            </p>
-          </Card>
-          <Card className="p-4">
-            <h3 className="text-sm font-medium text-gray-500">Amount spent</h3>
-            <p className="text-2xl font-bold text-red-700">
-              {summaryLoading ? '...' : new Intl.NumberFormat('en-UG', { 
-                style: 'currency', 
-                currency: 'UGX' 
-              }).format(calculatedSummary.totalSpent || 0)}
-            </p>
-            <p className="text-xs text-gray-400 mt-1">
-              Total net debit · {summaryScopeLabel}
-            </p>
-          </Card>
-          <Card className="p-4">
-            <h3 className="text-sm font-medium text-gray-500">Total Successful</h3>
-            <p className="text-2xl font-bold text-green-600">
-              {summaryLoading ? '...' : calculatedSummary.successfulCount || 0}
-            </p>
-            <p className="text-xs text-gray-400 mt-1">{summaryScopeLabel}</p>
-          </Card>
-          <Card className="p-4">
-            <h3 className="text-sm font-medium text-gray-500">Total Failed</h3>
-            <p className="text-2xl font-bold text-red-600">
-              {summaryLoading ? '...' : calculatedSummary.failedCount || 0}
-            </p>
-            <p className="text-xs text-gray-400 mt-1">
-              Failed, cancelled, or refunded · {summaryScopeLabel}
-            </p>
-          </Card>
-        </div>
-        <p className="text-xs text-gray-500 -mt-4 mb-6">
-          These totals are successful wallet movements for your current filters
-          (dates, status, wallet view) — not just this page. Charges on each row are the fee on that transaction.
-        </p>
-
-        <Card className="mb-6 overflow-hidden border border-gray-200 shadow-sm p-4">
+        <div className="rounded-2xl border border-gray-100 bg-white p-4 shadow-[0_1px_2px_rgba(16,24,40,0.04)]">
           <div className="space-y-4">
             <div className="grid grid-cols-1 gap-4 md:grid-cols-12 md:items-end">
               <div className="md:col-span-5">
@@ -838,9 +663,9 @@ export default function TransactionsPage() {
                   onClick={handleRefresh}
                   variant="outline"
                   disabled={isRefetching}
-                  className="h-9 w-full md:w-auto"
+                  className="h-8 w-full rounded-full px-3 text-[12px] md:w-auto"
                 >
-                  <RefreshCw className={`mr-2 h-4 w-4 ${isRefetching ? 'animate-spin' : ''}`} />
+                  <RefreshCw className={`h-3.5 w-3.5 ${isRefetching ? 'animate-spin' : ''}`} />
                   Refresh
                 </Button>
               </div>
@@ -906,42 +731,42 @@ export default function TransactionsPage() {
               </p>
             </div>
           </div>
-        </Card>
+        </div>
 
         {/* Transactions Table */}
-        <Card className="overflow-hidden min-w-0">
+        <div className="overflow-hidden min-w-0 rounded-2xl border border-gray-100 bg-white shadow-[0_1px_2px_rgba(16,24,40,0.04)]">
           <div className="overflow-x-auto max-w-full">
-            <Table className="min-w-[900px]">
+            <Table className="min-w-[980px]">
               <TableHeader>
-                <TableRow>
-                  <TableHead>Reference ID</TableHead>
-                  <TableHead>Sender</TableHead>
-                  <TableHead>Receiver</TableHead>
-                  <TableHead>Amount</TableHead>
-                  <TableHead>Charges</TableHead>
-                  <TableHead>Net Amount</TableHead>
-                  <TableHead>Wallet</TableHead>
-                  <TableHead>Type</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Description</TableHead>
-                  <TableHead>Created At</TableHead>
-                  <TableHead>Actions</TableHead>
+                <TableRow className="hover:bg-transparent">
+                  <TableHead className="h-8 text-[11px] font-medium text-gray-400">Reference</TableHead>
+                  <TableHead className="h-8 text-[11px] font-medium text-gray-400">Sender</TableHead>
+                  <TableHead className="h-8 text-[11px] font-medium text-gray-400">Receiver</TableHead>
+                  <TableHead className="h-8 text-[11px] font-medium text-gray-400">Amount</TableHead>
+                  <TableHead className="h-8 text-[11px] font-medium text-gray-400">Charges</TableHead>
+                  <TableHead className="h-8 text-[11px] font-medium text-gray-400">Net</TableHead>
+                  <TableHead className="h-8 text-[11px] font-medium text-gray-400">Wallet</TableHead>
+                  <TableHead className="h-8 text-[11px] font-medium text-gray-400">Type</TableHead>
+                  <TableHead className="h-8 text-[11px] font-medium text-gray-400">Status</TableHead>
+                  <TableHead className="h-8 text-[11px] font-medium text-gray-400">Description</TableHead>
+                  <TableHead className="h-8 text-[11px] font-medium text-gray-400">Date</TableHead>
+                  <TableHead className="h-8 text-[11px] font-medium text-gray-400"> </TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {isLoading ? (
                   <TableRow>
                     <TableCell colSpan={12} className="text-center py-8">
-                      <div className="flex items-center justify-center">
-                        <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
-                        <span className="ml-2">Loading transactions...</span>
+                      <div className="flex items-center justify-center text-[13px] text-gray-400">
+                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-gray-400"></div>
+                        <span className="ml-2">Loading transactions…</span>
                       </div>
                     </TableCell>
                   </TableRow>
                 ) : filteredTransactions.length === 0 ? (
                   <TableRow>
                     <TableCell colSpan={12} className="text-center py-8">
-                      <div className="text-gray-500">No transactions found</div>
+                      <div className="text-[13px] text-gray-400">No transactions found</div>
                     </TableCell>
                   </TableRow>
                 ) : (
@@ -952,100 +777,90 @@ export default function TransactionsPage() {
                     const receiverInfo = getTransactionReceiverParty(txn, viewerContext);
 
                     return (
-                      <TableRow key={transaction.id}>
-                        <TableCell className="font-mono text-sm" title={transaction.reference || 'N/A'}>
+                      <TableRow key={transaction.id} className="hover:bg-gray-50/80">
+                        <TableCell className="py-2.5 font-mono text-[12px] text-gray-600" title={transaction.reference || 'N/A'}>
                           {formatReferenceForDisplay(transaction)}
                         </TableCell>
-                        <TableCell className="text-sm">
-                          <div className="flex flex-col">
-                            <div className="font-medium truncate max-w-[150px]" title={senderInfo.name}>
+                        <TableCell className="py-2.5">
+                          <div className="min-w-0 max-w-[140px]">
+                            <div className="truncate text-[12px] font-medium text-gray-800" title={senderInfo.name}>
                               {senderInfo.name}
                             </div>
                             {senderInfo.contact && (
-                              <div className="text-xs text-gray-500 truncate max-w-[150px]" title={senderInfo.contact}>
+                              <div className="truncate text-[11px] text-gray-400" title={senderInfo.contact}>
                                 {senderInfo.contact}
                               </div>
                             )}
                           </div>
                         </TableCell>
-                        <TableCell className="text-sm">
-                          <div className="flex flex-col">
-                            <div className="font-medium truncate max-w-[150px]" title={receiverInfo.name}>
+                        <TableCell className="py-2.5">
+                          <div className="min-w-0 max-w-[140px]">
+                            <div className="truncate text-[12px] font-medium text-gray-800" title={receiverInfo.name}>
                               {receiverInfo.name}
                             </div>
                             {receiverInfo.contact && (
-                              <div className="text-xs text-gray-500 truncate max-w-[150px]" title={receiverInfo.contact}>
+                              <div className="truncate text-[11px] text-gray-400" title={receiverInfo.contact}>
                                 {receiverInfo.contact}
                               </div>
                             )}
                           </div>
                         </TableCell>
-                        <TableCell>
-                          <div className="font-[25px]">
-                            <span className='text-[12px]'>
-                              UGX &nbsp;
-                            </span>
-                           {Number(transaction.amount).toLocaleString()}
+                        <TableCell className="py-2.5">
+                          <div className="text-[13px] font-semibold tabular-nums text-gray-900">
+                            <span className="mr-1 text-[11px] font-medium text-gray-400">UGX</span>
+                            {Number(transaction.amount).toLocaleString()}
                           </div>
                         </TableCell>
-                        <TableCell>
-                          <div className="font-medium text-sm text-gray-800">
-                            {formatTransactionCharges(transaction)}
-                          </div>
+                        <TableCell className="py-2.5 text-[12px] text-gray-600">
+                          {formatTransactionCharges(transaction)}
                         </TableCell>
-                        <TableCell>
-                          <div className="font-semibold text-sm text-green-700">
-                            {formatTransactionNetAmount(transaction)}
-                          </div>
+                        <TableCell className="py-2.5 text-[12px] font-medium text-emerald-700">
+                          {formatTransactionNetAmount(transaction)}
                         </TableCell>
-                        {/* Wallet source: show which business wallet handled this transaction */}
-                        <TableCell>
+                        <TableCell className="py-2.5">
                           {(() => {
                             const bucket = classifyWalletView(transaction as any);
                             if (bucket === 'disbursement') {
                               return (
-                                <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-purple-100 text-purple-800">
-                                  Disbursement
+                                <span className="inline-flex items-center rounded-full bg-violet-50 px-1.5 py-0.5 text-[10px] font-medium text-violet-700">
+                                  Payout
                                 </span>
                               );
                             }
                             if (bucket === 'collection') {
                               return (
-                                <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                                <span className="inline-flex items-center rounded-full bg-sky-50 px-1.5 py-0.5 text-[10px] font-medium text-sky-700">
                                   Collection
                                 </span>
                               );
                             }
-                            return <span className="text-xs text-gray-400">—</span>;
+                            return <span className="text-[11px] text-gray-300">—</span>;
                           })()}
                         </TableCell>
-                        <TableCell>
-                          <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-slate-100 text-slate-800">
-                            {getTransactionTypeDisplay(transaction)}
-                          </span>
+                        <TableCell className="py-2.5 text-[12px] text-gray-700">
+                          {getTransactionTypeDisplay(transaction)}
                         </TableCell>
-                        <TableCell>
-                          <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${statusColor[transaction.status as StatusType]}`}>
+                        <TableCell className="py-2.5">
+                          <span className={`inline-flex items-center rounded-full px-1.5 py-0.5 text-[10px] font-medium ${statusColor[transaction.status as StatusType]}`}>
                             {transaction.status}
                           </span>
                         </TableCell>
                         <TableCell
-                          className="max-w-xs truncate"
+                          className="py-2.5 max-w-[160px] truncate text-[12px] text-gray-500"
                           title={getTransactionDescriptionDisplay(transaction)}
                         >
                           {getTransactionDescriptionDisplay(transaction)}
                         </TableCell>
-                        <TableCell className="text-sm">
+                        <TableCell className="py-2.5 whitespace-nowrap text-[12px] text-gray-500">
                           {new Date(transaction.createdAt).toLocaleString('en-UG', {
-                            year: 'numeric',
                             month: 'short',
                             day: 'numeric',
                             hour: '2-digit',
                             minute: '2-digit'
                           })}
                         </TableCell>
-                        <TableCell>
-                          <div className="flex items-center gap-1">
+                        <TableCell className="py-2.5">
+                          <div className="flex items-center">
                             <Button
                               variant="ghost"
                               size="sm"
@@ -1054,9 +869,9 @@ export default function TransactionsPage() {
                                 setIsTransactionDetailsOpen(true);
                               }}
                               title="View Details"
-                              className="h-8 w-8 p-0"
+                              className="h-7 w-7 p-0 text-gray-400 hover:text-gray-800"
                             >
-                              <Eye className="h-4 w-4" />
+                              <Eye className="h-3.5 w-3.5" />
                             </Button>
                             <Button
                               variant="ghost"
@@ -1066,9 +881,9 @@ export default function TransactionsPage() {
                                 setIsReceiptOpen(true);
                               }}
                               title="Print Receipt"
-                              className="h-8 w-8 p-0"
+                              className="h-7 w-7 p-0 text-gray-400 hover:text-gray-800"
                             >
-                              <Printer className="h-4 w-4" />
+                              <Printer className="h-3.5 w-3.5" />
                             </Button>
                           </div>
                         </TableCell>
@@ -1081,117 +896,80 @@ export default function TransactionsPage() {
           </div>
 
           {/* Pagination */}
-          <div className="flex items-center justify-between px-4 py-3 border-t">
-            <div className="text-sm text-gray-700">
-              Showing {((currentPage - 1) * currentLimit) + 1} to {Math.min(currentPage * currentLimit, paginationInfo?.total || 0)} of {paginationInfo?.total || 0} results
+          <div className="flex items-center justify-between px-4 py-2.5 border-t border-gray-100">
+            <div className="text-[12px] text-gray-400">
+              {((currentPage - 1) * currentLimit) + 1}–{Math.min(currentPage * currentLimit, paginationInfo?.total || 0)} of {paginationInfo?.total || 0}
             </div>
-            <div className="flex items-center space-x-2">
+            <div className="flex items-center gap-1">
               <Button
-                variant="outline"
+                variant="ghost"
                 size="sm"
                 onClick={() => setCurrentPage(1)}
                 disabled={currentPage <= 1 || isLoading}
+                className="h-7 w-7 p-0"
               >
-                <ChevronsLeft className="w-4 h-4" />
+                <ChevronsLeft className="w-3.5 h-3.5" />
               </Button>
               <Button
-                variant="outline"
+                variant="ghost"
                 size="sm"
                 onClick={() => setCurrentPage(Math.max(currentPage - 1, 1))}
                 disabled={currentPage <= 1 || isLoading}
+                className="h-7 w-7 p-0"
               >
-                <ChevronLeft className="w-4 h-4" />
+                <ChevronLeft className="w-3.5 h-3.5" />
               </Button>
-              <span className="text-sm text-gray-700">
-                Page {currentPage} of {totalPages}
+              <span className="px-1 text-[12px] text-gray-500">
+                {currentPage} / {totalPages}
               </span>
               <Button
-                variant="outline"
+                variant="ghost"
                 size="sm"
                 onClick={() => setCurrentPage(Math.min(currentPage + 1, totalPages))}
                 disabled={currentPage >= totalPages || isLoading}
+                className="h-7 w-7 p-0"
               >
-                <ChevronRight className="w-4 h-4" />
+                <ChevronRight className="w-3.5 h-3.5" />
               </Button>
               <Button
-                variant="outline"
+                variant="ghost"
                 size="sm"
                 onClick={() => setCurrentPage(totalPages)}
                 disabled={currentPage >= totalPages || isLoading}
+                className="h-7 w-7 p-0"
               >
-                <ChevronsRight className="w-4 h-4" />
+                <ChevronsRight className="w-3.5 h-3.5" />
               </Button>
             </div>
           </div>
-        </Card>
+        </div>
           </TabsContent>
 
-          <TabsContent value="tracking" className="space-y-6">
-            {/* Bulk Transaction Summary Cards */}
-            <div className="grid grid-cols-1 md:grid-cols-5 gap-4 mb-6">
-              <Card className="p-4">
-                <h3 className="text-sm font-medium text-gray-500">Total Bulk Payments</h3>
-                <p className="text-2xl font-bold text-gray-900">{bulkSummary.total}</p>
-                <div className="flex items-center mt-2">
-                  <TrendingUp className="w-4 h-4 text-blue-600 mr-1" />
-                  <span className="text-sm text-blue-600">+0%</span>
-                </div>
-              </Card>
-              
-              <Card className="p-4">
-                <h3 className="text-sm font-medium text-gray-500">Completed</h3>
-                <p className="text-2xl font-bold text-green-600">{bulkSummary.completed}</p>
-                <div className="flex items-center mt-2">
-                  <CheckCircle className="w-4 h-4 text-green-600 mr-1" />
-                  <span className="text-sm text-green-600">Success</span>
-                </div>
-              </Card>
-              
-              <Card className="p-4">
-                <h3 className="text-sm font-medium text-gray-500">Failed</h3>
-                <p className="text-2xl font-bold text-red-600">{bulkSummary.failed}</p>
-                <div className="flex items-center mt-2">
-                  <XCircle className="w-4 h-4 text-red-600 mr-1" />
-                  <span className="text-sm text-red-600">Errors</span>
-                </div>
-              </Card>
-
-              <Card className="p-4">
-                <h3 className="text-sm font-medium text-gray-500">Pending</h3>
-                <p className="text-2xl font-bold text-yellow-600">{bulkSummary.pending}</p>
-                <div className="flex items-center mt-2">
-                  <Clock className="w-4 h-4 text-yellow-600 mr-1" />
-                  <span className="text-sm text-yellow-600">Processing</span>
-                </div>
-              </Card>
-              
-              <Card className="p-4">
-                <h3 className="text-sm font-medium text-gray-500">Total Amount</h3>
-                <p className="text-2xl font-bold text-gray-900">
-                  {new Intl.NumberFormat('en-UG', { 
-                    style: 'currency', 
-                    currency: 'UGX' 
-                  }).format(bulkSummary.totalAmount || 0)}
-                </p>
-                <div className="flex items-center mt-2">
-                  <DollarSign className="w-4 h-4 text-green-600 mr-1" />
-                  <span className="text-sm text-green-600">Processed</span>
-                </div>
-              </Card>
+          <TabsContent value="tracking" className="mt-0 space-y-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
+              <KpiCard icon={Layers} label="Bulk payments" value={String(bulkSummary.total)} hint="All batches" />
+              <KpiCard icon={CheckCircle} label="Completed" value={String(bulkSummary.completed)} hint="Successful batches" />
+              <KpiCard icon={XCircle} label="Failed" value={String(bulkSummary.failed)} hint="Batches with errors" />
+              <KpiCard icon={Clock} label="Pending" value={String(bulkSummary.pending)} hint="Still processing" />
+              <KpiCard
+                icon={DollarSign}
+                label="Total amount"
+                value={Number(bulkSummary.totalAmount || 0).toLocaleString()}
+                suffix="UGX"
+                hint="Processed volume"
+              />
             </div>
 
-            {/* Bulk Transaction Filters */}
-            <Card>
-              <div className="p-4">
-                <div className="flex flex-col sm:flex-row gap-4">
+            <div className="rounded-2xl border border-gray-100 bg-white p-3 shadow-[0_1px_2px_rgba(16,24,40,0.04)]">
+                <div className="flex flex-col sm:flex-row gap-2">
                   <div className="flex-1">
                     <div className="relative">
-                      <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+                      <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-3.5 h-3.5" />
                       <Input
-                        placeholder="Search by transaction ID or description..."
+                        placeholder="Search bulk ID or description…"
                         value={bulkSearchTerm}
                         onChange={(e) => setBulkSearchTerm(e.target.value)}
-                        className="pl-10"
+                        className="h-8 pl-9 text-[13px]"
                       />
                     </div>
                   </div>
@@ -1199,40 +977,42 @@ export default function TransactionsPage() {
                     <select
                       value={bulkStatusFilter}
                       onChange={(e) => setBulkStatusFilter(e.target.value)}
-                      className="px-3 py-2 border border-gray-300 rounded-md text-sm"
+                      className="h-8 rounded-lg border border-gray-200 px-2.5 text-[12px]"
                     >
-                      <option value="all">All Status</option>
+                      <option value="all">All status</option>
                       <option value="pending">Pending</option>
                       <option value="processing">Processing</option>
                       <option value="completed">Completed</option>
                       <option value="failed">Failed</option>
                       <option value="partial_success">Partial Success</option>
                     </select>
-                    <Button onClick={loadBulkTransactions} disabled={bulkLoading} className="flex items-center gap-2">
-                      <RefreshCw className={`w-4 h-4 ${bulkLoading ? 'animate-spin' : ''}`} />
+                    <Button
+                      onClick={loadBulkTransactions}
+                      disabled={bulkLoading}
+                      variant="outline"
+                      className="h-8 rounded-full px-3 text-[12px]"
+                    >
+                      <RefreshCw className={`h-3.5 w-3.5 ${bulkLoading ? 'animate-spin' : ''}`} />
                       Refresh
                     </Button>
                   </div>
                 </div>
-              </div>
-            </Card>
+            </div>
 
-            {/* Bulk Transactions Table */}
-            <Card className="overflow-hidden min-w-0">
-              <div className="p-4">
-                <h3 className="text-lg font-semibold text-gray-900 mb-4">Bulk Transactions</h3>
+            <div className="overflow-hidden min-w-0 rounded-2xl border border-gray-100 bg-white p-4 shadow-[0_1px_2px_rgba(16,24,40,0.04)]">
+                <h3 className="text-[14px] font-semibold text-gray-900 mb-3">Bulk transactions</h3>
                 <div className="overflow-x-auto max-w-full">
                 <Table className="min-w-[800px]">
                   <TableHeader>
-                    <TableRow>
-                      <TableHead>Bulk ID</TableHead>
-                      <TableHead>Status</TableHead>
-                      <TableHead>Progress</TableHead>
-                      <TableHead>Amount</TableHead>
-                      <TableHead>Transactions</TableHead>
-                      <TableHead>Created</TableHead>
-                      <TableHead>Details</TableHead>
-                      <TableHead>Actions</TableHead>
+                    <TableRow className="hover:bg-transparent">
+                      <TableHead className="h-8 text-[11px] font-medium text-gray-400">Bulk ID</TableHead>
+                      <TableHead className="h-8 text-[11px] font-medium text-gray-400">Status</TableHead>
+                      <TableHead className="h-8 text-[11px] font-medium text-gray-400">Progress</TableHead>
+                      <TableHead className="h-8 text-[11px] font-medium text-gray-400">Amount</TableHead>
+                      <TableHead className="h-8 text-[11px] font-medium text-gray-400">Items</TableHead>
+                      <TableHead className="h-8 text-[11px] font-medium text-gray-400">Created</TableHead>
+                      <TableHead className="h-8 text-[11px] font-medium text-gray-400">Details</TableHead>
+                      <TableHead className="h-8 text-[11px] font-medium text-gray-400"> </TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -1381,8 +1161,7 @@ export default function TransactionsPage() {
                     )}
                   </div>
                 )}
-              </div>
-            </Card>
+            </div>
           </TabsContent>
         </Tabs>
       </div>
