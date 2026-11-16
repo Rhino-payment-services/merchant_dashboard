@@ -13,6 +13,46 @@ const apiClient = axios.create({
 let isRefreshing = false
 let failedQueue: any[] = []
 
+/** Short-lived session cache so paginated/export bursts don't call getSession() every request. */
+type CachedSession = {
+  accessToken?: string | null
+  refreshToken?: string | null
+  merchantCode?: string | null
+  expiresAt: number
+}
+let cachedSession: CachedSession | null = null
+const SESSION_CACHE_TTL_MS = 5_000
+
+export function invalidateApiSessionCache() {
+  cachedSession = null
+}
+
+async function resolveSessionAuth(): Promise<{
+  accessToken?: string | null
+  refreshToken?: string | null
+  merchantCode?: string | null
+}> {
+  if (typeof window === 'undefined') return {}
+  const now = Date.now()
+  if (cachedSession && cachedSession.expiresAt > now) {
+    return cachedSession
+  }
+  try {
+    const { getSession } = await import('next-auth/react')
+    const session = await getSession()
+    cachedSession = {
+      accessToken: session?.accessToken ?? null,
+      refreshToken: session?.refreshToken ?? null,
+      merchantCode: (session?.user as any)?.merchantCode ?? null,
+      expiresAt: now + SESSION_CACHE_TTL_MS,
+    }
+    return cachedSession
+  } catch (error) {
+    console.error('Error getting session:', error)
+    return {}
+  }
+}
+
 const processQueue = (error: any, token: string | null = null) => {
   failedQueue.forEach(prom => {
     if (error) {
@@ -28,29 +68,17 @@ const processQueue = (error: any, token: string | null = null) => {
 // Request interceptor to add auth token
 apiClient.interceptors.request.use(
   async (config) => {
-    // Try to get session from NextAuth
     if (typeof window !== 'undefined') {
-      try {
-        const { getSession } = await import('next-auth/react')
-        const session = await getSession()
+      const session = await resolveSessionAuth()
 
-        if (session?.accessToken) {
-          config.headers.Authorization = `Bearer ${session.accessToken}`
-        }
-        const merchantCode = (session?.user as any)?.merchantCode
-        if (merchantCode != null && String(merchantCode).trim() !== '') {
-          config.headers['X-Merchant-Code'] = String(merchantCode).trim()
-        }
-        if (!config.headers.Authorization) {
-          // Fallback to localStorage for backwards compatibility
-          const accessToken = localStorage.getItem('accessToken')
-          if (accessToken) {
-            config.headers.Authorization = `Bearer ${accessToken}`
-          }
-        }
-      } catch (error) {
-        console.error('Error getting session:', error)
-        // Fallback to localStorage
+      if (session.accessToken) {
+        config.headers.Authorization = `Bearer ${session.accessToken}`
+      }
+      const merchantCode = session.merchantCode
+      if (merchantCode != null && String(merchantCode).trim() !== '') {
+        config.headers['X-Merchant-Code'] = String(merchantCode).trim()
+      }
+      if (!config.headers.Authorization) {
         const accessToken = localStorage.getItem('accessToken')
         if (accessToken) {
           config.headers.Authorization = `Bearer ${accessToken}`
@@ -89,28 +117,17 @@ apiClient.interceptors.response.use(
       originalRequest._retry = true
       isRefreshing = true
 
-      // Try to get refresh token from session or localStorage
-      let refreshToken = null
-      
-      try {
-        const { getSession } = await import('next-auth/react')
-        const session = await getSession()
-        refreshToken = session?.refreshToken
-      } catch (err) {
-        console.error('Error getting session for refresh:', err)
-      }
-      
+      invalidateApiSessionCache()
+      let refreshToken = (await resolveSessionAuth()).refreshToken || null
       if (!refreshToken) {
         refreshToken = localStorage.getItem('refreshToken')
       }
       
       if (!refreshToken) {
-        // No refresh token, logout with NextAuth
         try {
           const { signOut } = await import('next-auth/react')
           await signOut({ redirect: true, callbackUrl: '/auth/login' })
         } catch (err) {
-          // Fallback to manual redirect
           localStorage.clear()
           window.location.href = '/auth/login'
         }
@@ -118,38 +135,41 @@ apiClient.interceptors.response.use(
       }
 
       try {
-        // Try to refresh token using the standard auth refresh endpoint
         const response = await axios.post(`${API_URL}/auth/refresh-token`, {
           refreshToken
         })
         
         const { accessToken, refreshToken: newRefreshToken } = response.data
         
-        // Store new tokens
         localStorage.setItem('accessToken', accessToken)
         if (newRefreshToken) {
           localStorage.setItem('refreshToken', newRefreshToken)
         }
+
+        const priorMerchantCode = cachedSession?.merchantCode ?? null
+        invalidateApiSessionCache()
+        cachedSession = {
+          accessToken,
+          refreshToken: newRefreshToken || refreshToken,
+          merchantCode: priorMerchantCode,
+          expiresAt: Date.now() + SESSION_CACHE_TTL_MS,
+        }
         
-        // Update authorization header
         apiClient.defaults.headers.common['Authorization'] = `Bearer ${accessToken}`
         originalRequest.headers.Authorization = `Bearer ${accessToken}`
         
-        // Process queued requests
         processQueue(null, accessToken)
         
         isRefreshing = false
         
-        // Retry original request
         return apiClient(originalRequest)
       } catch (refreshError: any) {
-        // Refresh failed
         processQueue(refreshError, null)
         isRefreshing = false
+        invalidateApiSessionCache()
         
         console.error('Token refresh failed:', refreshError)
         
-        // Clear storage and redirect to login
         localStorage.clear()
         window.location.href = '/auth/login'
         

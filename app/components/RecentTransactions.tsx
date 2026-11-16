@@ -11,14 +11,8 @@ import {
 } from "../../components/ui/table";
 import { Button } from "../../components/ui/button";
 import { useRouter } from "next/navigation";
-import { useQuery } from "@tanstack/react-query";
-import { fetchTransactions } from "../lib/api";
 import { useUserProfile } from "../(dashboard)/UserProfileProvider";
-import { RefreshCw } from "lucide-react";
 import {
-  formatTransactionCharges,
-  formatTransactionNetAmount,
-  getTransactionDescriptionDisplay,
   getTransactionReceiverParty,
   getTransactionSenderParty,
   getTransactionTypeDisplay,
@@ -110,6 +104,17 @@ export default function RecentTransactions({ transactions, isNewFormat = false, 
   const router = useRouter();
   const { profile } = useUserProfile();
 
+  const viewerContext = {
+    merchantName:
+      merchantName ||
+      profile?.merchantBusinessTradeName ||
+      profile?.businessTradeName ||
+      profile?.merchant_names ||
+      'Merchant Business',
+    phone:
+      profile?.merchant_phone || profile?.ownerPhone || profile?.phone || '',
+  };
+
   // Clean and sort transactions - handle both old and new formats
   const sortedTransactions = useMemo(() => {
     if (!transactions) return [];
@@ -122,107 +127,87 @@ export default function RecentTransactions({ transactions, isNewFormat = false, 
     });
   }, [transactions, isNewFormat]);
 
-  // Get merchant business name
-  const getMerchantName = () => {
-    return merchantName || 
-           profile?.merchantBusinessTradeName || 
-           profile?.businessTradeName || 
-           profile?.merchant_names || 
-           'Merchant Business';
-  };
-
-  const viewerContext = {
-    merchantName: getMerchantName(),
-    phone:
-      profile?.merchant_phone || profile?.ownerPhone || profile?.phone || '',
-  };
-
   const handleViewAll = () => {
-    router.push("/transactions");
-  };
-
-  const handleViewDetails = () => {
     router.push("/transactions");
   };
 
   return (
     <div className="relative">
-      <div className="flex items-center justify-between mb-4">
-        <div className="font-semibold text-lg">Recent Transactions</div>
-        <div className="flex gap-2">
-          <button className="text-xs border rounded px-2 py-1 bg-gray-50">
-            Filter
-          </button>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={handleViewAll}
-            className="text-xs"
-          >
-            View All
-          </Button>
+      <div className="flex items-center justify-between mb-3">
+        <div>
+          <div className="text-[14px] font-semibold text-gray-900">Recent Transactions</div>
+          <p className="text-[11px] text-gray-400 mt-0.5">Latest 10 transactions on this business wallet</p>
         </div>
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={handleViewAll}
+          className="h-7 rounded-full px-2.5 text-[12px] text-gray-500 hover:text-gray-900"
+        >
+          View all
+        </Button>
       </div>
       {!transactions || transactions.length == 0 ? (
-        <div className="text-center flex flex-col gap-[10px] p-10">
-          <h1 >No Transactions Yet</h1>
+        <div className="text-center py-10">
+          <p className="text-[13px] text-gray-400">No transactions yet</p>
         </div>
       ) : (
         <>
           <Table>
           <TableHeader>
-              <TableRow>
-                <TableHead>Reference ID</TableHead>
-                <TableHead>Sender</TableHead>
-                <TableHead>Receiver</TableHead>
-                <TableHead>Amount</TableHead>
-                <TableHead>Charges</TableHead>
-                <TableHead>Net Amount</TableHead>
-                <TableHead>Type</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Description</TableHead>
-                <TableHead>Created At</TableHead>
+              <TableRow className="hover:bg-transparent">
+                <TableHead className="h-8 text-[11px] font-medium text-gray-400">Reference</TableHead>
+                <TableHead className="h-8 text-[11px] font-medium text-gray-400">Sender</TableHead>
+                <TableHead className="h-8 text-[11px] font-medium text-gray-400">Receiver</TableHead>
+                <TableHead className="h-8 text-[11px] font-medium text-gray-400">Type</TableHead>
+                <TableHead className="h-8 text-[11px] font-medium text-gray-400">Amount</TableHead>
+                <TableHead className="h-8 text-[11px] font-medium text-gray-400">Status</TableHead>
+                <TableHead className="h-8 text-[11px] font-medium text-gray-400">Date</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {sortedTransactions?.map((txn:any, idx: number) => {
-                // Extract sender and receiver information with contact details
                 const senderInfo = getTransactionSenderParty(txn, viewerContext);
                 const receiverInfo = getTransactionReceiverParty(txn, viewerContext);
 
                 return (
-                  <TableRow key={isNewFormat ? txn.id : txn.rdbs_transaction_id || idx} className="hover:bg-gray-50 transition">
-                    <TableCell className="font-mono text-sm" title={isNewFormat ? (txn.reference || 'N/A') : txn.rdbs_transaction_id}>
+                  <TableRow key={isNewFormat ? txn.id : txn.rdbs_transaction_id || idx} className="hover:bg-gray-50/80">
+                    <TableCell className="py-2.5 font-mono text-[12px] text-gray-600" title={isNewFormat ? (txn.reference || 'N/A') : txn.rdbs_transaction_id}>
                       {isNewFormat ? formatReferenceForDisplay(txn) : txn.rdbs_transaction_id}
                     </TableCell>
-                    <TableCell className="text-sm">
-                      <div className="flex flex-col">
-                        <div className="font-medium truncate max-w-[150px]" title={senderInfo.name}>
+                    <TableCell className="py-2.5">
+                      <div className="min-w-0 max-w-[160px]">
+                        <div className="truncate text-[12px] font-medium text-gray-800" title={senderInfo.name}>
                           {senderInfo.name}
                         </div>
                         {senderInfo.contact && (
-                          <div className="text-xs text-gray-500 truncate max-w-[150px]" title={senderInfo.contact}>
+                          <div className="truncate text-[11px] text-gray-400" title={senderInfo.contact}>
                             {senderInfo.contact}
                           </div>
                         )}
                       </div>
                     </TableCell>
-                    <TableCell className="text-sm">
-                      <div className="flex flex-col">
-                        <div className="font-medium truncate max-w-[150px]" title={receiverInfo.name}>
+                    <TableCell className="py-2.5">
+                      <div className="min-w-0 max-w-[160px]">
+                        <div className="truncate text-[12px] font-medium text-gray-800" title={receiverInfo.name}>
                           {receiverInfo.name}
                         </div>
                         {receiverInfo.contact && (
-                          <div className="text-xs text-gray-500 truncate max-w-[150px]" title={receiverInfo.contact}>
+                          <div className="truncate text-[11px] text-gray-400" title={receiverInfo.contact}>
                             {receiverInfo.contact}
                           </div>
                         )}
                       </div>
                     </TableCell>
-                    <TableCell>
-                      <div className="font-[25px]">
-                        <span className='text-[12px]'>
-                          {isNewFormat ? txn.currency : 'UGX'} &nbsp;
+                    <TableCell className="py-2.5">
+                      <span className="text-[12px] text-gray-700">
+                        {isNewFormat ? getTransactionTypeDisplay(txn) : (txn.rdbs_type || 'N/A')}
+                      </span>
+                    </TableCell>
+                    <TableCell className="py-2.5">
+                      <div className="text-[13px] font-semibold tabular-nums text-gray-900">
+                        <span className="mr-1 text-[11px] font-medium text-gray-400">
+                          {isNewFormat ? txn.currency : 'UGX'}
                         </span>
                         {isNewFormat 
                           ? Number(txn.amount).toLocaleString()
@@ -230,46 +215,20 @@ export default function RecentTransactions({ transactions, isNewFormat = false, 
                         }
                       </div>
                     </TableCell>
-                    <TableCell>
-                      <div className="font-medium text-sm text-gray-800">
-                        {isNewFormat
-                          ? formatTransactionCharges(txn)
-                          : txn.rdbs_fee != null
-                            ? `UGX ${Number(txn.rdbs_fee).toLocaleString()}`
-                            : '—'}
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <div className="font-semibold text-sm text-green-700">
-                        {isNewFormat ? formatTransactionNetAmount(txn) : '—'}
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-slate-100 text-slate-800">
-                        {isNewFormat ? getTransactionTypeDisplay(txn) : (txn.rdbs_type || 'N/A')}
-                      </span>
-                    </TableCell>
-                    <TableCell>
-                      <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${statusColor[txn.status as StatusType]}`}>
+                    <TableCell className="py-2.5">
+                      <span className={`inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-medium ${statusColor[txn.status as StatusType]}`}>
                         {isNewFormat ? txn.status : txn.rdbs_approval_status}
                       </span>
                     </TableCell>
-                    <TableCell className="max-w-xs truncate" title={isNewFormat ? getTransactionDescriptionDisplay(txn) : txn.rdbs_description}>
-                      {isNewFormat
-                        ? getTransactionDescriptionDisplay(txn)
-                        : txn.rdbs_description || '—'}
-                    </TableCell>
-                    <TableCell className="text-sm">
+                    <TableCell className="py-2.5 text-[12px] text-gray-500">
                       {isNewFormat 
                         ? new Date(txn.createdAt).toLocaleString('en-UG', {
-                            year: 'numeric',
                             month: 'short',
                             day: 'numeric',
                             hour: '2-digit',
                             minute: '2-digit'
                           })
                         : new Date(txn.rdbs_approval_date).toLocaleString('en-UG', {
-                            year: 'numeric',
                             month: 'short',
                             day: 'numeric',
                             hour: '2-digit',

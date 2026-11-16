@@ -7,21 +7,14 @@ import {
   LayoutDashboard, 
   CreditCard, 
   ArrowRightLeft, 
-  BarChart3, 
-  FileText, 
-  Package, 
   FileBarChart, 
   Settings, 
-  HelpCircle, 
-  MessageCircle,
   ArrowDown,
   X,
   QrCode,
-  Search,
   Users,
   Briefcase,
   CheckCircle,
-  FileCheck,
   ShieldCheck,
   Building2,
   Calendar,
@@ -68,10 +61,6 @@ const navLinks = [
     { name: 'KYC Verification', path: '/kyc', icon: ShieldCheck },
     { name: 'Settings', path: '/settings', icon: Settings },
   ]},
-  // { section: 'SUPPORT', links: [
-  //   { name: 'Help Center', path: '/help', icon: HelpCircle },
-  //   { name: 'Feedback', path: '/feedback', icon: MessageCircle },
-  // ]},
 ];
 
 interface SidebarProps {
@@ -81,8 +70,7 @@ interface SidebarProps {
 
 export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
   const router = useRouter();
-  const pathname:any = usePathname();
-  // const  {data: session} = useSession()
+  const pathname = usePathname();
   const { data: session } = useSession();
   const { profile } = useUserProfile();
   const merchants = (session?.user as any)?.merchants || [];
@@ -197,9 +185,9 @@ export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
 
   const isActive = (path: string) => {
     if (path === '/') {
-      return pathname === '/' ? true : pathname === null ? false : undefined;
+      return pathname === '/';
     }
-    return pathname.startsWith(path);
+    return pathname?.startsWith(path) ?? false;
   };
 
   return (
@@ -207,57 +195,75 @@ export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
       {/* Mobile Overlay */}
       {isOpen && (
         <div 
-          className="fixed inset-0 bg-black/40 backdrop-blur-[2px] bg-opacity-50 z-40 md:hidden"
+          className="fixed inset-0 bg-black/40 backdrop-blur-[2px] z-40 md:hidden"
           onClick={onClose}
         />
       )}
       
       {/* Sidebar */}
       <aside className={`
-        fixed md:static top-0 left-0 h-screen md:h-full md:max-h-full min-h-0 w-64 shrink-0 bg-white z-50 md:z-auto
+        fixed md:static top-0 left-0 h-screen md:h-full md:max-h-full min-h-0 w-56 shrink-0 bg-white z-50 md:z-auto
         transform transition-transform duration-300 ease-in-out
         ${isOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}
-        flex flex-col overflow-hidden p-6 border-r border-gray-200
+        flex flex-col overflow-hidden px-4 py-5 border-r border-gray-100
       `}>
         {/* Mobile Close Button */}
-        <div className="md:hidden flex-shrink-0 flex justify-end mb-4">
+        <div className="md:hidden flex-shrink-0 flex justify-end mb-2">
           <Button
             variant="ghost"
             size="icon"
             onClick={onClose}
-            className="cursor-pointer text-gray-600 hover:text-gray-900"
+            className="cursor-pointer h-8 w-8 text-gray-500 hover:text-gray-900"
           >
-            <X className="w-6 h-6" />
+            <X className="w-4 h-4" />
           </Button>
         </div>
 
         {/* Logo */}
-        <div className="flex-shrink-0 mb-4 flex items-center gap-3">
-          <Image src="/images/logo.jpg" alt="RukaPay" width={48} height={48} className='rounded-lg shadow-sm' />
-          <span className="text-2xl font-bold text-[#08163d]">RukaPay</span>
+        <div className="flex-shrink-0 mb-5 flex items-center gap-2 px-1">
+          <Image
+            src="/images/logo.jpg"
+            alt="RukaPay"
+            width={28}
+            height={28}
+            className="rounded-md"
+          />
+          <span className="text-[15px] font-semibold tracking-tight text-[#08163d]">
+            RukaPay
+          </span>
         </div>
-        {/* Current business / merchant name */}
+
+        {/* Current business — compact */}
         {businessName && (
-          <div className="flex-shrink-0 mb-6 px-3 py-2.5 rounded-lg bg-main-50 border border-main-100">
-            <div className="flex items-center gap-2 mb-1">
-              <Building2 className="w-4 h-4 text-main-600 flex-shrink-0" />
-              <p className="text-xs font-medium text-main-600 uppercase tracking-wide">Current business</p>
+          <div className="flex-shrink-0 mb-5 mx-0.5 px-2.5 py-2 rounded-lg bg-gray-50">
+            <div className="flex items-center gap-1.5 mb-0.5">
+              <Building2 className="w-3 h-3 text-gray-400 flex-shrink-0" strokeWidth={1.75} />
+              <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-[0.08em]">
+                Business
+              </p>
             </div>
-            <p className="text-sm font-semibold text-[#08163d] truncate" title={businessName}>
+            <p className="text-[12px] font-medium text-gray-900 truncate leading-snug" title={businessName}>
               {businessName}
             </p>
             {displayMerchantCode && (
-              <p className="text-xs text-main-600 mt-1">{displayMerchantCode}</p>
+              <p className="text-[10px] text-gray-400 mt-0.5 tabular-nums">{displayMerchantCode}</p>
             )}
           </div>
         )}
 
-        {/* Navigation — scrolls when viewport is short */}
-        <nav className="flex-1 min-h-0 overflow-y-auto overscroll-y-contain space-y-6 -mr-2 pr-2">
-          {filteredNavLinks.map((section) => (
+        {/* Navigation */}
+        <nav className="flex-1 min-h-0 overflow-y-auto overscroll-y-contain -mr-1 pr-1">
+          {filteredNavLinks.map((section, sectionIndex) => (
             <div key={section.section}>
-              <div className="text-xs text-gray-400 font-semibold mb-2 uppercase tracking-wider">{section.section}</div>
-              <ul className="space-y-1">
+              {sectionIndex > 0 && (
+                <div className="mx-1 my-3 border-t border-gray-100" />
+              )}
+              <div className="px-2.5 mb-1.5">
+                <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-[0.1em]">
+                  {section.section}
+                </span>
+              </div>
+              <ul className="space-y-1.5">
                 {section.links.map((link) => {
                   const IconComponent = link.icon;
                   const active = isActive(link.path);
@@ -266,17 +272,19 @@ export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
                     <li key={link.name}>
                       <button
                         onClick={() => handleNavigation(link.path)}
-                        className={`w-full flex items-center px-3 py-2 rounded-lg text-sm font-medium transition-all duration-200 whitespace-nowrap cursor-pointer ${
+                        className={`w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-[13px] transition-colors duration-150 whitespace-nowrap cursor-pointer ${
                           active 
-                            ? 'bg-main-50 text-main-600 border border-main-200 shadow-sm' 
-                            : 'text-gray-700 hover:bg-gray-50 hover:text-gray-900'
+                            ? 'bg-gray-100 text-gray-950 font-semibold' 
+                            : 'text-gray-500 font-medium hover:bg-gray-50 hover:text-gray-800'
                         }`}
                       >
-                        <IconComponent className={`w-5 h-5 mr-3 flex-shrink-0 ${active ? 'text-main-600' : 'text-gray-500'}`} />
-                        <span className="truncate">{link.name}</span>
-                        {active && (
-                          <div className="ml-auto w-2 h-2 bg-main-600 rounded-full flex-shrink-0"></div>
-                        )}
+                        <IconComponent
+                          className={`w-[15px] h-[15px] flex-shrink-0 ${
+                            active ? 'text-gray-950' : 'text-gray-400'
+                          }`}
+                          strokeWidth={active ? 2 : 1.75}
+                        />
+                        <span className="truncate leading-none">{link.name}</span>
                       </button>
                     </li>
                   );
@@ -287,10 +295,10 @@ export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
         </nav>
         
         {/* User Profile Section */}
-        <div className="flex-shrink-0 mt-4 pt-6 border-t border-gray-200">
-          <div className="flex items-center gap-3 p-3 rounded-lg bg-gray-50">
-            <div className="w-8 h-8 rounded-full bg-main-600 flex items-center justify-center flex-shrink-0">
-              <span className="text-white text-sm font-semibold uppercase">
+        <div className="flex-shrink-0 mt-3 pt-3 border-t border-gray-100">
+          <div className="flex items-center gap-2.5 px-1.5 py-1.5">
+            <div className="w-7 h-7 rounded-full bg-gray-900 flex items-center justify-center flex-shrink-0">
+              <span className="text-white text-[10px] font-semibold uppercase tracking-wide">
                 {(() => {
                   const ownerName = profile?.owner_name || '';
                   const firstInitial = ownerName?.split(" ")[0]?.[0] || 'U';
@@ -300,11 +308,11 @@ export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
               </span>
             </div>
             <div className="flex-1 min-w-0">
-              <div className="text-sm font-medium text-gray-900 truncate" title={businessName || 'Business'}>
+              <div className="text-[12px] font-medium text-gray-900 truncate" title={businessName || 'Business'}>
                 {businessName || 'Business'}
               </div>
-              <div className="text-xs text-gray-500 truncate">
-                {profile?.owner_name ? `Signed in as ${profile.owner_name}` : 'Merchant'}
+              <div className="text-[10px] text-gray-400 truncate">
+                {profile?.owner_name ? profile.owner_name : 'Merchant'}
               </div>
             </div>
           </div>

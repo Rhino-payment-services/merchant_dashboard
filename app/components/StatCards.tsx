@@ -1,31 +1,41 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Card, CardContent, CardHeader } from '../../components/ui/card';
 import { Button } from '../../components/ui/button';
 import { useUserProfile } from '../(dashboard)/UserProfileProvider';
 import { useSession } from 'next-auth/react';
 import { useChildMerchantContext } from '@/lib/hooks/useChildMerchantContext';
-import { RefreshCw, ArrowRightLeft } from 'lucide-react';
-import { getWalletBalance, getMyTransactions } from '@/lib/api/wallet.api';
-import { fetchAllBusinessTransactions } from '@/lib/utils/merchant-transaction-export';
 import {
-  computeMerchantPnLSummary,
-  filterTransactionsByCreatedAtRange,
-  formatPeriodPercentChange,
-  getLastTwoThirtyDayWindows,
-} from '@/lib/utils/transaction-display';
+  ArrowRightLeft,
+  Wallet,
+  ArrowDownToLine,
+  ArrowUpFromLine,
+  ArrowLeftRight,
+  TrendingUp,
+  Send,
+  type LucideIcon,
+} from 'lucide-react';
+import { getWalletBalance } from '@/lib/api/wallet.api';
+import {
+  getBusinessWalletStatement,
+  getMyTransactions,
+} from '@/lib/api/transactions.api';
+import { getLastTwoThirtyDayIsoWindows } from '@/lib/date-picker-utils';
+import { formatPeriodPercentChange } from '@/lib/utils/transaction-display';
 import SweepToDisbursementModal from './SweepToDisbursementModal';
 import { useTeamPermissionSession } from '@/lib/hooks/useTeamPermissionSession';
 import { canViewBalance, canViewTransactions } from '@/lib/utils/permissions';
+import KpiCard from './KpiCard';
 
 type StatCardItem = {
   label: string;
   value: string;
+  suffix?: string;
   change: string;
   changeType: 'up' | 'down' | 'neutral';
-  icon: string;
+  icon: LucideIcon;
+  valueClassName?: string;
 };
 
-export default function StatCards() {
+export default function StatCards({ refreshKey = 0 }: { refreshKey?: number }) {
   const { profile } = useUserProfile();
   const { data: session } = useSession();
   const teamSession = useTeamPermissionSession();
@@ -49,7 +59,8 @@ export default function StatCards() {
   const [walletBalance, setWalletBalance] = useState<number>(0);
   const [collectionBalance, setCollectionBalance] = useState<number | null>(null);
   const [disbursementBalance, setDisbursementBalance] = useState<number | null>(null);
-  const [walletLoading, setWalletLoading] = useState(true);
+  const [balanceLoading, setBalanceLoading] = useState(true);
+  const [metricsLoading, setMetricsLoading] = useState(true);
   const [totalTransactions, setTotalTransactions] = useState<number>(0);
   const [totalReceived, setTotalReceived] = useState<number>(0);
   const [totalSent, setTotalSent] = useState<number>(0);
@@ -62,76 +73,87 @@ export default function StatCards() {
   const [sentChange, setSentChange] = useState(formatPeriodPercentChange(0, 0));
   const [sweepModalOpen, setSweepModalOpen] = useState(false);
 
-  const fetchWalletData = async () => {
+  const merchantCodeForTx = isViewingChild
+    ? childMerchantCode
+    : currentMerchantCode != null
+      ? String(currentMerchantCode)
+      : null;
+
+  const fetchBalance = async () => {
+    if (!allowBalance) {
+      setBalanceLoading(false);
+      return;
+    }
     try {
-      setWalletLoading(true);
+      setBalanceLoading(true);
+      const balanceData = await getWalletBalance(childMerchantId || undefined);
+      setWalletBalance(balanceData.balance ?? 0);
+      setCollectionBalance(balanceData.collectionBalance ?? null);
+      setDisbursementBalance(balanceData.disbursementBalance ?? null);
+    } catch (error) {
+      console.error('Error fetching wallet balance:', error);
       setWalletBalance(0);
       setCollectionBalance(null);
       setDisbursementBalance(null);
+    } finally {
+      setBalanceLoading(false);
+    }
+  };
+
+  const fetchMetrics = async () => {
+    if (!allowTransactions) {
       setTotalTransactions(0);
       setTotalReceived(0);
       setTotalSent(0);
+      setTxnCountChange(formatPeriodPercentChange(0, 0));
+      setReceivedChange(formatPeriodPercentChange(0, 0));
+      setSentChange(formatPeriodPercentChange(0, 0));
+      setMetricsLoading(false);
+      return;
+    }
 
-      if (allowBalance) {
-        const balanceData = await getWalletBalance(childMerchantId || undefined);
-        setWalletBalance(balanceData.balance ?? 0);
-        setCollectionBalance(balanceData.collectionBalance ?? null);
-        setDisbursementBalance(balanceData.disbursementBalance ?? null);
-      }
+    try {
+      setMetricsLoading(true);
+      const windows = getLastTwoThirtyDayIsoWindows();
 
-      if (!allowTransactions) {
-        return;
-      }
+      const [meta, currentStatement, previousStatement] = await Promise.all([
+        getMyTransactions(
+          { page: 1, limit: 1 },
+          childMerchantId || undefined,
+          merchantCodeForTx,
+        ),
+        getBusinessWalletStatement(
+          windows.current.startDate,
+          windows.current.endDate,
+          childMerchantId || undefined,
+          merchantCodeForTx,
+        ),
+        getBusinessWalletStatement(
+          windows.previous.startDate,
+          windows.previous.endDate,
+          childMerchantId || undefined,
+          merchantCodeForTx,
+        ),
+      ]);
 
-      const merchantCodeForTx = isViewingChild ? childMerchantCode : undefined;
-      const meta = await getMyTransactions(
-        { page: 1, limit: 1 },
-        childMerchantId || undefined,
-        merchantCodeForTx,
-      );
-      setTotalTransactions(meta.total || 0);
-
-      const allTransactions = await fetchAllBusinessTransactions(
-        {},
-        childMerchantId || undefined,
-        merchantCodeForTx,
-      );
-
-      // All-time received/sent (exclude sweeps — same rules as Reports)
-      const lifetime = computeMerchantPnLSummary(allTransactions);
-      setTotalReceived(lifetime.totalRevenue);
-      setTotalSent(lifetime.totalExpenses);
-
-      // Real trends: last 30 days vs prior 30 days
-      const windows = getLastTwoThirtyDayWindows();
-      const currentPeriodTxs = filterTransactionsByCreatedAtRange(
-        allTransactions,
-        windows.startCurrent,
-        windows.endCurrent,
-      );
-      const previousPeriodTxs = filterTransactionsByCreatedAtRange(
-        allTransactions,
-        windows.startPrevious,
-        windows.endPrevious,
-      );
+      setTotalTransactions(meta.pagination?.total || 0);
+      setTotalReceived(Number(currentStatement.totalNetCredit || 0));
+      setTotalSent(Number(currentStatement.totalNetDebit || 0));
 
       setTxnCountChange(
         formatPeriodPercentChange(
-          currentPeriodTxs.length,
-          previousPeriodTxs.length,
+          Number(currentStatement.successfulCount || 0),
+          Number(previousStatement.successfulCount || 0),
           {
             noBaselineLabel: (n) =>
-              `${n.toLocaleString()} transaction${n === 1 ? '' : 's'} in last 30 days`,
+              `${n.toLocaleString()} successful in last 30 days`,
           },
         ),
       );
-
-      const currentPnL = computeMerchantPnLSummary(currentPeriodTxs);
-      const previousPnL = computeMerchantPnLSummary(previousPeriodTxs);
       setReceivedChange(
         formatPeriodPercentChange(
-          currentPnL.totalRevenue,
-          previousPnL.totalRevenue,
+          Number(currentStatement.totalNetCredit || 0),
+          Number(previousStatement.totalNetCredit || 0),
           {
             noBaselineLabel: (n) =>
               `UGX ${n.toLocaleString()} received in last 30 days`,
@@ -140,8 +162,8 @@ export default function StatCards() {
       );
       setSentChange(
         formatPeriodPercentChange(
-          currentPnL.totalExpenses,
-          previousPnL.totalExpenses,
+          Number(currentStatement.totalNetDebit || 0),
+          Number(previousStatement.totalNetDebit || 0),
           {
             noBaselineLabel: (n) =>
               `UGX ${n.toLocaleString()} sent in last 30 days`,
@@ -149,8 +171,7 @@ export default function StatCards() {
         ),
       );
     } catch (error) {
-      console.error('Error fetching wallet data:', error);
-      setWalletBalance(0);
+      console.error('Error fetching wallet metrics:', error);
       setTotalTransactions(0);
       setTotalReceived(0);
       setTotalSent(0);
@@ -158,13 +179,17 @@ export default function StatCards() {
       setReceivedChange(formatPeriodPercentChange(0, 0));
       setSentChange(formatPeriodPercentChange(0, 0));
     } finally {
-      setWalletLoading(false);
+      setMetricsLoading(false);
     }
+  };
+
+  const fetchWalletData = async () => {
+    await Promise.all([fetchBalance(), fetchMetrics()]);
   };
 
   const merchantCode = (session?.user as any)?.merchantCode;
   const hasFetchedRef = useRef<string | null>(null);
-  const fetchKey = `${merchantCode || ''}:${childMerchantId || ''}:${allowBalance}:${allowTransactions}`;
+  const fetchKey = `${merchantCode || ''}:${childMerchantId || ''}:${allowBalance}:${allowTransactions}:${refreshKey}`;
 
   useEffect(() => {
     if (!merchantCode && !isViewingChild) return;
@@ -172,16 +197,18 @@ export default function StatCards() {
     if (hasFetchedRef.current === fetchKey) return;
     hasFetchedRef.current = fetchKey;
     fetchWalletData();
-  }, [fetchKey, merchantCode, isViewingChild, childMerchantId, allowBalance, allowTransactions]);
+  }, [fetchKey, merchantCode, isViewingChild, childMerchantId, allowBalance, allowTransactions, refreshKey]);
 
-  if (walletLoading) {
+  const showInitialSkeleton = balanceLoading && metricsLoading;
+
+  if (showInitialSkeleton) {
     return (
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 animate-pulse">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 animate-pulse">
         {Array.from({ length: 4 }).map((_, index) => (
-          <div key={index} className="rounded-xl border bg-white p-4 space-y-3">
-            <div className="h-4 w-24 bg-gray-200 rounded" />
-            <div className="h-8 w-32 bg-gray-200 rounded" />
+          <div key={index} className="rounded-2xl border border-gray-100 bg-white px-4 py-3.5 space-y-2.5">
             <div className="h-3 w-20 bg-gray-100 rounded" />
+            <div className="h-3 w-28 bg-gray-50 rounded" />
+            <div className="h-6 w-24 bg-gray-100 rounded" />
           </div>
         ))}
       </div>
@@ -194,143 +221,169 @@ export default function StatCards() {
     collectionBalance !== null &&
     disbursementBalance !== null;
 
-  const maskMoney = (amount: number) =>
-    allowBalance ? `${amount.toLocaleString()} UGX` : '••••';
-  const maskCount = (n: number) => (allowTransactions ? `${n}` : '••••');
+  const moneyValue = (amount: number) =>
+    allowBalance ? amount.toLocaleString() : '••••';
+  const maskCount = (n: number) => (allowTransactions ? `${n.toLocaleString()}` : '••••');
+  const pendingValue = '…';
 
   const stats: StatCardItem[] = hasSplitBalances
     ? [
         {
           label: 'Collection balance',
-          value: maskMoney(collectionBalance ?? 0),
+          value: balanceLoading ? pendingValue : moneyValue(collectionBalance ?? 0),
+          suffix: allowBalance && !balanceLoading ? 'UGX' : undefined,
           change: allowBalance
-            ? 'Incoming customer payments (Collection wallet)'
+            ? 'Incoming customer payments'
             : 'Balance hidden — no permission',
           changeType: 'neutral',
-          icon: '📥',
+          icon: ArrowDownToLine,
         },
         {
           label: 'Payout balance',
-          value: maskMoney(disbursementBalance ?? 0),
+          value: balanceLoading ? pendingValue : moneyValue(disbursementBalance ?? 0),
+          suffix: allowBalance && !balanceLoading ? 'UGX' : undefined,
           change: allowBalance
-            ? 'Available for outgoing payments (Disbursement wallet)'
+            ? 'Available for outgoing payments'
             : 'Balance hidden — no permission',
           changeType: 'neutral',
-          icon: '📤',
+          icon: ArrowUpFromLine,
         },
         {
           label: 'Total transactions',
-          value: maskCount(totalTransactions),
-          change: allowTransactions ? txnCountChange.label : 'Transactions hidden — no permission',
-          changeType: allowTransactions ? txnCountChange.changeType : 'neutral',
-          icon: '🛒',
+          value: metricsLoading ? pendingValue : maskCount(totalTransactions),
+          change: allowTransactions
+            ? metricsLoading
+              ? 'Loading period trend…'
+              : txnCountChange.label
+            : 'Transactions hidden — no permission',
+          changeType: allowTransactions && !metricsLoading ? txnCountChange.changeType : 'neutral',
+          icon: ArrowLeftRight,
         },
         {
-          label: 'Total received',
-          value: allowTransactions && allowBalance ? maskMoney(totalReceived) : '••••',
+          label: 'Money in (30d)',
+          value:
+            metricsLoading || !(allowTransactions && allowBalance)
+              ? metricsLoading && allowTransactions && allowBalance
+                ? pendingValue
+                : '••••'
+              : moneyValue(totalReceived),
+          suffix:
+            !metricsLoading && allowTransactions && allowBalance ? 'UGX' : undefined,
           change:
             allowTransactions && allowBalance
-              ? receivedChange.label
+              ? metricsLoading
+                ? 'Loading last 30 days…'
+                : receivedChange.label
               : 'Hidden — no permission',
           changeType:
-            allowTransactions && allowBalance ? receivedChange.changeType : 'neutral',
-          icon: '📦',
+            allowTransactions && allowBalance && !metricsLoading
+              ? receivedChange.changeType
+              : 'neutral',
+          icon: TrendingUp,
+          valueClassName: 'text-emerald-600',
         },
       ]
     : [
         {
           label: 'Current balance',
-          value: maskMoney(walletBalance),
+          value: balanceLoading ? pendingValue : moneyValue(walletBalance),
+          suffix: allowBalance && !balanceLoading ? 'UGX' : undefined,
           change: allowBalance
             ? 'Available business wallet balance'
             : 'Balance hidden — no permission',
           changeType: 'neutral',
-          icon: '💰',
+          icon: Wallet,
         },
         {
           label: 'Total transactions',
-          value: maskCount(totalTransactions),
-          change: allowTransactions ? txnCountChange.label : 'Transactions hidden — no permission',
-          changeType: allowTransactions ? txnCountChange.changeType : 'neutral',
-          icon: '🛒',
+          value: metricsLoading ? pendingValue : maskCount(totalTransactions),
+          change: allowTransactions
+            ? metricsLoading
+              ? 'Loading period trend…'
+              : txnCountChange.label
+            : 'Transactions hidden — no permission',
+          changeType: allowTransactions && !metricsLoading ? txnCountChange.changeType : 'neutral',
+          icon: ArrowLeftRight,
         },
         {
-          label: 'Total received',
-          value: allowTransactions && allowBalance ? maskMoney(totalReceived) : '••••',
+          label: 'Money in (30d)',
+          value:
+            metricsLoading || !(allowTransactions && allowBalance)
+              ? metricsLoading && allowTransactions && allowBalance
+                ? pendingValue
+                : '••••'
+              : moneyValue(totalReceived),
+          suffix:
+            !metricsLoading && allowTransactions && allowBalance ? 'UGX' : undefined,
           change:
             allowTransactions && allowBalance
-              ? receivedChange.label
+              ? metricsLoading
+                ? 'Loading last 30 days…'
+                : receivedChange.label
               : 'Hidden — no permission',
           changeType:
-            allowTransactions && allowBalance ? receivedChange.changeType : 'neutral',
-          icon: '📦',
+            allowTransactions && allowBalance && !metricsLoading
+              ? receivedChange.changeType
+              : 'neutral',
+          icon: TrendingUp,
+          valueClassName: 'text-emerald-600',
         },
         {
-          label: 'Total sent',
-          value: allowTransactions && allowBalance ? maskMoney(totalSent) : '••••',
+          label: 'Money out (30d)',
+          value:
+            metricsLoading || !(allowTransactions && allowBalance)
+              ? metricsLoading && allowTransactions && allowBalance
+                ? pendingValue
+                : '••••'
+              : moneyValue(totalSent),
+          suffix:
+            !metricsLoading && allowTransactions && allowBalance ? 'UGX' : undefined,
           change:
             allowTransactions && allowBalance
-              ? sentChange.label
+              ? metricsLoading
+                ? 'Loading last 30 days…'
+                : sentChange.label
               : 'Hidden — no permission',
           changeType:
-            allowTransactions && allowBalance ? sentChange.changeType : 'neutral',
-          icon: '👥',
+            allowTransactions && allowBalance && !metricsLoading
+              ? sentChange.changeType
+              : 'neutral',
+          icon: Send,
         },
       ];
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between gap-2">
-        {hasSplitBalances && allowBalance && (
+    <div className="space-y-3">
+      {hasSplitBalances && allowBalance && (
+        <div className="flex items-center justify-between gap-3">
+          <p className="text-[11px] text-gray-400">
+            Incoming payments land in Collection. Move funds to Payout before sending money out.
+          </p>
           <Button
             size="sm"
+            variant="outline"
             onClick={() => setSweepModalOpen(true)}
-            disabled={walletLoading || (collectionBalance ?? 0) <= 0}
-            className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white"
+            disabled={balanceLoading || (collectionBalance ?? 0) <= 0}
+            className="h-8 shrink-0 rounded-full px-3 text-[12px] font-medium"
           >
-            <ArrowRightLeft className="h-4 w-4" />
-            Move to payout balance
+            <ArrowRightLeft className="h-3.5 w-3.5" />
+            Move to payout
           </Button>
-        )}
-        <button
-          onClick={fetchWalletData}
-          disabled={walletLoading}
-          className="ml-auto flex items-center gap-2 px-3 py-1 text-sm bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200 transition-colors disabled:opacity-50"
-        >
-          <RefreshCw className={`h-4 w-4 ${walletLoading ? 'animate-spin' : ''}`} />
-          {walletLoading ? 'Refreshing...' : 'Refresh Balance'}
-        </button>
-      </div>
-
-      {hasSplitBalances && (
-        <p className="text-xs text-gray-500">
-          Customer payments are credited to your <span className="font-medium">Collection balance</span> (Collection wallet).
-          Transfer funds to your <span className="font-medium">Payout balance</span> (Disbursement wallet) for outgoing payments.
-        </p>
+        </div>
       )}
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
         {stats.map((stat) => (
-          <Card key={stat.label} className="flex flex-col gap-2 relative">
-            <CardHeader className="flex flex-row items-center gap-2 text-gray-500 pb-2">
-              <span className="text-xl">{stat.icon}</span>
-              <span className="text-sm font-medium">{stat.label}</span>
-            </CardHeader>
-            <CardContent className="flex flex-col gap-1 pt-0">
-              <div className="text-2xl font-bold">{stat.value}</div>
-              <div
-                className={`text-xs font-semibold ${
-                  stat.changeType === 'up'
-                    ? 'text-green-500'
-                    : stat.changeType === 'down'
-                      ? 'text-red-500'
-                      : 'text-gray-500'
-                }`}
-              >
-                {stat.change}
-              </div>
-            </CardContent>
-          </Card>
+          <KpiCard
+            key={stat.label}
+            icon={stat.icon}
+            label={stat.label}
+            value={stat.value}
+            suffix={stat.suffix}
+            hint={stat.change}
+            changeType={stat.changeType}
+            valueClassName={stat.valueClassName}
+          />
         ))}
       </div>
 
