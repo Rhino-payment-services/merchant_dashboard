@@ -34,6 +34,7 @@ import {
   apiErrorMessage,
   formatDateTime,
   formatUgx,
+  isVerifyingNumbers,
   productTypeOf,
   ROW_STATUS_META,
   type RowStatus,
@@ -46,6 +47,7 @@ import {
   DetailsSkeleton,
   Pagination,
   ProductTypeBadge,
+  RecipientCell,
   Refetching,
   RowStatusBadge,
   SearchInput,
@@ -53,6 +55,7 @@ import {
   StatCard,
   StatGridSkeleton,
   TableSkeleton,
+  VerifyingNumbersBanner,
   batchMixText,
   checkerText,
   rowProductText,
@@ -149,6 +152,7 @@ const AUDIT_LABELS: Record<string, string> = {
   EXECUTION_FAILED: 'Could not queue delivery',
   COMPLETED: 'Delivery finished',
   RETRY_REQUESTED: 'Retry requested',
+  NUMBERS_VERIFIED: 'Numbers verified with the networks',
 };
 
 export default function DataBundleBatchDetailPage() {
@@ -164,12 +168,17 @@ export default function DataBundleBatchDetailPage() {
   const debouncedSearch = useDebounced(search);
 
   const { data: batch, isLoading, error } = useDataBundleBatch(id);
-  const rows = useDataBundleRows(id, {
-    page,
-    limit: 25,
-    search: debouncedSearch,
-    status: rowStatus === 'ALL' ? undefined : rowStatus,
-  });
+  const verifying = isVerifyingNumbers(batch);
+  const rows = useDataBundleRows(
+    id,
+    {
+      page,
+      limit: 25,
+      search: debouncedSearch,
+      status: rowStatus === 'ALL' ? undefined : rowStatus,
+    },
+    { poll: verifying },
+  );
   const submit = useSubmitBatch();
   const discard = useDiscardBatch();
   const retry = useRetryRecords();
@@ -262,6 +271,9 @@ export default function DataBundleBatchDetailPage() {
         </div>
       </div>
 
+      {batch.status === 'DRAFT' && verifying && (
+        <VerifyingNumbersBanner pending={batch.pendingLookupCount} total={batch.validRows} />
+      )}
       {batch.status === 'PENDING_APPROVAL' && batch.maker.id && !batch.actions.canApprove && access.can.approve && (
         <p className="rounded-md bg-amber-50 p-3 text-sm text-amber-800">
           You uploaded this batch, so another checker must approve or reject it.
@@ -327,7 +339,7 @@ export default function DataBundleBatchDetailPage() {
                 setSearch(v);
                 setPage(1);
               }}
-              placeholder="Phone, reference, bundle, note"
+              placeholder="Phone, name, reference, bundle, note"
             />
             <Select
               value={rowStatus}
@@ -376,10 +388,10 @@ export default function DataBundleBatchDetailPage() {
                     {rows.data.items.map((r) => (
                       <TableRow key={r.id}>
                         <TableCell>{r.rowNumber}</TableCell>
-                        <TableCell className="whitespace-nowrap">
-                          {r.phoneNumber}
+                        <TableCell>
+                          <RecipientCell row={r} />
                           {r.recipientNote && (
-                            <div className="text-xs text-gray-500">{r.recipientNote}</div>
+                            <div className="text-xs text-gray-500">Note: {r.recipientNote}</div>
                           )}
                         </TableCell>
                         <TableCell>

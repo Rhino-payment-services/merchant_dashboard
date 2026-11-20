@@ -71,6 +71,34 @@ export const ROW_STATUS_META: Record<RowStatus, { label: string; variant: BadgeV
   NEEDS_RECONCILIATION: { label: 'Needs reconciliation', variant: 'warning' },
 };
 
+/** Result of checking a number with its operator (MTN MoMo / Airtel Money). */
+export type LookupStatus = 'PENDING' | 'VERIFIED' | 'NOT_FOUND' | 'UNVERIFIED' | 'UNSUPPORTED';
+
+export type VerificationStatus = 'PENDING' | 'IN_PROGRESS' | 'COMPLETED';
+
+export const LOOKUP_STATUS_META: Record<
+  LookupStatus,
+  { label: string; variant: BadgeVariant; hint: string }
+> = {
+  PENDING: { label: 'Checking…', variant: 'neutral', hint: 'Number is being checked with its network' },
+  VERIFIED: { label: 'Verified', variant: 'success', hint: 'Number is registered on its network' },
+  NOT_FOUND: { label: 'Not registered', variant: 'danger', hint: 'The network has no account for this number' },
+  UNVERIFIED: {
+    label: 'Not verified',
+    variant: 'warning',
+    hint: 'The network could not be reached; only the number format and network were checked',
+  },
+  UNSUPPORTED: {
+    label: 'Format checked',
+    variant: 'neutral',
+    hint: 'This network offers no number lookup; only the number format and network were checked',
+  },
+};
+
+export function isVerifyingNumbers(batch: { verificationStatus?: VerificationStatus | null } | null | undefined): boolean {
+  return !!batch?.verificationStatus && batch.verificationStatus !== 'COMPLETED';
+}
+
 export type ProductType = 'DATA_BUNDLE' | 'AIRTIME';
 
 export const PRODUCT_TYPE_META: Record<ProductType, { label: string; variant: BadgeVariant }> = {
@@ -107,11 +135,12 @@ export type UploadSummary = {
   validRows: number;
   invalidRows: number;
   duplicateRows: number;
+  verificationStatus?: VerificationStatus;
 };
 
-/** Submit for Approval is only possible when at least one valid record exists. */
+/** Submit for Approval needs at least one valid record and finished number checks. */
 export function canSubmitUpload(summary: UploadSummary | null | undefined): boolean {
-  return !!summary && summary.validRows > 0;
+  return !!summary && summary.validRows > 0 && !isVerifyingNumbers(summary);
 }
 
 export type DataBundleNetwork = 'MTN' | 'AIRTEL' | 'LYCA';

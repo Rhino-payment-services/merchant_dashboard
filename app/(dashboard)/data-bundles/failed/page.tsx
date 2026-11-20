@@ -227,7 +227,12 @@ export default function DataBundleFailedRecordsPage() {
                           />
                         </TableCell>
                       )}
-                      <TableCell className="whitespace-nowrap">{r.phoneNumber}</TableCell>
+                      <TableCell className="whitespace-nowrap">
+                        {r.phoneNumber}
+                        {r.recipientName && (
+                          <div className="text-xs font-medium text-gray-700">{r.recipientName}</div>
+                        )}
+                      </TableCell>
                       <TableCell>
                         <ProductTypeBadge type={r.productType} />
                       </TableCell>

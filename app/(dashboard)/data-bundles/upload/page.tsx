@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
@@ -24,20 +24,39 @@ import {
 } from '@/components/ui/table';
 import { Download, FileSpreadsheet, Loader2, Send, Trash2, UploadCloud } from 'lucide-react';
 import { AccessDenied } from '@/app/components/AccessDenied';
-import { dataBundlesApi, saveBlob, type UploadResult } from '@/lib/api/data-bundles.api';
-import { useDataBundleProducts, useDiscardBatch, useSubmitBatch } from '@/lib/hooks/useDataBundles';
+import {
+  dataBundlesApi,
+  saveBlob,
+  type DataBundleBatch,
+  type DataBundleRow,
+  type UploadResult,
+} from '@/lib/api/data-bundles.api';
+import {
+  useDataBundleBatch,
+  useDataBundleProducts,
+  useDiscardBatch,
+  useSubmitBatch,
+} from '@/lib/hooks/useDataBundles';
 import {
   DATA_BUNDLE_NETWORKS,
   type DataBundleNetwork,
   apiErrorMessage,
   canSubmitUpload,
   formatUgx,
+  isVerifyingNumbers,
   networkLabel,
   precheckUploadFile,
   productsByNetwork,
 } from '@/lib/utils/data-bundles';
 import { useDataBundleAccessContext } from '../_components/DataBundleAccessContext';
-import { ProductTypeBadge, RowStatusBadge, StatCard, rowProductText } from '../_components/shared';
+import {
+  ProductTypeBadge,
+  RecipientCell,
+  RowStatusBadge,
+  StatCard,
+  VerifyingNumbersBanner,
+  rowProductText,
+} from '../_components/shared';
 
 type Phase = 'idle' | 'uploading' | 'validating' | 'done';
 type RowFilter = 'ALL' | 'VALID' | 'INVALID' | 'DUPLICATE';
@@ -51,6 +70,51 @@ const NO_PAGE_BUNDLES: Record<DataBundleNetwork, string> = {
 };
 
 const pageBundleValue = (value: string) => (value === PER_ROW_BUNDLE ? undefined : value);
+
+/** Rows endpoint page size limit. */
+const ROWS_PAGE_LIMIT = 100;
+
+async function fetchAllRows(batchId: string, total: number): Promise<DataBundleRow[]> {
+  const pages = Math.max(1, Math.ceil(total / ROWS_PAGE_LIMIT));
+  const results = await Promise.all(
+    Array.from({ length: pages }, (_, i) =>
+      dataBundlesApi.listRows(batchId, { page: i + 1, limit: ROWS_PAGE_LIMIT }),
+    ),
+  );
+  return results.flatMap((r) => r.items);
+}
+
+/** Apply the verified batch (number checks done) to the upload preview. */
+function applyVerification(
+  result: UploadResult,
+  batch: DataBundleBatch,
+  rows: DataBundleRow[],
+): UploadResult {
+  const byRow = new Map(rows.map((r) => [r.rowNumber, r]));
+  return {
+    ...result,
+    batch: { ...result.batch, verificationStatus: batch.verificationStatus },
+    summary: {
+      ...result.summary,
+      validRows: batch.validRows,
+      invalidRows: batch.invalidRows,
+      duplicateRows: batch.duplicateRows,
+      totalAmount: batch.totalAmount,
+      verificationStatus: batch.verificationStatus,
+    },
+    rows: result.rows.map((r) => {
+      const fresh = byRow.get(r.rowNumber);
+      if (!fresh) return r;
+      return {
+        ...r,
+        status: fresh.status as UploadResult['rows'][number]['status'],
+        errors: fresh.validationErrors ?? r.errors,
+        lookupStatus: fresh.lookupStatus,
+        recipientName: fresh.recipientName,
+      };
+    }),
+  };
+}
 
 export default function DataBundlesUploadPage() {
   const router = useRouter();
@@ -72,6 +136,33 @@ export default function DataBundlesUploadPage() {
   const products = useDataBundleProducts(access.can.upload);
   const byNetwork = useMemo(() => productsByNetwork(products.data ?? []), [products.data]);
   const anyPageBundle = DATA_BUNDLE_NETWORKS.some((n) => pageBundles[n] !== PER_ROW_BUNDLE);
+  const verifying = isVerifyingNumbers(result?.summary);
+  const verifyingBatch = useDataBundleBatch(verifying ? result?.batch.id : undefined);
+
+  useEffect(() => {
+    const batch = verifyingBatch.data;
+    if (!result || !verifying || !batch || batch.id !== result.batch.id || isVerifyingNumbers(batch)) {
+      return;
+    }
+    let cancelled = false;
+    fetchAllRows(batch.id, result.summary.totalRows)
+      .then((rows) => {
+        if (cancelled) return;
+        setResult(applyVerification(result, batch, rows));
+        const notFound = rows.filter((r) => r.lookupStatus === 'NOT_FOUND').length;
+        if (notFound > 0) {
+          toast.warning(`${notFound} number(s) are not registered on their network and were marked invalid`);
+        } else {
+          toast.success('All numbers checked');
+        }
+      })
+      .catch((e) => {
+        if (!cancelled) toast.error(apiErrorMessage(e, 'Could not load the verified rows'));
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [verifyingBatch.data, verifying, result]);
 
   const filteredRows = useMemo(
     () => (result?.rows ?? []).filter((r) => filter === 'ALL' || r.status === filter),
@@ -137,6 +228,8 @@ export default function DataBundlesUploadPage() {
       setPhase('done');
       if (res.summary.validRows === 0) {
         toast.error('No valid records found. Fix the errors and upload again.');
+      } else if (isVerifyingNumbers(res.summary)) {
+        toast.success(`${res.summary.validRows} record(s) passed validation; verifying numbers with the networks…`);
       } else {
         toast.success(`${res.summary.validRows} valid record(s) ready for approval`);
       }
@@ -349,6 +442,13 @@ export default function DataBundlesUploadPage() {
             <StatCard label="Total value" value={formatUgx(result.summary.totalAmount)} tone="text-blue-600" />
           </div>
 
+          {verifying && (
+            <VerifyingNumbersBanner
+              pending={verifyingBatch.data?.pendingLookupCount ?? result.summary.validRows}
+              total={result.summary.validRows}
+            />
+          )}
+
           <Card>
             <CardHeader className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
               <div>
@@ -395,11 +495,8 @@ export default function DataBundlesUploadPage() {
                         <TableCell>
                           <RowStatusBadge status={r.status} />
                         </TableCell>
-                        <TableCell className="whitespace-nowrap">
-                          {r.phoneNumber}
-                          {r.network && (
-                            <div className="text-xs text-gray-500">{networkLabel(r.network)}</div>
-                          )}
+                        <TableCell>
+                          <RecipientCell row={r} />
                         </TableCell>
                         <TableCell>
                           <ProductTypeBadge type={r.productType} />
@@ -453,9 +550,11 @@ export default function DataBundlesUploadPage() {
 
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 rounded-lg border bg-white p-4">
             <p className="text-sm text-gray-600">
-              {canSubmitUpload(result.summary)
-                ? `${result.summary.validRows} recipient(s) totalling ${formatUgx(result.summary.totalAmount)} will be sent to a checker for approval.`
-                : 'There are no valid records to submit. Fix the errors in your file and upload it again.'}
+              {verifying
+                ? 'Numbers are being verified with MTN and Airtel. You can submit once this finishes.'
+                : canSubmitUpload(result.summary)
+                  ? `${result.summary.validRows} recipient(s) totalling ${formatUgx(result.summary.totalAmount)} will be sent to a checker for approval.`
+                  : 'There are no valid records to submit. Fix the errors in your file and upload it again.'}
             </p>
             <Button onClick={onSubmit} disabled={!canSubmitUpload(result.summary) || submit.isPending}>
               {submit.isPending ? (

@@ -14,15 +14,18 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { ChevronLeft, ChevronRight, Search } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Loader2, Search } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import {
   BATCH_STATUS_META,
+  LOOKUP_STATUS_META,
   PRODUCT_TYPE_META,
   ROW_STATUS_META,
   airtimeLabel,
+  networkLabel,
   productTypeOf,
   type BatchStatus,
+  type LookupStatus,
   type ProductType,
   type RowStatus,
 } from '@/lib/utils/data-bundles';
@@ -72,6 +75,66 @@ export function BatchStatusBadge({ status }: { status: BatchStatus }) {
 export function RowStatusBadge({ status }: { status: RowStatus }) {
   const meta = ROW_STATUS_META[status] ?? { label: status, variant: 'neutral' as const };
   return <Badge variant={meta.variant}>{meta.label}</Badge>;
+}
+
+export function LookupStatusBadge({ status }: { status?: LookupStatus | null }) {
+  if (!status) return null;
+  const meta = LOOKUP_STATUS_META[status] ?? { label: status, variant: 'neutral' as const, hint: '' };
+  return (
+    <Badge variant={meta.variant} title={meta.hint}>
+      {meta.label}
+    </Badge>
+  );
+}
+
+/** Phone number with its network, the operator-verified owner name and the number check result. */
+export function RecipientCell({
+  row,
+}: {
+  row: {
+    phoneNumber: string | null;
+    network: string | null;
+    recipientName?: string | null;
+    lookupStatus?: LookupStatus | null;
+  };
+}) {
+  return (
+    <div className="space-y-0.5">
+      <div className="whitespace-nowrap">{row.phoneNumber}</div>
+      {row.recipientName && (
+        <div className="text-xs font-medium text-gray-800">{row.recipientName}</div>
+      )}
+      <div className="flex flex-wrap items-center gap-1 text-xs text-gray-500">
+        {row.network && <span>{networkLabel(row.network)}</span>}
+        <LookupStatusBadge status={row.lookupStatus} />
+      </div>
+    </div>
+  );
+}
+
+/** Shown while uploaded numbers are being checked with MTN and Airtel. */
+export function VerifyingNumbersBanner({
+  pending,
+  total,
+}: {
+  pending: number;
+  total: number;
+}) {
+  const checked = Math.max(0, total - pending);
+  return (
+    <div
+      role="status"
+      aria-live="polite"
+      className="flex items-start gap-2 rounded-md border border-blue-200 bg-blue-50 p-3 text-sm text-blue-800"
+    >
+      <Loader2 className="mt-0.5 h-4 w-4 shrink-0 animate-spin" />
+      <span>
+        Verifying numbers with MTN and Airtel{total > 0 ? ` (${checked} of ${total} checked)` : ''}.
+        Numbers the network reports as not registered will be marked invalid. You can submit once
+        this finishes.
+      </span>
+    </div>
+  );
 }
 
 export function StatCard({

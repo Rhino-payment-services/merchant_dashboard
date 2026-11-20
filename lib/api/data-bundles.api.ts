@@ -1,5 +1,13 @@
 import apiClient from './client';
-import type { BatchStatus, ProductType, RowStatus } from '@/lib/utils/data-bundles';
+import type {
+  BatchStatus,
+  LookupStatus,
+  ProductType,
+  RowStatus,
+  VerificationStatus,
+} from '@/lib/utils/data-bundles';
+
+export type { LookupStatus, VerificationStatus };
 
 export interface DataBundleAccess {
   merchantCode: string;
@@ -47,6 +55,9 @@ export interface DataBundleBatch {
   id: string;
   batchNumber: string;
   status: BatchStatus;
+  verificationStatus: VerificationStatus;
+  /** Valid rows still waiting for the number check. */
+  pendingLookupCount: number;
   fileName: string | null;
   description: string | null;
   totalRows: number;
@@ -114,6 +125,10 @@ export interface DataBundleRow {
   unitPrice: string | null;
   clientReference: string | null;
   recipientNote: string | null;
+  /** Owner name returned by the operator, when verified. */
+  recipientName: string | null;
+  lookupStatus: LookupStatus | null;
+  lookupError: string | null;
   status: RowStatus;
   validationErrors: string[] | null;
   attemptCount: number;
@@ -169,10 +184,12 @@ export interface UploadPreviewRow {
   recipientNote: string | null;
   status: 'VALID' | 'INVALID' | 'DUPLICATE';
   errors: string[];
+  lookupStatus: LookupStatus | null;
+  recipientName: string | null;
 }
 
 export interface UploadResult {
-  batch: { id: string; batchNumber: string; status: BatchStatus };
+  batch: { id: string; batchNumber: string; status: BatchStatus; verificationStatus: VerificationStatus };
   summary: {
     totalRows: number;
     validRows: number;
@@ -180,6 +197,7 @@ export interface UploadResult {
     duplicateRows: number;
     totalAmount: string;
     currency: string;
+    verificationStatus: VerificationStatus;
   };
   rows: UploadPreviewRow[];
 }
