@@ -27,6 +27,7 @@ import { formatDateTime, formatUgx, productTypeOf } from '@/lib/utils/data-bundl
 import {
   Pagination,
   ProductTypeBadge,
+  RecipientCell,
   TableRowsSkeleton,
   batchMixText,
   rowProductText,
@@ -35,7 +36,7 @@ import {
 
 const ROW_SKELETON_COLUMNS: SkeletonColumn[] = [
   {},
-  {},
+  { twoLine: true },
   { twoLine: true },
   { align: 'right' },
   {},
@@ -118,7 +119,7 @@ export function ReviewBatchDialog({
         {(batch.invalidRows > 0 || batch.duplicateRows > 0) && (
           <p className="text-xs text-amber-700 bg-amber-50 rounded-md p-2">
             {batch.invalidRows} invalid and {batch.duplicateRows} duplicate row(s) were excluded and
-            will not be sent.
+            will not be sent. Invalid rows include numbers the network reported as not registered.
           </p>
         )}
 
@@ -139,7 +140,9 @@ export function ReviewBatchDialog({
               {(rows.data?.items ?? []).map((r) => (
                 <TableRow key={r.id}>
                   <TableCell>{r.rowNumber}</TableCell>
-                  <TableCell>{r.phoneNumber}</TableCell>
+                  <TableCell>
+                    <RecipientCell row={r} />
+                  </TableCell>
                   <TableCell>
                     <div className="flex items-center gap-2">
                       <ProductTypeBadge type={r.productType} />

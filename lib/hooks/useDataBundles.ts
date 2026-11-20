@@ -7,7 +7,10 @@ import {
   type ListParams,
   type SingleBundlePayload,
 } from '../api/data-bundles.api';
-import { apiErrorMessage } from '../utils/data-bundles';
+import { apiErrorMessage, isVerifyingNumbers } from '../utils/data-bundles';
+
+/** Number checks finish in seconds to a few minutes; poll quickly while they run. */
+const VERIFYING_POLL_MS = 3_000;
 
 function useMerchantCode(): string {
   const { data: session } = useSession();
@@ -76,13 +79,20 @@ export function useDataBundleBatch(id: string | undefined) {
     queryFn: () => dataBundlesApi.getBatch(id as string),
     enabled: !!m && !!id,
     staleTime: 5_000,
-    // Keep polling while the batch is being delivered.
-    refetchInterval: (query) =>
-      ['APPROVED', 'PROCESSING'].includes(String(query.state.data?.status)) ? 10_000 : false,
+    // Keep polling while numbers are being verified or the batch is being delivered.
+    refetchInterval: (query) => {
+      const batch = query.state.data;
+      if (isVerifyingNumbers(batch)) return VERIFYING_POLL_MS;
+      return ['APPROVED', 'PROCESSING'].includes(String(batch?.status)) ? 10_000 : false;
+    },
   });
 }
 
-export function useDataBundleRows(id: string | undefined, params: ListParams) {
+export function useDataBundleRows(
+  id: string | undefined,
+  params: ListParams,
+  options: { poll?: boolean } = {},
+) {
   const m = useMerchantCode();
   return useQuery({
     queryKey: dataBundleKeys.rows(m, id ?? '', params),
@@ -90,6 +100,7 @@ export function useDataBundleRows(id: string | undefined, params: ListParams) {
     enabled: !!m && !!id,
     staleTime: 5_000,
     placeholderData: (prev) => prev,
+    refetchInterval: options.poll ? VERIFYING_POLL_MS : false,
   });
 }
 
